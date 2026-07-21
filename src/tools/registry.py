@@ -1,21 +1,32 @@
-from typing import Callable
+from src.tools.models import Tool
 
 
 class ToolRegistry:
+    """
+    Registry for all available tools.
+    """
+
     def __init__(self):
-        self.tools: dict[str, Callable] = {}
+        self._tools: dict[str, Tool] = {}
 
-    def register(self, name: str, func: Callable):
-        if name in self.tools:
-            raise ValueError(f"Tool '{name}' already exists.")
-
-        self.tools[name] = func
+    def register(
+        self,
+        name: str,
+        function,
+        description: str = "",
+    ) -> None:
+        self._tools[name] = Tool(
+            name=name,
+            description=description,
+            function=function,
+        )
 
     def get(self, name: str):
-        return self.tools.get(name)
+        tool = self._tools.get(name)
+        return tool.function if tool else None
+
+    def get_tool(self, name: str):
+        return self._tools.get(name)
 
     def list(self):
-        return list(self.tools.keys())
-
-
-registry = ToolRegistry()
+        return sorted(self._tools.keys())
