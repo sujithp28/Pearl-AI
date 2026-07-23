@@ -4,6 +4,13 @@ Pearl Tool System.
 Exports every public component required to build and register tools.
 """
 
+from .edit_tools import (
+    create_file,
+    edit_lines,
+    patch_file,
+    replace_in_file,
+)
+
 from .file_tools import (
     append_file,
     delete_file,
@@ -51,6 +58,12 @@ __all__ = [
     "file_size",
     "list_directory",
     "make_directory",
+
+    # Edit tools
+    "create_file",
+    "replace_in_file",
+    "edit_lines",
+    "patch_file",
 
     # Shell tools
     "execute_shell",

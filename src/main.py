@@ -9,6 +9,12 @@ from __future__ import annotations
 import logging
 
 from src.agent import PearlAgent
+from src.tools.edit_tools import (
+    create_file,
+    edit_lines,
+    patch_file,
+    replace_in_file,
+)
 from src.tools.file_tools import (
     append_file,
     delete_file,
@@ -53,6 +59,12 @@ def build_registry() -> ToolRegistry:
     registry.register(make_directory)
     registry.register(delete_file)
     registry.register(file_size)
+
+    # Edit tools
+    registry.register(create_file)
+    registry.register(replace_in_file)
+    registry.register(edit_lines)
+    registry.register(patch_file)
 
     # Shell tools
     registry.register(execute_shell)
