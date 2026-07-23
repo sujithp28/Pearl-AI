@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from src.agent.dispatcher import ToolDispatcher
+from src.agent.planner import Planner, StepResult
 from src.llm.client import LLMClient
 from src.llm.tool_selector import LLMToolSelector
 from src.tools.registry import ToolRegistry
@@ -47,6 +48,8 @@ class PearlAgent:
         self.selector = LLMToolSelector(registry)
 
         self.llm = LLMClient()
+
+        self.planner = Planner(registry, self.dispatcher, self.llm)
 
         logger.info("Pearl Agent initialized.")
 
@@ -137,6 +140,35 @@ class PearlAgent:
         logger.info("Chat request received.")
 
         return self.llm.generate(prompt)
+
+    def plan_and_run(
+        self,
+        prompt: str,
+    ) -> list[StepResult]:
+        """
+        Break a complex request into multiple steps and execute
+        them sequentially.
+
+        Workflow
+
+            User
+              │
+              ▼
+             Planner
+              │
+              ▼
+        [ ToolCall, ToolCall, ... ]
+              │
+              ▼
+         Tool Dispatcher (per step)
+              │
+              ▼
+          [ StepResult, ... ]
+        """
+
+        logger.info("Planning multi-step execution for: %s", prompt)
+
+        return self.planner.run(prompt)
 
     def available_tools(self) -> list[dict[str, Any]]:
         """

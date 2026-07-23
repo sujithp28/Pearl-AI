@@ -11,6 +11,7 @@ import logging
 
 from src.llm.client import LLMClient
 from src.llm.parser import ToolCall, ToolParser
+from src.llm.validation import validate_tool_call
 from src.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -77,32 +78,8 @@ class LLMToolSelector:
 
         tool_call = self.parser.parse(response)
 
-        self._validate_arguments(tool_call)
+        validate_tool_call(tool_call, self.registry)
 
         logger.info("Selected tool: %s", tool_call.tool_name)
 
         return tool_call
-
-    def _validate_arguments(self, tool_call: ToolCall) -> None:
-        """
-        Validate a tool call's arguments against the tool's declared
-        parameters before it reaches execution.
-        """
-
-        if tool_call.tool_name == "none":
-            return
-
-        if not self.registry.has_tool(tool_call.tool_name):
-            raise ValueError(
-                f"LLM selected an unknown tool: {tool_call.tool_name}"
-            )
-
-        tool = self.registry.get_tool(tool_call.tool_name)
-        allowed = set(tool.parameters.keys())
-        unexpected = set(tool_call.kwargs.keys()) - allowed
-
-        if unexpected:
-            raise ValueError(
-                f"Tool '{tool_call.tool_name}' received unexpected "
-                f"arguments: {sorted(unexpected)}"
-            )

@@ -59,15 +59,63 @@ class ToolParser:
                 "LLM response must be a JSON object."
             )
 
-        missing = self.REQUIRED_FIELDS - payload.keys()
+        return self._parse_step(payload)
+
+    def parse_plan(self, response: str) -> list[ToolCall]:
+        """
+        Parse an LLM JSON response describing an ordered multi-step plan.
+
+        Example
+        -------
+        {
+            "steps": [
+                {"tool": "read_file", "arguments": {"path": "a.txt"}},
+                {"tool": "write_file", "arguments": {"path": "b.txt", "content": "..."}}
+            ]
+        }
+        """
+
+        try:
+            payload = json.loads(response)
+
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                "LLM returned invalid JSON."
+            ) from exc
+
+        if not isinstance(payload, dict):
+            raise ValueError(
+                "Plan response must be a JSON object."
+            )
+
+        steps = payload.get("steps")
+
+        if not isinstance(steps, list) or not steps:
+            raise ValueError(
+                "Plan must contain a non-empty 'steps' list."
+            )
+
+        return [self._parse_step(step) for step in steps]
+
+    def _parse_step(self, step: Any) -> ToolCall:
+        """
+        Parse a single {"tool": ..., "arguments": ...} object.
+        """
+
+        if not isinstance(step, dict):
+            raise ValueError(
+                "Each step must be a JSON object."
+            )
+
+        missing = self.REQUIRED_FIELDS - step.keys()
 
         if missing:
             raise ValueError(
                 f"Missing JSON fields: {missing}"
             )
 
-        tool_name = payload["tool"]
-        arguments = payload["arguments"]
+        tool_name = step["tool"]
+        arguments = step["arguments"]
 
         if not isinstance(tool_name, str):
             raise TypeError(
