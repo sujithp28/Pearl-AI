@@ -1,6 +1,3 @@
-"""
-Pearl Agent Package
+from .dispatcher import ToolDispatcher
 
-Contains the core agent components responsible for
-tool execution, planning, and orchestration.
-"""
+__all__ = ["ToolDispatcher"]

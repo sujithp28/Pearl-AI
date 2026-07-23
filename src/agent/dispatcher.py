@@ -1,15 +1,16 @@
 from typing import Any
 
+from src.tools.models import Tool
 from src.tools.registry import ToolRegistry
 
 
 class ToolDispatcher:
     """
-    Executes registered tools by name.
+    Dispatches tool execution requests.
     """
 
     def __init__(self, registry: ToolRegistry):
-        self.registry = registry
+        self._registry = registry
 
     def execute(
         self,
@@ -19,25 +20,33 @@ class ToolDispatcher:
     ) -> Any:
         """
         Execute a registered tool.
-
-        Args:
-            tool_name: Name of the registered tool.
-            *args: Positional arguments.
-            **kwargs: Keyword arguments.
-
-        Returns:
-            Result returned by the tool.
-
-        Raises:
-            ValueError:
-                If the tool does not exist.
         """
-
-        tool = self.registry.get(tool_name)
+        tool = self._registry.get_tool(tool_name)
 
         if tool is None:
-            raise ValueError(
-                f"Tool '{tool_name}' is not registered."
-            )
+            raise ValueError(f"Unknown tool: {tool_name}")
 
-        return tool(*args, **kwargs)
+        return tool.function(*args, **kwargs)
+
+    def has_tool(self, tool_name: str) -> bool:
+        """
+        Check whether a tool exists.
+        """
+        return self._registry.get_tool(tool_name) is not None
+
+    def list_tools(self) -> list[str]:
+        """
+        List all available tools.
+        """
+        return self._registry.list()
+
+    def describe_tool(self, tool_name: str) -> Tool:
+        """
+        Return metadata for a tool.
+        """
+        tool = self._registry.get_tool(tool_name)
+
+        if tool is None:
+            raise ValueError(f"Unknown tool: {tool_name}")
+
+        return tool

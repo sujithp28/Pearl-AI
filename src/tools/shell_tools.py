@@ -1,41 +1,48 @@
 from pathlib import Path
-import shutil
-import subprocess
+from shutil import which as shutil_which
+from subprocess import CompletedProcess, run
+
+from src.tools.metadata import tool
 
 
-def execute_shell(command: str) -> str:
+@tool("Execute a shell command.")
+def execute_shell(command: str) -> CompletedProcess[str]:
     """
-    Execute a shell command and return its output.
+    Execute a shell command.
+
+    Args:
+        command: Shell command to execute.
+
+    Returns:
+        subprocess.CompletedProcess
     """
-    result = subprocess.run(
+    return run(
         command,
         shell=True,
-        text=True,
         capture_output=True,
+        text=True,
     )
 
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip())
 
-    return result.stdout.strip()
-
-
-def run_python(script: str) -> str:
+@tool("Execute Python code.")
+def run_python(code: str) -> CompletedProcess[str]:
     """
-    Execute Python code and return its output.
+    Execute Python code.
+
+    Args:
+        code: Python code.
+
+    Returns:
+        subprocess.CompletedProcess
     """
-    result = subprocess.run(
-        ["python3", "-c", script],
-        text=True,
+    return run(
+        ["python3", "-c", code],
         capture_output=True,
+        text=True,
     )
 
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip())
 
-    return result.stdout.strip()
-
-
+@tool("Return the current working directory.")
 def pwd() -> str:
     """
     Return the current working directory.
@@ -43,37 +50,54 @@ def pwd() -> str:
     return str(Path.cwd())
 
 
-def ls(path: str = ".", show_hidden: bool = False) -> list[str]:
+@tool("List directory contents.")
+def ls(
+    path: str = ".",
+    show_hidden: bool = False,
+) -> list[str]:
     """
-    List files and directories.
+    List files in a directory.
 
     Args:
         path: Directory path.
-        show_hidden: Include hidden files if True.
+        show_hidden: Include hidden files.
 
     Returns:
-        Sorted list of file and directory names.
+        List of file and directory names.
     """
-    items = []
+    entries = []
 
     for item in Path(path).iterdir():
         if not show_hidden and item.name.startswith("."):
             continue
+        entries.append(item.name)
 
-        items.append(item.name)
-
-    return sorted(items)
+    return sorted(entries)
 
 
-def which(program: str) -> str | None:
+@tool("Locate an executable in PATH.")
+def which(command: str) -> str | None:
     """
-    Return the full path of an executable.
+    Locate an executable.
+
+    Args:
+        command: Command name.
+
+    Returns:
+        Absolute executable path or None.
     """
-    return shutil.which(program)
+    return shutil_which(command)
 
 
-def is_command_available(program: str) -> bool:
+@tool("Check whether a command is available.")
+def is_command_available(command: str) -> bool:
     """
-    Check whether a command exists.
+    Check if a command exists.
+
+    Args:
+        command: Command name.
+
+    Returns:
+        True if available.
     """
-    return shutil.which(program) is not None
+    return shutil_which(command) is not None
