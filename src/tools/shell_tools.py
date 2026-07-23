@@ -1,103 +1,175 @@
+"""
+Shell tools for Pearl.
+
+These tools provide safe wrappers around shell execution and
+common operating-system commands.
+"""
+
+from __future__ import annotations
+
+import logging
+import shutil
+import subprocess
 from pathlib import Path
-from shutil import which as shutil_which
-from subprocess import CompletedProcess, run
 
 from src.tools.metadata import tool
 
+logger = logging.getLogger(__name__)
 
-@tool("Execute a shell command.")
-def execute_shell(command: str) -> CompletedProcess[str]:
+DEFAULT_TIMEOUT = 30
+
+
+@tool(
+    description="Execute a shell command.",
+    parameters={
+        "command": "str",
+    },
+    returns="subprocess.CompletedProcess",
+)
+def execute_shell(
+    command: str,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> subprocess.CompletedProcess:
     """
     Execute a shell command.
 
-    Args:
-        command: Shell command to execute.
-
-    Returns:
-        subprocess.CompletedProcess
+    Raises
+    ------
+    subprocess.CalledProcessError
+        If the command exits with a non-zero status.
     """
-    return run(
+
+    logger.info("Executing command: %s", command)
+
+    result = subprocess.run(
         command,
         shell=True,
-        capture_output=True,
         text=True,
+        capture_output=True,
+        timeout=timeout,
+        check=True,
+    )
+
+    return result
+
+
+@tool(
+    description="Execute a Python script.",
+    parameters={
+        "script": "str",
+    },
+    returns="subprocess.CompletedProcess",
+)
+def run_python(
+    script: str,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> subprocess.CompletedProcess:
+    """
+    Execute a Python script.
+    """
+
+    return execute_shell(
+        f'python3 "{script}"',
+        timeout=timeout,
     )
 
 
-@tool("Execute Python code.")
-def run_python(code: str) -> CompletedProcess[str]:
-    """
-    Execute Python code.
-
-    Args:
-        code: Python code.
-
-    Returns:
-        subprocess.CompletedProcess
-    """
-    return run(
-        ["python3", "-c", code],
-        capture_output=True,
-        text=True,
-    )
-
-
-@tool("Return the current working directory.")
+@tool(
+    description="Return the current working directory.",
+    returns="str",
+)
 def pwd() -> str:
     """
-    Return the current working directory.
+    Return current working directory.
     """
+
     return str(Path.cwd())
 
 
-@tool("List directory contents.")
+@tool(
+    description="List files in the current or specified directory.",
+    parameters={
+        "path": "str",
+        "show_hidden": "bool",
+    },
+    returns="list[str]",
+)
 def ls(
     path: str = ".",
     show_hidden: bool = False,
 ) -> list[str]:
     """
-    List files in a directory.
-
-    Args:
-        path: Directory path.
-        show_hidden: Include hidden files.
-
-    Returns:
-        List of file and directory names.
+    List directory contents.
     """
-    entries = []
 
-    for item in Path(path).iterdir():
+    directory = Path(path)
+
+    if not directory.exists():
+        raise FileNotFoundError(path)
+
+    if not directory.is_dir():
+        raise NotADirectoryError(path)
+
+    items = []
+
+    for item in sorted(directory.iterdir()):
         if not show_hidden and item.name.startswith("."):
             continue
-        entries.append(item.name)
 
-    return sorted(entries)
+        items.append(item.name)
+
+    return items
 
 
-@tool("Locate an executable in PATH.")
+@tool(
+    description="Locate a command on the current system.",
+    parameters={
+        "command": "str",
+    },
+    returns="str | None",
+)
 def which(command: str) -> str | None:
     """
-    Locate an executable.
-
-    Args:
-        command: Command name.
-
-    Returns:
-        Absolute executable path or None.
+    Locate a system executable.
     """
-    return shutil_which(command)
+
+    return shutil.which(command)
 
 
-@tool("Check whether a command is available.")
+@tool(
+    description="Return whether a command exists on the system.",
+    parameters={
+        "command": "str",
+    },
+    returns="bool",
+)
 def is_command_available(command: str) -> bool:
     """
-    Check if a command exists.
-
-    Args:
-        command: Command name.
-
-    Returns:
-        True if available.
+    Check if a command is available.
     """
-    return shutil_which(command) is not None
+
+    return which(command) is not None
+
+
+@tool(
+    description="Return the operating system name.",
+    returns="str",
+)
+def operating_system() -> str:
+    """
+    Return operating system.
+    """
+
+    return execute_shell("uname -a").stdout.strip()
+
+
+@tool(
+    description="Return the current username.",
+    returns="str",
+)
+def current_user() -> str:
+    """
+    Return current user.
+    """
+
+    return execute_shell("whoami").stdout.strip()

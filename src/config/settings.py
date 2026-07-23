@@ -1,4 +1,9 @@
+"""
+Global configuration for Pearl.
+"""
+
 from pathlib import Path
+
 import torch
 
 
@@ -6,12 +11,14 @@ class Settings:
     # ==================================================
     # Project
     # ==================================================
+
     PROJECT_NAME = "Pearl"
     VERSION = "0.1.0"
 
     # ==================================================
     # Directories
     # ==================================================
+
     ROOT_DIR = Path(__file__).resolve().parents[2]
 
     SRC_DIR = ROOT_DIR / "src"
@@ -20,46 +27,44 @@ class Settings:
 
     LOGS_DIR = ROOT_DIR / "logs"
 
+    PROMPTS_DIR = SRC_DIR / "prompts"
+
     # ==================================================
     # Device
     # ==================================================
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     # ==================================================
     # Model
     # ==================================================
-    DEFAULT_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
+
+    MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
     MODEL_CACHE_DIR = MODELS_DIR
 
     # ==================================================
     # Generation
     # ==================================================
+
     MAX_NEW_TOKENS = 1024
+
     TEMPERATURE = 0.2
+
     TOP_P = 0.95
 
     # ==================================================
-    # Agent Prompt
+    # Prompt files
     # ==================================================
-    SYSTEM_PROMPT = f"""
-You are {PROJECT_NAME}.
 
-You are an expert AI coding assistant.
-
-Rules:
-
-- Answer only what the user asks.
-- Never repeat the user's prompt.
-- Never hallucinate.
-- Keep responses concise.
-- Generate clean production-quality code.
-- Think before answering.
-"""
+    TOOL_SELECTION_PROMPT = (
+        PROMPTS_DIR / "tool_selection.txt"
+    )
 
     # ==================================================
     # Banner
     # ==================================================
+
     BANNER = f"""
 ==================================================
 {PROJECT_NAME} v{VERSION}

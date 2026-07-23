@@ -1,11 +1,13 @@
-# src/agent/__init__.py
+"""
+Agent package.
+
+Exports the public API for Pearl.
+"""
 
 from .agent import PearlAgent
 from .dispatcher import ToolDispatcher
-from .tool_selector import ToolSelector
 
 __all__ = [
     "PearlAgent",
     "ToolDispatcher",
-    "ToolSelector",
 ]

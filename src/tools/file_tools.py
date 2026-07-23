@@ -1,81 +1,199 @@
+"""
+File system tools for Pearl.
+
+These tools provide safe, UTF-8 based file operations.
+"""
+
+from __future__ import annotations
+
+import logging
 from pathlib import Path
 
 from src.tools.metadata import tool
 
+logger = logging.getLogger(__name__)
 
-@tool("Read the contents of a UTF-8 text file.")
+
+@tool(
+    description="Read the contents of a UTF-8 text file.",
+    parameters={
+        "path": "str",
+    },
+    returns="str",
+)
 def read_file(path: str) -> str:
     """
     Read a UTF-8 text file.
-
-    Args:
-        path: Path to the file.
-
-    Returns:
-        File contents.
     """
-    return Path(path).read_text(encoding="utf-8")
+
+    file_path = Path(path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(path)
+
+    if not file_path.is_file():
+        raise IsADirectoryError(path)
+
+    logger.info("Reading file: %s", file_path)
+
+    return file_path.read_text(encoding="utf-8")
 
 
-@tool("Write text to a UTF-8 file.")
+@tool(
+    description="Write text to a UTF-8 file. Creates the file if necessary.",
+    parameters={
+        "path": "str",
+        "content": "str",
+    },
+    returns="None",
+)
 def write_file(path: str, content: str) -> None:
     """
-    Write text to a file.
-
-    Args:
-        path: Path to the file.
-        content: Content to write.
+    Write text to a UTF-8 file.
     """
-    Path(path).write_text(content, encoding="utf-8")
+
+    file_path = Path(path)
+
+    if file_path.parent:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    logger.info("Writing file: %s", file_path)
+
+    file_path.write_text(
+        content,
+        encoding="utf-8",
+    )
 
 
-@tool("Append text to a UTF-8 file.")
+@tool(
+    description="Append text to a UTF-8 file.",
+    parameters={
+        "path": "str",
+        "content": "str",
+    },
+    returns="None",
+)
 def append_file(path: str, content: str) -> None:
     """
     Append text to a file.
-
-    Args:
-        path: Path to the file.
-        content: Content to append.
     """
-    with Path(path).open("a", encoding="utf-8") as file:
+
+    file_path = Path(path)
+
+    if file_path.parent:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    logger.info("Appending file: %s", file_path)
+
+    with file_path.open(
+        "a",
+        encoding="utf-8",
+    ) as file:
         file.write(content)
 
 
-@tool("List directory contents.")
-def list_directory(path: str = ".") -> list[str]:
-    """
-    List files and directories.
-
-    Args:
-        path: Directory path.
-
-    Returns:
-        Sorted list of entries.
-    """
-    return sorted(item.name for item in Path(path).iterdir())
-
-
-@tool("Check whether a file or directory exists.")
+@tool(
+    description="Return whether a file exists.",
+    parameters={
+        "path": "str",
+    },
+    returns="bool",
+)
 def file_exists(path: str) -> bool:
     """
-    Check if a path exists.
-
-    Args:
-        path: File or directory path.
-
-    Returns:
-        True if the path exists.
+    Check if a file exists.
     """
+
     return Path(path).exists()
 
 
-@tool("Create a directory if it does not exist.")
+@tool(
+    description="List all files and directories inside a directory.",
+    parameters={
+        "path": "str",
+    },
+    returns="list[str]",
+)
+def list_directory(path: str = ".") -> list[str]:
+    """
+    List directory contents.
+    """
+
+    directory = Path(path)
+
+    if not directory.exists():
+        raise FileNotFoundError(path)
+
+    if not directory.is_dir():
+        raise NotADirectoryError(path)
+
+    logger.info("Listing directory: %s", directory)
+
+    return sorted(
+        item.name
+        for item in directory.iterdir()
+    )
+
+
+@tool(
+    description="Create a directory recursively if it does not exist.",
+    parameters={
+        "path": "str",
+    },
+    returns="None",
+)
 def make_directory(path: str) -> None:
     """
     Create a directory.
-
-    Args:
-        path: Directory path.
     """
-    Path(path).mkdir(parents=True, exist_ok=True)
+
+    directory = Path(path)
+
+    directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    logger.info("Created directory: %s", directory)
+
+
+@tool(
+    description="Delete a file.",
+    parameters={
+        "path": "str",
+    },
+    returns="None",
+)
+def delete_file(path: str) -> None:
+    """
+    Delete a file.
+    """
+
+    file_path = Path(path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(path)
+
+    file_path.unlink()
+
+    logger.info("Deleted file: %s", file_path)
+
+
+@tool(
+    description="Return the size of a file in bytes.",
+    parameters={
+        "path": "str",
+    },
+    returns="int",
+)
+def file_size(path: str) -> int:
+    """
+    Return file size.
+    """
+
+    file_path = Path(path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(path)
+
+    return file_path.stat().st_size
