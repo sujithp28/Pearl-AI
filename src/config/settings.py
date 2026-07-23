@@ -59,6 +59,56 @@ class Settings:
     )
 
     # ==================================================
+    # LLM Provider Selection
+    # ==================================================
+
+    # Which provider LLMClient() connects to by default.
+    # One of: omniroute, openai, openrouter, ollama, claude, gemini.
+    LLM_PROVIDER = os.getenv("PEARL_LLM_PROVIDER", "omniroute")
+
+    # -- OpenAI --
+
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+
+    OPENAI_BASE_URL = os.getenv(
+        "OPENAI_BASE_URL", "https://api.openai.com/v1"
+    )
+
+    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+    # -- Anthropic (Claude) --
+
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
+    ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+
+    # -- Google (Gemini) --
+
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+    # -- OpenRouter --
+
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+
+    OPENROUTER_BASE_URL = os.getenv(
+        "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+    )
+
+    OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/auto")
+
+    # -- Ollama --
+
+    OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "ollama")
+
+    OLLAMA_BASE_URL = os.getenv(
+        "OLLAMA_BASE_URL", "http://localhost:11434/v1"
+    )
+
+    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+
+    # ==================================================
     # Local Model (Keep this for now)
     # ==================================================
 

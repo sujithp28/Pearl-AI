@@ -1,5 +1,8 @@
 """
-LLM Client for Pearl using OmniRoute.
+LLM Client for Pearl.
+
+Provider-agnostic: the active backend (OmniRoute, OpenAI, Claude,
+Gemini, OpenRouter, or Ollama) is selected via `src.llm.providers`.
 """
 
 from __future__ import annotations
@@ -11,25 +14,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    InternalServerError,
-    OpenAI,
-    RateLimitError,
-)
-
 from src.config.settings import Settings
+from src.llm.providers.base import LLMProvider
+from src.llm.providers.factory import create_provider
 
 logger = logging.getLogger(__name__)
-
-# Transient errors worth retrying with backoff.
-TRANSIENT_ERRORS = (
-    APIConnectionError,
-    APITimeoutError,
-    RateLimitError,
-    InternalServerError,
-)
 
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 1.0
@@ -37,22 +26,29 @@ RETRY_BASE_DELAY = 1.0
 
 class LLMClient:
     """
-    Wrapper around OmniRoute (OpenAI-compatible API).
+    Provider-agnostic LLM client.
+
+    Delegates the actual completion call to an `LLMProvider` backend
+    (OmniRoute by default, matching Pearl's original behavior), so
+    the tool selector, planner, and `PearlAgent.chat` do not need to
+    know which provider is active.
     """
 
-    def __init__(self) -> None:
-        logger.info("Connecting to OmniRoute...")
+    def __init__(
+        self,
+        provider: LLMProvider | None = None,
+        provider_name: str | None = None,
+    ) -> None:
+        name = provider_name or Settings.LLM_PROVIDER
 
-        self.client = OpenAI(
-            api_key=Settings.OMNIROUTE_API_KEY,
-            base_url=Settings.OMNIROUTE_BASE_URL,
-            timeout=60.0,  # Prevent hanging forever
+        logger.info("Connecting to LLM provider: %s", name)
+
+        self.provider = provider or create_provider(name)
+
+        logger.info(
+            "Connected to provider: %s",
+            type(self.provider).__name__,
         )
-
-        self.model = Settings.OMNIROUTE_MODEL
-
-        logger.info("Connected to OmniRoute.")
-        logger.info("Using model: %s", self.model)
 
     def generate(
         self,
@@ -61,7 +57,7 @@ class LLMClient:
         max_new_tokens: int | None = None,
     ) -> str:
         """
-        Send prompt to OmniRoute and return model response.
+        Send prompt to the active provider and return its response.
 
         Retries transient API/network failures with exponential backoff.
         """
@@ -72,33 +68,34 @@ class LLMClient:
         if max_new_tokens is None:
             max_new_tokens = Settings.MAX_NEW_TOKENS
 
-        response = None
+        messages = [
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ]
+
+        text = None
         attempt = 0
 
-        while response is None:
-            logger.info("Sending request to OmniRoute...")
+        while text is None:
+            logger.info("Sending request to provider...")
 
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": prompt,
-                        }
-                    ],
-                    temperature=temperature,
-                    max_tokens=max_new_tokens,
+                text = self.provider.complete(
+                    messages,
+                    temperature,
+                    max_new_tokens,
                 )
 
-                logger.info("Received response from OmniRoute.")
+                logger.info("Received response from provider.")
 
-            except TRANSIENT_ERRORS as exc:
+            except self.provider.TRANSIENT_ERRORS as exc:
                 attempt += 1
 
                 if attempt > MAX_RETRIES:
                     logger.exception(
-                        "OmniRoute request failed after %d attempts.",
+                        "Provider request failed after %d attempts.",
                         attempt,
                     )
                     raise
@@ -106,7 +103,7 @@ class LLMClient:
                 delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
 
                 logger.warning(
-                    "Transient OmniRoute error (attempt %d/%d): %s. "
+                    "Transient provider error (attempt %d/%d): %s. "
                     "Retrying in %.1fs...",
                     attempt,
                     MAX_RETRIES,
@@ -117,18 +114,10 @@ class LLMClient:
                 time.sleep(delay)
 
             except Exception:
-                logger.exception("OmniRoute request failed.")
+                logger.exception("Provider request failed.")
                 raise
 
-        if not response.choices:
-            raise ValueError("No choices returned from model.")
-
-        content = response.choices[0].message.content
-
-        if content is None:
-            raise ValueError("Model returned an empty response.")
-
-        return content.strip()
+        return text
 
     def _extract_json(self, text: str) -> str:
         """
