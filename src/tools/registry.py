@@ -2,24 +2,18 @@ from src.tools.models import Tool
 
 
 class ToolRegistry:
-    """
-    Registry for all available tools.
-    """
 
     def __init__(self):
         self._tools: dict[str, Tool] = {}
 
-    def register(
-        self,
-        name: str,
-        function,
-        description: str = "",
-    ) -> None:
-        self._tools[name] = Tool(
-            name=name,
-            description=description,
-            function=function,
+    def register(self, func):
+        tool = Tool(
+            name=func._tool_name,
+            description=func._tool_description,
+            function=func,
         )
+
+        self._tools[tool.name] = tool
 
     def get(self, name: str):
         tool = self._tools.get(name)

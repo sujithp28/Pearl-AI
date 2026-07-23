@@ -1,34 +1,62 @@
 # 🦪 Pearl
 
-> **Production-Quality AI Coding Agent built from scratch using Python**
+> **Production-Quality AI Coding Agent Built from Scratch**
 
-Pearl is an open-source AI Coding Agent designed to evolve into a fully autonomous developer assistant similar to **Codex**, **Claude Code**, and **Cursor**, while remaining modular, extensible, and self-hostable.
-
-This is **not** a chatbot project.
-
-The goal is to build a real coding agent capable of:
-
-- Understanding codebases
-- Reading and modifying files
-- Executing tools
-- Planning tasks
-- Maintaining memory
-- Communicating through MCP (Model Context Protocol)
-- Integrating with IDEs like VS Code and Cursor
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![Status](https://img.shields.io/badge/Status-Active%20Development-success)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ---
 
-# 🚀 Vision
+# 📖 Overview
 
-Pearl should eventually be able to accept prompts such as:
+Pearl is an open-source AI Coding Agent designed to become a complete software engineering assistant.
 
-> "Find all TODOs in this repository and fix them."
+Unlike a traditional chatbot, Pearl is being built as a modular AI system capable of understanding projects, executing tools, maintaining memory, planning complex tasks, and integrating with developer environments.
 
-or
+The long-term vision is to build a self-hostable coding agent comparable to Codex, Claude Code, Cursor, and Cline while remaining completely extensible.
 
-> "Create a FastAPI application with Docker support and deploy it using Terraform."
+---
 
-without manual intervention.
+# 🎯 Vision
+
+Pearl should eventually be able to:
+
+- Understand entire codebases
+- Read and modify source code
+- Execute development tools
+- Plan multi-step engineering tasks
+- Maintain project memory
+- Verify its own work
+- Integrate with IDEs
+- Communicate using MCP (Model Context Protocol)
+
+Example:
+
+> "Create a FastAPI project, Dockerize it, deploy it to AWS, run the tests, and commit the changes."
+
+---
+
+# 🏗 Current Architecture
+
+```
+                User
+                  │
+                  ▼
+            Language Model
+                  │
+                  ▼
+          Tool Dispatcher (Upcoming)
+                  │
+                  ▼
+            Tool Registry
+                  │
+                  ▼
+        Registered Tool Objects
+                  │
+                  ▼
+           Tool Implementations
+```
 
 ---
 
@@ -38,13 +66,21 @@ without manual intervention.
 - Hugging Face Transformers
 - PyTorch
 - CUDA
-- Qwen2.5-1.5B-Instruct
-- Ubuntu 24.04 (WSL)
 - VS Code
+- Ubuntu (WSL)
+
+Future Support
+
+- OpenAI
+- Anthropic
+- Ollama
+- LM Studio
+- OpenRouter
+- MCP
 
 ---
 
-# 📁 Project Structure
+# 📂 Project Structure
 
 ```
 my-mcp/
@@ -52,14 +88,12 @@ my-mcp/
 ├── docs/
 ├── models/
 ├── tests/
-
+│
 ├── src/
 │
 ├── agent/
-│   └── dispatcher.py
 │
 ├── config/
-│   └── settings.py
 │
 ├── llm/
 │   ├── model.py
@@ -72,79 +106,125 @@ my-mcp/
 ├── prompts/
 │
 ├── tools/
-│   ├── registry.py
 │   ├── file_tools.py
-│   └── shell_tools.py
+│   ├── shell_tools.py
+│   ├── metadata.py
+│   ├── models.py
+│   └── registry.py
 │
-└── main.py
-
-README.md
-requirements.txt
-.gitignore
+├── main.py
+├── README.md
+├── requirements.txt
+└── .gitignore
 ```
 
 ---
 
 # ✅ Completed Features
 
-## Project Foundation
+## 🧠 Core Foundation
 
-- [x] Project structure
-- [x] Configuration system
-- [x] CUDA detection
-- [x] Hugging Face model loading
-- [x] Chat generation
-- [x] Tool registry
+- Project Structure
+- Configuration System
+- Settings Management
+- CUDA Detection
+- Hugging Face Model Loading
+- Text Generation
+- Modular Package Layout
+
+Status
+
+✅ Completed
 
 ---
 
-## File Tools
+## 📂 File Tools
 
-Implemented:
+Implemented
 
-- Read file
-- Write file
-- Append file
-- List directory
-- Check file existence
-- Create directory
+- Read File
+- Write File
+- Append File
+- List Directory
+- File Exists
+- Create Directory
 
-Status:
+Status
 
 ✅ Tested
 
 ---
 
-## Shell Tools
+## 💻 Shell Tools
 
-Implemented:
+Implemented
 
-- Execute shell commands
-- Execute Python code
-- Current working directory
-- Directory listing
-- Locate executable
-- Check command availability
+- Execute Shell Commands
+- Execute Python Code
+- Current Working Directory
+- List Directory
+- Locate Executables
+- Check Command Availability
 
-Status:
+Status
 
 ✅ Tested
+
+---
+
+## 🛠 Tool Metadata System
+
+Implemented
+
+- Tool Decorator
+- Tool Dataclass
+- Metadata Attachment
+- Automatic Tool Registration
+- Tool Discovery
+
+Example
+
+```python
+@tool("Read the contents of a UTF-8 text file.")
+def read_file(path: str):
+    ...
+```
+
+Status
+
+✅ Completed
+
+---
+
+## 📦 Tool Registry
+
+Current Features
+
+- Register Tool
+- Retrieve Tool
+- List Tools
+- Store Metadata
+- Execute Stored Function
+
+Status
+
+✅ Completed
 
 ---
 
 # 🚧 Current Sprint
 
-## Sprint 3
+## Sprint 4
 
-Building:
+Building
 
 - Tool Dispatcher
 
-Goal:
+Goal
 
-Allow Pearl to execute tools dynamically through the registry.
+Execute tools dynamically without directly referencing implementations.
 
-Architecture:
+Future Flow
 
 ```
 User
@@ -155,87 +235,79 @@ LLM
 
 ↓
 
-Tool Dispatcher
+Dispatcher
 
 ↓
 
-Tool Registry
+Registry
 
 ↓
 
 Tool
+
+↓
+
+Execution
 ```
-
-Status:
-
-🚧 In Progress
 
 ---
 
-# 📅 Roadmap
+# 📈 Development Roadmap
 
-## Phase 1
+## Phase 1 — Foundation
 
+- [x] Project Structure
 - [x] Configuration
-- [x] LLM Loading
-- [x] Chat Generation
-- [x] Tool Registry
+- [x] Hugging Face Integration
+- [x] Text Generation
 - [x] File Tools
 - [x] Shell Tools
-- [ ] Tool Dispatcher
+- [x] Tool Metadata
+- [x] Tool Registry
+- [ ] Dispatcher
 - [ ] Tool Calling
 
 ---
 
-## Phase 2
+## Phase 2 — Memory
 
-Memory
-
-- Conversation History
-- Sliding Window
-- Context Management
+- Conversation Memory
+- Project Memory
+- Context Window
 - Summarization
 
 ---
 
-## Phase 3
+## Phase 3 — Planning
 
-Planner
-
-- Task decomposition
-- Sequential execution
-- Multi-step reasoning
+- Planner
+- Task Decomposition
+- Multi-step Execution
+- Error Recovery
 
 ---
 
-## Phase 4
+## Phase 4 — MCP
 
-Custom MCP Server
-
-No FastMCP.
-
-Implement from scratch:
-
+- Custom MCP Server
 - JSON-RPC
-- Tools
+- Tool Exposure
 - Resources
 - Prompts
 
 ---
 
-## Phase 5
+## Phase 5 — Integrations
 
-IDE Integrations
-
+- VS Code
 - Cursor
 - Claude Desktop
-- VS Code
+- GitHub
+- GitHub Actions
 
 ---
 
-## Phase 6
-
-Developer Tools
+## Phase 6 — Developer Tools
 
 - Git
 - Docker
@@ -245,59 +317,110 @@ Developer Tools
 
 ---
 
-## Phase 7
+## Phase 7 — Advanced Intelligence
 
-Advanced AI
-
-- Codebase indexing
-- Vector memory
-- Multi-agent architecture
-- Autonomous planning
-
----
-
-# 🧪 Development Principles
-
-Every feature follows the same lifecycle:
-
-1. Design
-2. Implement
-3. Test
-4. Verify
-5. Commit
-6. Push
-
-No feature is considered complete until it has been tested.
+- Project DNA
+- Codebase Indexing
+- Vector Memory
+- Autonomous Agents
+- Multi-Agent Collaboration
 
 ---
 
-# 📌 Current Progress
+# 📊 Current Progress
 
 ```
-██████████████████░░░░░░░░
+████████████████████████░░░░░░
 
-Project Foundation      ✅
-LLM                     ✅
-Generation              ✅
-Tool Registry           ✅
-File Tools              ✅
-Shell Tools             ✅
-Dispatcher              🚧
-Tool Calling            ⏳
-Memory                  ⏳
-Planner                 ⏳
-MCP                     ⏳
-Integrations            ⏳
+✅ Project Foundation
+✅ Configuration
+✅ LLM
+✅ Text Generation
+✅ File Tools
+✅ Shell Tools
+✅ Tool Metadata
+✅ Tool Registry
+⬜ Dispatcher
+⬜ Tool Calling
+⬜ Memory
+⬜ Planner
+⬜ MCP
+⬜ IDE Integration
+⬜ Autonomous Execution
 ```
 
 ---
 
-# 🎯 Ultimate Goal
+# 🧪 Development Workflow
 
-Pearl should become a production-quality AI Coding Agent capable of assisting software engineers with real-world development tasks while remaining fully modular, extensible, and self-hosted.
+Every feature follows the same engineering process.
+
+```
+Design
+   ↓
+Implement
+   ↓
+Test
+   ↓
+Verify
+   ↓
+Commit
+   ↓
+Push
+```
+
+No feature is considered complete until it has been verified.
 
 ---
 
-# 🦪 Pearl Motto
+# 🎯 Long-Term Goal
 
-> **"Build once. Scale forever."**
+Pearl is being designed as a complete AI software engineering platform capable of:
+
+- Understanding projects
+- Planning tasks
+- Executing code
+- Using developer tools
+- Maintaining long-term project memory
+- Verifying its own work
+- Operating locally or in the cloud
+
+The objective is not just code generation—it is project understanding, reliable execution, and maintainable software engineering workflows.
+
+---
+
+# 📌 Project Status
+
+Current Version
+
+```
+v0.1.0-dev
+```
+
+Status
+
+```
+🚧 Active Development
+```
+
+---
+
+# 🤝 Contributing
+
+Contributions, discussions, and ideas are welcome.
+
+As Pearl evolves, additional documentation will be added under the `docs/` directory, including architecture guides, coding standards, roadmap details, and MCP design documentation.
+
+---
+
+# 📄 License
+
+MIT License (to be added before the first public release)
+
+---
+
+# 🦪 Motto
+
+> **"Understand. Plan. Execute. Verify."**
+
+Built with ❤️ using Python.
