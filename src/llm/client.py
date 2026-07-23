@@ -1,7 +1,5 @@
 """
-LLM Client for Pearl.
-
-Provides a simple interface around Hugging Face models.
+LLM Client for Pearl using OmniRoute.
 """
 
 from __future__ import annotations
@@ -12,9 +10,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-import torch
-from transformers import AutoModelForCausalLM
-from transformers import AutoTokenizer
+from openai import OpenAI
 
 from src.config.settings import Settings
 
@@ -23,28 +19,22 @@ logger = logging.getLogger(__name__)
 
 class LLMClient:
     """
-    Wrapper around the Hugging Face model.
+    Wrapper around OmniRoute (OpenAI-compatible API).
     """
 
     def __init__(self) -> None:
-        logger.info("Loading model...")
+        logger.info("Connecting to OmniRoute...")
 
-        self.device = Settings.DEVICE
-
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            Settings.MODEL_NAME
+        self.client = OpenAI(
+            api_key=Settings.OMNIROUTE_API_KEY,
+            base_url=Settings.OMNIROUTE_BASE_URL,
+            timeout=60.0,  # Prevent hanging forever
         )
 
-        self.model = AutoModelForCausalLM.from_pretrained(
-            Settings.MODEL_NAME,
-            torch_dtype=torch.float16
-            if self.device == "cuda"
-            else torch.float32,
-        )
+        self.model = Settings.OMNIROUTE_MODEL
 
-        self.model.to(self.device)
-
-        logger.info("Model loaded.")
+        logger.info("Connected to OmniRoute.")
+        logger.info("Using model: %s", self.model)
 
     def generate(
         self,
@@ -53,7 +43,7 @@ class LLMClient:
         max_new_tokens: int | None = None,
     ) -> str:
         """
-        Generate text from the model.
+        Send prompt to OmniRoute and return model response.
         """
 
         if temperature is None:
@@ -62,42 +52,100 @@ class LLMClient:
         if max_new_tokens is None:
             max_new_tokens = Settings.MAX_NEW_TOKENS
 
-        inputs = self.tokenizer(
-            prompt,
-            return_tensors="pt",
-        ).to(self.device)
+        logger.info("Sending request to OmniRoute...")
 
-        with torch.no_grad():
-            output = self.model.generate(
-                **inputs,
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
                 temperature=temperature,
-                max_new_tokens=max_new_tokens,
-                do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id,
+                max_tokens=max_new_tokens,
             )
 
-        text = self.tokenizer.decode(
-            output[0],
-            skip_special_tokens=True,
-        )
+            logger.info("Received response from OmniRoute.")
 
-        return text[len(prompt):].strip()
+        except Exception:
+            logger.exception("OmniRoute request failed.")
+            raise
+
+        if not response.choices:
+            raise ValueError("No choices returned from model.")
+
+        content = response.choices[0].message.content
+
+        if content is None:
+            raise ValueError("Model returned an empty response.")
+
+        return content.strip()
+
+    def _extract_json(self, text: str) -> str:
+        """
+        Extract JSON from model output.
+
+        Supports:
+        - Plain JSON
+        - Markdown JSON
+        - Explanatory text containing JSON
+        """
+
+        text = re.sub(r"```json", "", text, flags=re.IGNORECASE)
+        text = text.replace("```", "").strip()
+
+        try:
+            json.loads(text)
+            return text
+        except Exception:
+            pass
+
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+
+        if match:
+            return match.group(0)
+
+        raise ValueError(
+            f"No JSON object found.\n\nModel returned:\n{text}"
+        )
 
     def generate_json(
         self,
         prompt: str,
     ) -> dict[str, Any]:
         """
-        Generate JSON output from the model.
+        Generate JSON from the LLM.
         """
 
         response = self.generate(prompt)
 
+        print("\n========== RAW MODEL RESPONSE ==========")
+        print(response)
+        print("========================================\n")
+
+        cleaned = self._extract_json(response)
+
+        print("\n========== CLEANED JSON ==========")
+        print(cleaned)
+        print("==================================\n")
+
         try:
-            return json.loads(response)
+            payload = json.loads(cleaned)
+
+            print("\n========== PARSED PAYLOAD ==========")
+            print(payload)
+            print(type(payload))
+            print("====================================\n")
+
+            return payload
 
         except json.JSONDecodeError as exc:
-            logger.error(response)
+            print("\n========== JSON ERROR ==========")
+            print(cleaned)
+            print("================================\n")
+
             raise ValueError(
                 "Model returned invalid JSON."
             ) from exc
@@ -108,7 +156,7 @@ class LLMClient:
         path: str,
     ) -> None:
         """
-        Save an LLM response.
+        Save model response to a file.
         """
 
         Path(path).write_text(
@@ -121,7 +169,7 @@ class LLMClient:
         path: str,
     ) -> str:
         """
-        Load a prompt file.
+        Load prompt template from disk.
         """
 
         return Path(path).read_text(

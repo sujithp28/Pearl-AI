@@ -3,8 +3,12 @@ Global configuration for Pearl.
 """
 
 from pathlib import Path
+import os                     # <-- NEW
 
 import torch
+from dotenv import load_dotenv   # <-- NEW
+
+load_dotenv()                    # <-- NEW
 
 
 class Settings:
@@ -36,7 +40,26 @@ class Settings:
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     # ==================================================
-    # Model
+    # OmniRoute Configuration (NEW)
+    # ==================================================
+
+    OMNIROUTE_BASE_URL = os.getenv(
+        "OMNIROUTE_BASE_URL",
+        "http://localhost:20128/v1"
+    )
+
+    OMNIROUTE_API_KEY = os.getenv(
+        "OMNIROUTE_API_KEY",
+        ""
+    )
+
+    OMNIROUTE_MODEL = os.getenv(
+        "OMNIROUTE_MODEL",
+        "openai/gpt-oss-120b"
+    )
+
+    # ==================================================
+    # Local Model (Keep this for now)
     # ==================================================
 
     MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
