@@ -77,6 +77,32 @@ class LLMToolSelector:
 
         tool_call = self.parser.parse(response)
 
+        self._validate_arguments(tool_call)
+
         logger.info("Selected tool: %s", tool_call.tool_name)
 
         return tool_call
+
+    def _validate_arguments(self, tool_call: ToolCall) -> None:
+        """
+        Validate a tool call's arguments against the tool's declared
+        parameters before it reaches execution.
+        """
+
+        if tool_call.tool_name == "none":
+            return
+
+        if not self.registry.has_tool(tool_call.tool_name):
+            raise ValueError(
+                f"LLM selected an unknown tool: {tool_call.tool_name}"
+            )
+
+        tool = self.registry.get_tool(tool_call.tool_name)
+        allowed = set(tool.parameters.keys())
+        unexpected = set(tool_call.kwargs.keys()) - allowed
+
+        if unexpected:
+            raise ValueError(
+                f"Tool '{tool_call.tool_name}' received unexpected "
+                f"arguments: {sorted(unexpected)}"
+            )

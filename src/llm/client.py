@@ -7,14 +7,32 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Any
 
-from openai import OpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
 
 from src.config.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+# Transient errors worth retrying with backoff.
+TRANSIENT_ERRORS = (
+    APIConnectionError,
+    APITimeoutError,
+    RateLimitError,
+    InternalServerError,
+)
+
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 1.0
 
 
 class LLMClient:
@@ -44,6 +62,8 @@ class LLMClient:
     ) -> str:
         """
         Send prompt to OmniRoute and return model response.
+
+        Retries transient API/network failures with exponential backoff.
         """
 
         if temperature is None:
@@ -52,26 +72,53 @@ class LLMClient:
         if max_new_tokens is None:
             max_new_tokens = Settings.MAX_NEW_TOKENS
 
-        logger.info("Sending request to OmniRoute...")
+        response = None
+        attempt = 0
 
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt,
-                    }
-                ],
-                temperature=temperature,
-                max_tokens=max_new_tokens,
-            )
+        while response is None:
+            logger.info("Sending request to OmniRoute...")
 
-            logger.info("Received response from OmniRoute.")
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt,
+                        }
+                    ],
+                    temperature=temperature,
+                    max_tokens=max_new_tokens,
+                )
 
-        except Exception:
-            logger.exception("OmniRoute request failed.")
-            raise
+                logger.info("Received response from OmniRoute.")
+
+            except TRANSIENT_ERRORS as exc:
+                attempt += 1
+
+                if attempt > MAX_RETRIES:
+                    logger.exception(
+                        "OmniRoute request failed after %d attempts.",
+                        attempt,
+                    )
+                    raise
+
+                delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+
+                logger.warning(
+                    "Transient OmniRoute error (attempt %d/%d): %s. "
+                    "Retrying in %.1fs...",
+                    attempt,
+                    MAX_RETRIES,
+                    exc,
+                    delay,
+                )
+
+                time.sleep(delay)
+
+            except Exception:
+                logger.exception("OmniRoute request failed.")
+                raise
 
         if not response.choices:
             raise ValueError("No choices returned from model.")
@@ -102,14 +149,57 @@ class LLMClient:
         except Exception:
             pass
 
-        match = re.search(r"\{.*\}", text, re.DOTALL)
+        candidate = self._find_balanced_json_object(text)
 
-        if match:
-            return match.group(0)
+        if candidate is not None:
+            return candidate
 
         raise ValueError(
             f"No JSON object found.\n\nModel returned:\n{text}"
         )
+
+    @staticmethod
+    def _find_balanced_json_object(text: str) -> str | None:
+        """
+        Find the first balanced `{...}` object in `text`.
+
+        Scans brace depth (ignoring braces inside string literals)
+        instead of using a greedy regex, so trailing prose containing
+        braces cannot be captured into the match.
+        """
+
+        start = text.find("{")
+
+        if start == -1:
+            return None
+
+        depth = 0
+        in_string = False
+        escape = False
+
+        for index in range(start, len(text)):
+            char = text[index]
+
+            if in_string:
+                if escape:
+                    escape = False
+                elif char == "\\":
+                    escape = True
+                elif char == '"':
+                    in_string = False
+                continue
+
+            if char == '"':
+                in_string = True
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+
+                if depth == 0:
+                    return text[start : index + 1]
+
+        return None
 
     def generate_json(
         self,

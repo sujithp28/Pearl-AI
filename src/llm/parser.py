@@ -54,6 +54,11 @@ class ToolParser:
                 "LLM returned invalid JSON."
             ) from exc
 
+        if not isinstance(payload, dict):
+            raise ValueError(
+                "LLM response must be a JSON object."
+            )
+
         missing = self.REQUIRED_FIELDS - payload.keys()
 
         if missing:
