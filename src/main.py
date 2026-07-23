@@ -26,6 +26,13 @@ from src.tools.file_tools import (
     write_file,
 )
 from src.tools.registry import ToolRegistry
+from src.tools.repo_tools import (
+    find_references,
+    find_symbol,
+    index_repository,
+    search_text,
+    summarize_project,
+)
 from src.tools.shell_tools import (
     current_user,
     execute_shell,
@@ -65,6 +72,13 @@ def build_registry() -> ToolRegistry:
     registry.register(replace_in_file)
     registry.register(edit_lines)
     registry.register(patch_file)
+
+    # Repository intelligence tools
+    registry.register(index_repository)
+    registry.register(find_symbol)
+    registry.register(find_references)
+    registry.register(search_text)
+    registry.register(summarize_project)
 
     # Shell tools
     registry.register(execute_shell)

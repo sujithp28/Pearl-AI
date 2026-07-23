@@ -28,6 +28,14 @@ from .models import Tool
 
 from .registry import ToolRegistry
 
+from .repo_tools import (
+    find_references,
+    find_symbol,
+    index_repository,
+    search_text,
+    summarize_project,
+)
+
 from .shell_tools import (
     current_user,
     execute_shell,
@@ -64,6 +72,13 @@ __all__ = [
     "replace_in_file",
     "edit_lines",
     "patch_file",
+
+    # Repository intelligence tools
+    "index_repository",
+    "find_symbol",
+    "find_references",
+    "search_text",
+    "summarize_project",
 
     # Shell tools
     "execute_shell",

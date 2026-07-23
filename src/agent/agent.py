@@ -13,6 +13,7 @@ from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner, StepResult
 from src.llm.client import LLMClient
 from src.llm.tool_selector import LLMToolSelector
+from src.memory import Memory
 from src.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ class PearlAgent:
     def __init__(
         self,
         registry: ToolRegistry,
+        memory: Memory | None = None,
     ) -> None:
 
         self.registry = registry
@@ -50,6 +52,8 @@ class PearlAgent:
         self.llm = LLMClient()
 
         self.planner = Planner(registry, self.dispatcher, self.llm)
+
+        self.memory = memory or Memory()
 
         logger.info("Pearl Agent initialized.")
 
@@ -100,6 +104,8 @@ class PearlAgent:
 
         logger.info("User Prompt: %s", prompt)
 
+        self.memory.record_turn("user", prompt)
+
         tool_call = self.selector.select(prompt)
 
         logger.info(
@@ -110,15 +116,32 @@ class PearlAgent:
         # Future fallback when no tool is appropriate.
         if tool_call.tool_name == "none":
             logger.info("No suitable tool selected.")
-            return "No suitable tool found for this request."
+            response = "No suitable tool found for this request."
+            self.memory.record_turn("agent", response)
+            return response
 
-        result = self.dispatcher.execute(
-            tool_call.tool_name,
-            *tool_call.args,
-            **tool_call.kwargs,
-        )
+        try:
+            result = self.dispatcher.execute(
+                tool_call.tool_name,
+                *tool_call.args,
+                **tool_call.kwargs,
+            )
+        except Exception as exc:
+            self.memory.record_execution(
+                tool_call.tool_name,
+                tool_call.kwargs,
+                error=str(exc),
+            )
+            raise
 
         logger.info("Tool executed successfully.")
+
+        self.memory.record_execution(
+            tool_call.tool_name,
+            tool_call.kwargs,
+            result=result,
+        )
+        self.memory.record_turn("agent", str(result))
 
         return result
 
@@ -139,7 +162,13 @@ class PearlAgent:
 
         logger.info("Chat request received.")
 
-        return self.llm.generate(prompt)
+        self.memory.record_turn("user", prompt)
+
+        response = self.llm.generate(prompt)
+
+        self.memory.record_turn("agent", response)
+
+        return response
 
     def plan_and_run(
         self,
@@ -168,7 +197,36 @@ class PearlAgent:
 
         logger.info("Planning multi-step execution for: %s", prompt)
 
-        return self.planner.run(prompt)
+        self.memory.record_turn("user", prompt)
+
+        task = self.memory.start_task(prompt)
+
+        try:
+            results = self.planner.run(prompt)
+        except Exception:
+            self.memory.complete_task(task.id, status="failed")
+            raise
+
+        for step in results:
+            self.memory.record_execution(
+                step.tool_name,
+                step.kwargs,
+                result=step.result,
+                error=step.error,
+            )
+
+        status = (
+            "completed"
+            if all(step.succeeded for step in results)
+            else "failed"
+        )
+        self.memory.complete_task(task.id, status=status)
+
+        self.memory.record_turn(
+            "agent", f"Executed {len(results)} step(s)."
+        )
+
+        return results
 
     def available_tools(self) -> list[dict[str, Any]]:
         """
