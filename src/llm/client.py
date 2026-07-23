@@ -121,30 +121,21 @@ class LLMClient:
 
         response = self.generate(prompt)
 
-        print("\n========== RAW MODEL RESPONSE ==========")
-        print(response)
-        print("========================================\n")
+        logger.debug("Raw model response: %s", response)
 
         cleaned = self._extract_json(response)
 
-        print("\n========== CLEANED JSON ==========")
-        print(cleaned)
-        print("==================================\n")
+        logger.debug("Cleaned JSON: %s", cleaned)
 
         try:
             payload = json.loads(cleaned)
 
-            print("\n========== PARSED PAYLOAD ==========")
-            print(payload)
-            print(type(payload))
-            print("====================================\n")
+            logger.debug("Parsed payload: %s", payload)
 
             return payload
 
         except json.JSONDecodeError as exc:
-            print("\n========== JSON ERROR ==========")
-            print(cleaned)
-            print("================================\n")
+            logger.debug("Invalid JSON from model: %s", cleaned)
 
             raise ValueError(
                 "Model returned invalid JSON."

@@ -14,6 +14,25 @@ from src.tools.metadata import tool
 logger = logging.getLogger(__name__)
 
 
+def _ensure_within_workspace(path: str) -> Path:
+    """
+    Resolve `path` and ensure it stays inside the current workspace root.
+
+    Prevents path traversal ("..") and symlink escapes outside the
+    current working directory.
+    """
+
+    workspace_root = Path.cwd().resolve()
+    resolved = Path(path).resolve()
+
+    if not resolved.is_relative_to(workspace_root):
+        raise PermissionError(
+            f"Path escapes workspace: {path}"
+        )
+
+    return resolved
+
+
 @tool(
     description="Read the contents of a UTF-8 text file.",
     parameters={
@@ -52,7 +71,7 @@ def write_file(path: str, content: str) -> None:
     Write text to a UTF-8 file.
     """
 
-    file_path = Path(path)
+    file_path = _ensure_within_workspace(path)
 
     if file_path.parent:
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -78,7 +97,7 @@ def append_file(path: str, content: str) -> None:
     Append text to a file.
     """
 
-    file_path = Path(path)
+    file_path = _ensure_within_workspace(path)
 
     if file_path.parent:
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -147,7 +166,7 @@ def make_directory(path: str) -> None:
     Create a directory.
     """
 
-    directory = Path(path)
+    directory = _ensure_within_workspace(path)
 
     directory.mkdir(
         parents=True,
@@ -169,7 +188,7 @@ def delete_file(path: str) -> None:
     Delete a file.
     """
 
-    file_path = Path(path)
+    file_path = _ensure_within_workspace(path)
 
     if not file_path.exists():
         raise FileNotFoundError(path)

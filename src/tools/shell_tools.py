@@ -66,11 +66,22 @@ def run_python(
 ) -> subprocess.CompletedProcess:
     """
     Execute a Python script.
+
+    Raises
+    ------
+    subprocess.CalledProcessError
+        If the script exits with a non-zero status.
     """
 
-    return execute_shell(
-        f'python3 "{script}"',
+    logger.info("Executing python script: %s", script)
+
+    return subprocess.run(
+        ["python3", script],
+        shell=False,
+        text=True,
+        capture_output=True,
         timeout=timeout,
+        check=True,
     )
 
 

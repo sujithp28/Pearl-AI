@@ -1,4 +1,7 @@
+import shutil
 from pathlib import Path
+
+import pytest
 
 from src.tools.file_tools import (
     append_file,
@@ -10,6 +13,16 @@ from src.tools.file_tools import (
     read_file,
     write_file,
 )
+
+
+@pytest.fixture(autouse=True)
+def _workspace(tmp_path, monkeypatch):
+    """
+    Run every test with tmp_path as the workspace root, since
+    write/append/delete/make_directory now reject paths outside cwd.
+    """
+
+    monkeypatch.chdir(tmp_path)
 
 
 def test_write_and_read(tmp_path):
@@ -72,3 +85,41 @@ def test_file_size(tmp_path):
     write_file(str(file), "hello")
 
     assert file_size(str(file)) == 5
+
+
+def test_write_file_rejects_path_traversal(tmp_path):
+    outside = tmp_path.parent / "escape.txt"
+
+    with pytest.raises(PermissionError):
+        write_file("../escape.txt", "pwned")
+
+    assert not outside.exists()
+
+
+def test_delete_file_rejects_path_outside_workspace(tmp_path):
+    outside = tmp_path.parent / "outside.txt"
+    outside.write_text("data")
+
+    try:
+        with pytest.raises(PermissionError):
+            delete_file(str(outside))
+
+        assert outside.exists()
+    finally:
+        outside.unlink()
+
+
+def test_write_file_rejects_symlink_escape(tmp_path):
+    outside_dir = tmp_path.parent / f"{tmp_path.name}_outside"
+    outside_dir.mkdir()
+
+    try:
+        link = tmp_path / "link"
+        link.symlink_to(outside_dir)
+
+        with pytest.raises(PermissionError):
+            write_file(str(link / "evil.txt"), "pwned")
+
+        assert not (outside_dir / "evil.txt").exists()
+    finally:
+        shutil.rmtree(outside_dir)

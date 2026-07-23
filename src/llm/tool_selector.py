@@ -68,10 +68,7 @@ class LLMToolSelector:
         # generate_json() returns a Python dictionary
         payload = self.client.generate_json(prompt)
 
-        print("\n========== TOOL PAYLOAD ==========")
-        print(payload)
-        print(type(payload))
-        print("==================================\n")
+        logger.debug("Tool payload: %s", payload)
 
         # ToolParser.parse() currently expects a JSON string.
         # Convert the dictionary back to JSON until the parser

@@ -1,3 +1,7 @@
+import subprocess
+
+import pytest
+
 from src.tools.shell_tools import (
     current_user,
     execute_shell,
@@ -5,6 +9,7 @@ from src.tools.shell_tools import (
     ls,
     operating_system,
     pwd,
+    run_python,
     which,
 )
 
@@ -40,3 +45,13 @@ def test_current_user():
 
 def test_operating_system():
     assert isinstance(operating_system(), str)
+
+
+def test_run_python_does_not_use_shell(tmp_path):
+    marker = tmp_path / "pwned.txt"
+    malicious_script = f'{tmp_path / "nonexistent.py"}; touch {marker}'
+
+    with pytest.raises(subprocess.CalledProcessError):
+        run_python(malicious_script)
+
+    assert not marker.exists()
