@@ -38,14 +38,35 @@ def build_registry() -> ToolRegistry:
     return registry
 
 
-def build_server(with_planner: bool = False) -> MCPServer:
+class StubLLM:
+    """
+    Minimal stand-in for LLMClient: MCPServer only ever calls
+    `.generate(prompt)`, so a real LLMClient isn't needed in tests.
+    """
+
+    def __init__(self, response: str = "stubbed reply") -> None:
+        self.response = response
+        self.prompts: list[str] = []
+
+    def generate(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.response
+
+
+def build_server(
+    with_planner: bool = False, llm: object | None = None
+) -> MCPServer:
     registry = build_registry()
     dispatcher = ToolDispatcher(registry)
     memory = Memory()
     planner = Planner(registry, dispatcher) if with_planner else None
 
     return MCPServer(
-        registry, dispatcher=dispatcher, planner=planner, memory=memory
+        registry,
+        dispatcher=dispatcher,
+        planner=planner,
+        memory=memory,
+        llm=llm,
     )
 
 
@@ -65,6 +86,19 @@ def test_initialize_returns_protocol_and_server_info():
     assert response.result["serverInfo"]["name"] == "pearl-mcp"
     assert "protocolVersion" in response.result
     assert response.result["capabilities"]["tools"] == {}
+    assert "experimental" not in response.result["capabilities"]
+
+
+def test_initialize_reports_chat_capability_when_llm_provided():
+    server = build_server(llm=StubLLM())
+
+    response = server.handle_request(
+        JsonRpcRequest(method="initialize", id=1)
+    )
+
+    assert response.result["capabilities"]["experimental"] == {
+        "pearlChat": {}
+    }
 
 
 # ---------------------------------------------------------------------
@@ -292,6 +326,68 @@ def test_plan_run_missing_prompt_is_a_protocol_error():
     )
 
     assert response.error.code == INVALID_PARAMS
+
+
+# ---------------------------------------------------------------------
+# pearl/chat -- reuses LLMClient.generate(), like PearlAgent.chat()
+# ---------------------------------------------------------------------
+
+
+def test_chat_returns_assistant_message_and_records_memory():
+    stub_llm = StubLLM(response="Hello, I am Pearl.")
+    server = build_server(llm=stub_llm)
+
+    response = server.handle_request(
+        JsonRpcRequest(method="pearl/chat", id=1, params={"message": "hi"})
+    )
+
+    assert response.error is None
+    assert response.result == {"message": "Hello, I am Pearl."}
+    assert stub_llm.prompts == ["hi"]
+
+    turns = server.memory.conversation
+    assert [t.role for t in turns] == ["user", "agent"]
+    assert turns[0].content == "hi"
+    assert turns[1].content == "Hello, I am Pearl."
+
+
+def test_chat_missing_message_is_a_protocol_error():
+    server = build_server(llm=StubLLM())
+
+    response = server.handle_request(
+        JsonRpcRequest(method="pearl/chat", id=1, params={})
+    )
+
+    assert response.error.code == INVALID_PARAMS
+
+
+def test_chat_rejects_empty_message():
+    server = build_server(llm=StubLLM())
+
+    response = server.handle_request(
+        JsonRpcRequest(
+            method="pearl/chat", id=1, params={"message": ""}
+        )
+    )
+
+    assert response.error.code == INVALID_PARAMS
+
+
+def test_chat_lazily_constructs_llm_client_when_not_provided(monkeypatch):
+    stub_llm = StubLLM(response="lazy reply")
+    monkeypatch.setattr(
+        "src.mcp.server.LLMClient", lambda: stub_llm
+    )
+
+    server = build_server(llm=None)
+    assert server.llm is None
+
+    response = server.handle_request(
+        JsonRpcRequest(method="pearl/chat", id=1, params={"message": "hi"})
+    )
+
+    assert response.result == {"message": "lazy reply"}
+    assert server.llm is stub_llm
 
 
 # ---------------------------------------------------------------------

@@ -11,6 +11,7 @@ import logging
 
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
+from src.llm.client import LLMClient
 from src.main import build_registry
 from src.mcp.server import MCPServer
 from src.memory import Memory
@@ -32,13 +33,15 @@ def main() -> None:
     registry = build_registry()
     dispatcher = ToolDispatcher(registry)
     memory = Memory()
-    planner = Planner(registry, dispatcher)
+    llm = LLMClient()
+    planner = Planner(registry, dispatcher, llm)
 
     server = MCPServer(
         registry,
         dispatcher=dispatcher,
         planner=planner,
         memory=memory,
+        llm=llm,
     )
 
     server.run_stdio()

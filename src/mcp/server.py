@@ -18,6 +18,7 @@ from typing import IO, Any
 
 from src.agent.dispatcher import ToolDispatcher, ToolExecutionError, ToolNotFoundError
 from src.agent.planner import Planner
+from src.llm.client import LLMClient
 from src.mcp.protocol import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
@@ -51,11 +52,13 @@ class MCPServer:
         dispatcher: ToolDispatcher | None = None,
         planner: Planner | None = None,
         memory: Memory | None = None,
+        llm: LLMClient | None = None,
     ) -> None:
         self.registry = registry
         self.dispatcher = dispatcher or ToolDispatcher(registry)
         self.planner = planner
         self.memory = memory or Memory()
+        self.llm = llm
 
     # -- Request handling ---------------------------------------------------
 
@@ -119,9 +122,16 @@ class MCPServer:
         """
 
         capabilities: dict[str, Any] = {"tools": {}}
+        experimental: dict[str, Any] = {}
 
         if self.planner is not None:
-            capabilities["experimental"] = {"pearlPlanning": {}}
+            experimental["pearlPlanning"] = {}
+
+        if self.llm is not None:
+            experimental["pearlChat"] = {}
+
+        if experimental:
+            capabilities["experimental"] = experimental
 
         return {
             "protocolVersion": MCP_PROTOCOL_VERSION,
@@ -232,6 +242,30 @@ class MCPServer:
             ]
         }
 
+    def _chat(self, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Chat directly with the language model (a Pearl-specific
+        extension beyond the core MCP methods). Reuses the same
+        `LLMClient.generate()` pathway as `PearlAgent.chat()`, and
+        records both turns in Memory.
+        """
+
+        message = params.get("message")
+
+        if not isinstance(message, str) or not message:
+            raise MCPProtocolError(INVALID_PARAMS, "'message' is required.")
+
+        if self.llm is None:
+            self.llm = LLMClient()
+
+        self.memory.record_turn("user", message)
+
+        response = self.llm.generate(message)
+
+        self.memory.record_turn("agent", response)
+
+        return {"message": response}
+
     def _shutdown(self, params: dict[str, Any]) -> None:
         """
         Handle the `shutdown` request.
@@ -246,6 +280,7 @@ class MCPServer:
         "tools/list": _tools_list,
         "tools/call": _tools_call,
         "pearl/plan": _plan_run,
+        "pearl/chat": _chat,
         "shutdown": _shutdown,
     }
 

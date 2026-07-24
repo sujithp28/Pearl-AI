@@ -1,18 +1,14 @@
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
-import { OPEN_CHAT_COMMAND_ID, openChat } from "./commands/openChat";
+import { ChatPanel } from "./chat/chatPanel";
 import { MCPConnection } from "./mcp/connection";
 import { MCPStatusBar } from "./mcp/statusBar";
+
+export const OPEN_CHAT_COMMAND_ID = "pearl.openChat";
 
 let connection: MCPConnection | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
-  const disposable = vscode.commands.registerCommand(
-    OPEN_CHAT_COMMAND_ID,
-    () => openChat((message) => vscode.window.showInformationMessage(message))
-  );
-  context.subscriptions.push(disposable);
-
   const statusBarItem = createStatusBarItem();
   context.subscriptions.push(statusBarItem);
 
@@ -30,6 +26,19 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBar.setStatus(status, detail);
 
   connection.start();
+
+  const disposable = vscode.commands.registerCommand(
+    OPEN_CHAT_COMMAND_ID,
+    () => {
+      if (!connection) {
+        vscode.window.showErrorMessage("Pearl is not initialized yet.");
+        return;
+      }
+
+      ChatPanel.createOrShow(connection);
+    }
+  );
+  context.subscriptions.push(disposable);
 
   context.subscriptions.push({ dispose: () => connection?.stop() });
 }
