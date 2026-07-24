@@ -57,6 +57,16 @@ from .shell_tools import (
     which,
 )
 
+from .symbol_editor import (
+    find_class,
+    find_function,
+    find_method,
+    insert_after_symbol,
+    insert_before_symbol,
+    replace_class,
+    replace_function,
+)
+
 __all__ = [
     # Models
     "Tool",
@@ -108,4 +118,13 @@ __all__ = [
     "git_create_branch",
     "git_commit",
     "git_restore",
+
+    # Symbol-aware editing tools
+    "find_function",
+    "find_class",
+    "find_method",
+    "replace_function",
+    "replace_class",
+    "insert_after_symbol",
+    "insert_before_symbol",
 ]

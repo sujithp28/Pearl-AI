@@ -42,6 +42,15 @@ from src.tools.repo_tools import (
     search_text,
     summarize_project,
 )
+from src.tools.symbol_editor import (
+    find_class,
+    find_function,
+    find_method,
+    insert_after_symbol,
+    insert_before_symbol,
+    replace_class,
+    replace_function,
+)
 from src.tools.shell_tools import (
     current_user,
     execute_shell,
@@ -107,6 +116,15 @@ def build_registry() -> ToolRegistry:
     registry.register(git_create_branch)
     registry.register(git_commit)
     registry.register(git_restore)
+
+    # Symbol-aware editing tools
+    registry.register(find_function)
+    registry.register(find_class)
+    registry.register(find_method)
+    registry.register(replace_function)
+    registry.register(replace_class)
+    registry.register(insert_after_symbol)
+    registry.register(insert_before_symbol)
 
     return registry
 
