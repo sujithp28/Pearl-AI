@@ -74,9 +74,7 @@ _MSG_STEP_COMPLETED = "✨ Looking much better now."
 _MSG_STEP_FAILED = "😅 Well... that didn't work."
 _MSG_REPLANNING = "🔄 Plot twist! Trying another approach..."
 _MSG_TASK_COMPLETED_SUCCESS = "🎉 Done! No bugs were intentionally added."
-_MSG_TASK_COMPLETED_FAILURE = (
-    "💀 I fought bravely... but this one needs a human."
-)
+_MSG_TASK_COMPLETED_FAILURE = "💀 I fought bravely... but this one needs a human."
 _MSG_CANCELLED = "🛑 Cancelled — stopping right where we are."
 _MSG_AWAITING_APPROVAL = "📄 Patch ready — take a look and let me know."
 _MSG_REJECTED = "🗑️ No worries, discarding that patch."
@@ -305,8 +303,7 @@ class AutonomousExecutor:
         affected = self.patch_manager.affected_files()
 
         logger.info(
-            "Autonomous execution paused: %d file(s) awaiting "
-            "approval: %s",
+            "Autonomous execution paused: %d file(s) awaiting approval: %s",
             len(affected),
             affected,
         )
@@ -336,9 +333,7 @@ class AutonomousExecutor:
             events=events,
         )
 
-    def _finalize_cancelled_while_paused(
-        self, state: _PausedState
-    ) -> ExecutionReport:
+    def _finalize_cancelled_while_paused(self, state: _PausedState) -> ExecutionReport:
         """
         Resolve a cancel() that arrived while execution was paused
         awaiting approval: discard the pending patches and finalize
@@ -349,8 +344,7 @@ class AutonomousExecutor:
         discarded = self.patch_manager.discard_all()
 
         logger.info(
-            "Cancelled while awaiting approval; discarded %d pending "
-            "file(s): %s",
+            "Cancelled while awaiting approval; discarded %d pending file(s): %s",
             len(discarded),
             discarded,
         )
@@ -441,9 +435,7 @@ class AutonomousExecutor:
         pending: list[ToolCall] = list(self.planner.plan(prompt))
 
         return self._finish_or_pause(
-            self._execute(
-                prompt, pending, steps, events, completed_for_replan, 0, 0
-            )
+            self._execute(prompt, pending, steps, events, completed_for_replan, 0, 0)
         )
 
     def approve(self) -> ExecutionReport:
@@ -458,9 +450,7 @@ class AutonomousExecutor:
         """
 
         if self._paused is None:
-            raise RuntimeError(
-                "No execution is currently awaiting approval."
-            )
+            raise RuntimeError("No execution is currently awaiting approval.")
 
         state = self._paused
         self._paused = None
@@ -497,9 +487,7 @@ class AutonomousExecutor:
         """
 
         if self._paused is None:
-            raise RuntimeError(
-                "No execution is currently awaiting approval."
-            )
+            raise RuntimeError("No execution is currently awaiting approval.")
 
         state = self._paused
         self._paused = None
@@ -562,8 +550,7 @@ class AutonomousExecutor:
 
             if iteration > self.max_iterations:
                 logger.info(
-                    "Autonomous execution stopped: max iterations "
-                    "(%d) reached.",
+                    "Autonomous execution stopped: max iterations (%d) reached.",
                     self.max_iterations,
                 )
 
@@ -702,8 +689,7 @@ class AutonomousExecutor:
                     )
 
                 logger.info(
-                    "Step %d: asking Planner for a revised plan "
-                    "(replan %d/%d).",
+                    "Step %d: asking Planner for a revised plan (replan %d/%d).",
                     iteration,
                     replans_used + 1,
                     self.max_replans,
@@ -818,8 +804,13 @@ class AutonomousExecutor:
         )
 
         awaiting = self._check_awaiting_approval(
-            prompt, pending, steps, events, completed_for_replan,
-            replans_used, iteration,
+            prompt,
+            pending,
+            steps,
+            events,
+            completed_for_replan,
+            replans_used,
+            iteration,
         )
         if awaiting is not None:
             return awaiting

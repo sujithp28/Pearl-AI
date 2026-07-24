@@ -44,8 +44,8 @@ def test_openai_compatible_provider_complete_returns_stripped_text():
         api_key="key", base_url="http://localhost:1234/v1", model="test-model"
     )
 
-    provider.client.chat.completions.create = lambda **kwargs: (
-        _make_openai_response("  hello  ")
+    provider.client.chat.completions.create = lambda **kwargs: _make_openai_response(
+        "  hello  "
     )
 
     result = provider.complete(
@@ -73,8 +73,8 @@ def test_openai_compatible_provider_rejects_none_content():
         api_key="key", base_url="http://localhost:1234/v1", model="test-model"
     )
 
-    provider.client.chat.completions.create = lambda **kwargs: (
-        _make_openai_response(None)
+    provider.client.chat.completions.create = lambda **kwargs: _make_openai_response(
+        None
     )
 
     with pytest.raises(ValueError):

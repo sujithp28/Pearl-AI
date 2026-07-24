@@ -45,9 +45,34 @@ _WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # unrelated filenames like "other.py".
 _STOPWORDS = frozenset(
     {
-        "the", "a", "an", "is", "are", "was", "were", "to", "for", "and",
-        "or", "in", "on", "at", "of", "with", "this", "that", "please",
-        "can", "you", "it", "be", "as", "by", "from", "into", "about",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "to",
+        "for",
+        "and",
+        "or",
+        "in",
+        "on",
+        "at",
+        "of",
+        "with",
+        "this",
+        "that",
+        "please",
+        "can",
+        "you",
+        "it",
+        "be",
+        "as",
+        "by",
+        "from",
+        "into",
+        "about",
     }
 )
 
@@ -68,10 +93,7 @@ def estimate_tokens(text: str) -> int:
 
 
 def _tokenize(text: str) -> set[str]:
-    return {
-        match.group(0).lower()
-        for match in _WORD_RE.finditer(text)
-    } - _STOPWORDS
+    return {match.group(0).lower() for match in _WORD_RE.finditer(text)} - _STOPWORDS
 
 
 def _matches(name: str, terms: set[str]) -> bool:
@@ -81,8 +103,7 @@ def _matches(name: str, terms: set[str]) -> bool:
     lowered = name.lower()
 
     return any(
-        len(term) >= 3 and (term in lowered or lowered in term)
-        for term in terms
+        len(term) >= 3 and (term in lowered or lowered in term) for term in terms
     )
 
 
@@ -234,9 +255,7 @@ class ContextBuilder:
         """
 
         index = get_repository_index(path)
-        ranked = self.manager.rank_files(
-            query, path, workspace_memory, index=index
-        )
+        ranked = self.manager.rank_files(query, path, workspace_memory, index=index)
 
         sections: list[str] = []
         included: set[str] = set()
@@ -272,9 +291,7 @@ class ContextBuilder:
 
         return "\n\n".join(sections)
 
-    def _render_file(
-        self, rel_path: str, index: RepositoryIndex, query: str
-    ) -> str:
+    def _render_file(self, rel_path: str, index: RepositoryIndex, query: str) -> str:
         full_path = index.root / rel_path
 
         try:
@@ -297,9 +314,7 @@ class ContextBuilder:
             header_parts.append("Imports: " + ", ".join(imports))
 
         public_symbols = [
-            symbol["name"]
-            for symbol in symbols
-            if not symbol["name"].startswith("_")
+            symbol["name"] for symbol in symbols if not symbol["name"].startswith("_")
         ]
 
         if public_symbols:

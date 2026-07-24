@@ -49,7 +49,7 @@ def test_operating_system():
 
 def test_run_python_does_not_use_shell(tmp_path):
     marker = tmp_path / "pwned.txt"
-    malicious_script = f'{tmp_path / "nonexistent.py"}; touch {marker}'
+    malicious_script = f"{tmp_path / 'nonexistent.py'}; touch {marker}"
 
     with pytest.raises(subprocess.CalledProcessError):
         run_python(malicious_script)

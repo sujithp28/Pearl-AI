@@ -1,0 +1,38 @@
+name: VS Code Extension
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "vscode-extension/**"
+  pull_request:
+    branches: [master, main]
+    paths:
+      - "vscode-extension/**"
+
+defaults:
+  run:
+    working-directory: vscode-extension
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check / compile
+        run: npm run compile
+
+      - name: Run tests
+        run: npm test

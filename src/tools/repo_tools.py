@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -59,24 +60,25 @@ def _iter_files(
 ) -> list[Path]:
     """
     Recursively list files under `root`, skipping noisy directories.
+
+    Prunes `IGNORED_DIRS` during the walk (via `os.walk`'s in-place
+    `dirnames` filtering) rather than after globbing everything, so
+    large ignored trees like `.venv` or `node_modules` are never
+    descended into or stat'd in the first place.
     """
 
     files: list[Path] = []
 
-    for item in sorted(root.rglob("*")):
-        if not item.is_file():
-            continue
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in IGNORED_DIRS]
 
-        if any(
-            part in IGNORED_DIRS
-            for part in item.relative_to(root).parts
-        ):
-            continue
+        for filename in filenames:
+            if extensions is not None and Path(filename).suffix not in extensions:
+                continue
 
-        if extensions is not None and item.suffix not in extensions:
-            continue
+            files.append(Path(dirpath) / filename)
 
-        files.append(item)
+    files.sort()
 
     return files
 
@@ -282,8 +284,7 @@ def index_repository(path: str = ".") -> dict[str, Any]:
 
 @tool(
     description=(
-        "Find where a symbol (function or class) is defined in the "
-        "workspace."
+        "Find where a symbol (function or class) is defined in the workspace."
     ),
     parameters={
         "name": "str",
@@ -308,8 +309,7 @@ def find_symbol(name: str, path: str = ".") -> list[dict[str, Any]]:
 
 @tool(
     description=(
-        "Find every textual reference to a symbol across the "
-        "workspace's source files."
+        "Find every textual reference to a symbol across the workspace's source files."
     ),
     parameters={
         "symbol": "str",
@@ -365,8 +365,7 @@ def search_text(query: str, path: str = ".") -> list[dict[str, Any]]:
 
 @tool(
     description=(
-        "Summarize the project: file counts, symbol counts, and "
-        "top-level layout."
+        "Summarize the project: file counts, symbol counts, and top-level layout."
     ),
     parameters={
         "path": "str",
@@ -384,9 +383,7 @@ def summarize_project(path: str = ".") -> dict[str, Any]:
 
     all_files = _iter_files(root, None)
     source_files = [
-        file_path
-        for file_path in all_files
-        if file_path.suffix in SOURCE_EXTENSIONS
+        file_path for file_path in all_files if file_path.suffix in SOURCE_EXTENSIONS
     ]
     index = _index_symbols(root)
 
@@ -400,9 +397,7 @@ def summarize_project(path: str = ".") -> dict[str, Any]:
 
     for file_path in source_files:
         try:
-            total_lines += len(
-                file_path.read_text(encoding="utf-8").splitlines()
-            )
+            total_lines += len(file_path.read_text(encoding="utf-8").splitlines())
         except UnicodeDecodeError:
             continue
 
@@ -429,16 +424,13 @@ def summarize_project(path: str = ".") -> dict[str, Any]:
         "unique_symbols": len(index),
         "functions": functions,
         "classes": classes,
-        "top_level_entries": sorted(
-            item.name for item in root.iterdir()
-        ),
+        "top_level_entries": sorted(item.name for item in root.iterdir()),
     }
 
 
 @tool(
     description=(
-        "Explain a source file: its imports, classes, and functions, "
-        "with line numbers."
+        "Explain a source file: its imports, classes, and functions, with line numbers."
     ),
     parameters={
         "path": "str",

@@ -38,9 +38,7 @@ def test_run_records_conversation_and_execution(monkeypatch):
     monkeypatch.setattr(
         agent.selector,
         "select",
-        lambda prompt: ToolCall(
-            tool_name="add", args=(), kwargs={"a": 1, "b": 2}
-        ),
+        lambda prompt: ToolCall(tool_name="add", args=(), kwargs={"a": 1, "b": 2}),
     )
 
     result = agent.run("add 1 and 2")
@@ -102,9 +100,7 @@ def test_run_records_none_tool_response(monkeypatch):
 def test_chat_records_conversation(monkeypatch):
     agent = build_agent()
 
-    monkeypatch.setattr(
-        agent.llm, "generate", lambda prompt, **kwargs: "hello there"
-    )
+    monkeypatch.setattr(agent.llm, "generate", lambda prompt, **kwargs: "hello there")
 
     response = agent.chat("hi")
 

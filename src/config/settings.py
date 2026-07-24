@@ -2,10 +2,9 @@
 Global configuration for Pearl.
 """
 
-from pathlib import Path
 import os
+from pathlib import Path
 
-import torch
 from dotenv import load_dotenv
 
 # Resolved relative to this file, not the process's cwd: Pearl's
@@ -23,27 +22,7 @@ class Settings:
     # ==================================================
 
     PROJECT_NAME = "Pearl"
-    VERSION = "0.1.0"
-
-    # ==================================================
-    # Directories
-    # ==================================================
-
-    ROOT_DIR = Path(__file__).resolve().parents[2]
-
-    SRC_DIR = ROOT_DIR / "src"
-
-    MODELS_DIR = ROOT_DIR / "models"
-
-    LOGS_DIR = ROOT_DIR / "logs"
-
-    PROMPTS_DIR = SRC_DIR / "prompts"
-
-    # ==================================================
-    # Device
-    # ==================================================
-
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    VERSION = "1.2.0-beta"
 
     # ==================================================
     # LLM Provider Selection
@@ -57,9 +36,7 @@ class Settings:
 
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-    OPENAI_BASE_URL = os.getenv(
-        "OPENAI_BASE_URL", "https://api.openai.com/v1"
-    )
+    OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
@@ -89,9 +66,7 @@ class Settings:
 
     OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "ollama")
 
-    OLLAMA_BASE_URL = os.getenv(
-        "OLLAMA_BASE_URL", "http://localhost:11434/v1"
-    )
+    OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 
@@ -104,40 +79,12 @@ class Settings:
     CUSTOM_MODEL = os.getenv("CUSTOM_MODEL", "")
 
     # ==================================================
-    # Local Model (Keep this for now)
-    # ==================================================
-
-    MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
-
-    MODEL_CACHE_DIR = MODELS_DIR
-
-    # ==================================================
     # Generation
     # ==================================================
 
     MAX_NEW_TOKENS = 1024
 
     TEMPERATURE = 0.2
-
-    TOP_P = 0.95
-
-    # ==================================================
-    # Prompt files
-    # ==================================================
-
-    TOOL_SELECTION_PROMPT = (
-        PROMPTS_DIR / "tool_selection.txt"
-    )
-
-    # ==================================================
-    # Banner
-    # ==================================================
-
-    BANNER = f"""
-==================================================
-{PROJECT_NAME} v{VERSION}
-==================================================
-"""
 
 
 settings = Settings()

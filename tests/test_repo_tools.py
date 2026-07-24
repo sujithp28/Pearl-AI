@@ -25,39 +25,48 @@ def _write_sample_project(tmp_path):
     pkg = tmp_path / "pkg"
     pkg.mkdir()
 
-    content_a = "\n".join(
-        [
-            "def foo():",
-            "    return 1",
-            "",
-            "",
-            "class Bar:",
-            "    def method(self):",
-            "        return foo()",
-        ]
-    ) + "\n"
+    content_a = (
+        "\n".join(
+            [
+                "def foo():",
+                "    return 1",
+                "",
+                "",
+                "class Bar:",
+                "    def method(self):",
+                "        return foo()",
+            ]
+        )
+        + "\n"
+    )
     (pkg / "a.py").write_text(content_a)
 
-    content_b = "\n".join(
-        [
-            "from pkg.a import foo",
-            "",
-            "",
-            "def baz():",
-            "    return foo() + 1",
-        ]
-    ) + "\n"
+    content_b = (
+        "\n".join(
+            [
+                "from pkg.a import foo",
+                "",
+                "",
+                "def baz():",
+                "    return foo() + 1",
+            ]
+        )
+        + "\n"
+    )
     (pkg / "b.py").write_text(content_b)
 
     (tmp_path / "notes.txt").write_text("TODO: refactor foo() later\n")
 
-    content_readme = "\n".join(
-        [
-            "# Project",
-            "",
-            "Uses foo extensively.",
-        ]
-    ) + "\n"
+    content_readme = (
+        "\n".join(
+            [
+                "# Project",
+                "",
+                "Uses foo extensively.",
+            ]
+        )
+        + "\n"
+    )
     (tmp_path / "README.md").write_text(content_readme)
 
 
@@ -104,9 +113,7 @@ def test_find_symbol_locates_function(tmp_path):
 
     locations = find_symbol("foo")
 
-    assert locations == [
-        {"file": "pkg/a.py", "line": 1, "type": "function"}
-    ]
+    assert locations == [{"file": "pkg/a.py", "line": 1, "type": "function"}]
 
 
 def test_find_symbol_locates_class(tmp_path):
@@ -122,9 +129,7 @@ def test_find_symbol_locates_method(tmp_path):
 
     locations = find_symbol("method")
 
-    assert locations == [
-        {"file": "pkg/a.py", "line": 6, "type": "function"}
-    ]
+    assert locations == [{"file": "pkg/a.py", "line": 6, "type": "function"}]
 
 
 def test_find_symbol_returns_empty_for_unknown_name(tmp_path):

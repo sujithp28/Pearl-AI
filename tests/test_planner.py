@@ -58,9 +58,7 @@ def test_plan_rejects_unknown_tool(monkeypatch):
     monkeypatch.setattr(
         planner.client,
         "generate_json",
-        lambda prompt: {
-            "steps": [{"tool": "delete_everything", "arguments": {}}]
-        },
+        lambda prompt: {"steps": [{"tool": "delete_everything", "arguments": {}}]},
     )
 
     with pytest.raises(ValueError):
@@ -123,9 +121,7 @@ def test_replan_returns_ordered_tool_calls(monkeypatch):
     monkeypatch.setattr(
         planner.client,
         "generate_json",
-        lambda prompt: {
-            "steps": [{"tool": "add", "arguments": {"a": 10, "b": 20}}]
-        },
+        lambda prompt: {"steps": [{"tool": "add", "arguments": {"a": 10, "b": 20}}]},
     )
 
     steps = planner.replan(
@@ -144,9 +140,7 @@ def test_replan_rejects_unknown_tool(monkeypatch):
     monkeypatch.setattr(
         planner.client,
         "generate_json",
-        lambda prompt: {
-            "steps": [{"tool": "delete_everything", "arguments": {}}]
-        },
+        lambda prompt: {"steps": [{"tool": "delete_everything", "arguments": {}}]},
     )
 
     with pytest.raises(ValueError):

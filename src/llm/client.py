@@ -143,9 +143,7 @@ class LLMClient:
         if candidate is not None:
             return candidate
 
-        raise ValueError(
-            f"No JSON object found.\n\nModel returned:\n{text}"
-        )
+        raise ValueError(f"No JSON object found.\n\nModel returned:\n{text}")
 
     @staticmethod
     def _find_balanced_json_object(text: str) -> str | None:
@@ -216,9 +214,7 @@ class LLMClient:
         except json.JSONDecodeError as exc:
             logger.debug("Invalid JSON from model: %s", cleaned)
 
-            raise ValueError(
-                "Model returned invalid JSON."
-            ) from exc
+            raise ValueError("Model returned invalid JSON.") from exc
 
     @staticmethod
     def save_response(

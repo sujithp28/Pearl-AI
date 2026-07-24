@@ -74,13 +74,9 @@ class WorkspaceMemory:
     _FILE_MODIFY_TOOLS = frozenset(
         {"write_file", "append_file", "replace_in_file", "edit_lines", "patch_file"}
     )
-    _SYMBOL_INSERT_TOOLS = frozenset(
-        {"insert_after_symbol", "insert_before_symbol"}
-    )
+    _SYMBOL_INSERT_TOOLS = frozenset({"insert_after_symbol", "insert_before_symbol"})
     _SYMBOL_REPLACE_TOOLS = frozenset({"replace_function", "replace_class"})
-    _GIT_TOOLS = frozenset(
-        {"git_commit", "git_create_branch", "git_restore"}
-    )
+    _GIT_TOOLS = frozenset({"git_commit", "git_create_branch", "git_restore"})
 
     def __init__(self) -> None:
         self._notes: dict[str, list[Any]] = {}
@@ -148,9 +144,7 @@ class WorkspaceMemory:
         this session.
         """
 
-        self._symbols_removed.append(
-            {"name": name, "kind": kind, "file": file}
-        )
+        self._symbols_removed.append({"name": name, "kind": kind, "file": file})
         detail = f"{kind} '{name}'" + (f" in {file}" if file else "")
         self._changes.append(ChangeRecord("symbol_removed", detail))
 
@@ -242,9 +236,7 @@ class WorkspaceMemory:
 
         self.record_patches_pending(patch_manager.affected_files())
 
-    def observe_execution_report(
-        self, report: Any, prompt: str = ""
-    ) -> None:
+    def observe_execution_report(self, report: Any, prompt: str = "") -> None:
         """
         Update tracked state from a full `ExecutionReport`: every
         step it contains, plus whether the run completed or failed.
@@ -260,9 +252,7 @@ class WorkspaceMemory:
             )
 
         if report.stop_reason == "completed":
-            self.record_plan_completed(
-                prompt, detail=f"{len(report.steps)} step(s)"
-            )
+            self.record_plan_completed(prompt, detail=f"{len(report.steps)} step(s)")
         elif report.stop_reason in (
             "max_iterations",
             "fatal_error",
@@ -307,9 +297,7 @@ class WorkspaceMemory:
         and pending approvals.
         """
 
-        edited_files = list(
-            dict.fromkeys(self._files_modified + self._files_created)
-        )
+        edited_files = list(dict.fromkeys(self._files_modified + self._files_created))
 
         return {
             "recently_edited_files": edited_files[-10:],
@@ -332,8 +320,7 @@ class WorkspaceMemory:
 
         if data["recently_edited_files"]:
             lines.append(
-                "Recently edited files: "
-                + ", ".join(data["recently_edited_files"])
+                "Recently edited files: " + ", ".join(data["recently_edited_files"])
             )
 
         if data["recently_created_symbols"]:
@@ -349,10 +336,7 @@ class WorkspaceMemory:
             )
 
         if data["pending_approvals"]:
-            lines.append(
-                "Pending approvals: "
-                + ", ".join(data["pending_approvals"])
-            )
+            lines.append("Pending approvals: " + ", ".join(data["pending_approvals"]))
 
         return "\n".join(lines)
 

@@ -68,9 +68,7 @@ class Planner:
         self.client = client or LLMClient()
         self.parser = ToolParser()
 
-    def build_prompt(
-        self, user_prompt: str, workspace_context: str = ""
-    ) -> str:
+    def build_prompt(self, user_prompt: str, workspace_context: str = "") -> str:
         """
         Build the planning prompt from the external prompt template.
 
@@ -81,9 +79,7 @@ class Planner:
         decoupled from any specific context source.
         """
 
-        prompt_template = self.client.load_prompt(
-            self.PROMPT_FILE
-        )
+        prompt_template = self.client.load_prompt(self.PROMPT_FILE)
 
         tools = json.dumps(
             self.registry.get_tools(),
@@ -105,9 +101,7 @@ class Planner:
 
         return prompt
 
-    def plan(
-        self, user_prompt: str, workspace_context: str = ""
-    ) -> list[ToolCall]:
+    def plan(self, user_prompt: str, workspace_context: str = "") -> list[ToolCall]:
         """
         Ask the LLM to break `user_prompt` into an ordered list of
         tool calls.
@@ -148,9 +142,7 @@ class Planner:
         just failed.
         """
 
-        prompt_template = self.client.load_prompt(
-            self.REPLAN_PROMPT_FILE
-        )
+        prompt_template = self.client.load_prompt(self.REPLAN_PROMPT_FILE)
 
         tools = json.dumps(
             self.registry.get_tools(),
@@ -236,9 +228,7 @@ class Planner:
                 )
 
             except Exception as exc:
-                logger.error(
-                    "Step '%s' failed: %s", step.tool_name, exc
-                )
+                logger.error("Step '%s' failed: %s", step.tool_name, exc)
 
                 results.append(
                     StepResult(

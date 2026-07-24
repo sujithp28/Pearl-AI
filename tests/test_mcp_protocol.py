@@ -81,9 +81,7 @@ def test_parse_request_rejects_non_object_payload():
 
 def test_parse_request_rejects_wrong_jsonrpc_version():
     with pytest.raises(MCPProtocolError) as exc_info:
-        parse_request(
-            json.dumps({"jsonrpc": "1.0", "id": 1, "method": "initialize"})
-        )
+        parse_request(json.dumps({"jsonrpc": "1.0", "id": 1, "method": "initialize"}))
 
     assert exc_info.value.code == INVALID_REQUEST
 
@@ -185,9 +183,7 @@ def test_tool_to_mcp_schema_defaults_unknown_types_to_string():
     schema = tool_to_mcp_schema(registry_tool)
 
     assert schema["inputSchema"]["properties"]["path"] == {"type": "array"}
-    assert schema["inputSchema"]["properties"]["show_hidden"] == {
-        "type": "boolean"
-    }
+    assert schema["inputSchema"]["properties"]["show_hidden"] == {"type": "boolean"}
 
 
 def test_tool_to_mcp_schema_handles_no_parameters():

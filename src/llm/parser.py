@@ -50,14 +50,10 @@ class ToolParser:
             payload = json.loads(response)
 
         except json.JSONDecodeError as exc:
-            raise ValueError(
-                "LLM returned invalid JSON."
-            ) from exc
+            raise ValueError("LLM returned invalid JSON.") from exc
 
         if not isinstance(payload, dict):
-            raise ValueError(
-                "LLM response must be a JSON object."
-            )
+            raise ValueError("LLM response must be a JSON object.")
 
         return self._parse_step(payload)
 
@@ -79,21 +75,15 @@ class ToolParser:
             payload = json.loads(response)
 
         except json.JSONDecodeError as exc:
-            raise ValueError(
-                "LLM returned invalid JSON."
-            ) from exc
+            raise ValueError("LLM returned invalid JSON.") from exc
 
         if not isinstance(payload, dict):
-            raise ValueError(
-                "Plan response must be a JSON object."
-            )
+            raise ValueError("Plan response must be a JSON object.")
 
         steps = payload.get("steps")
 
         if not isinstance(steps, list) or not steps:
-            raise ValueError(
-                "Plan must contain a non-empty 'steps' list."
-            )
+            raise ValueError("Plan must contain a non-empty 'steps' list.")
 
         return [self._parse_step(step) for step in steps]
 
@@ -103,29 +93,21 @@ class ToolParser:
         """
 
         if not isinstance(step, dict):
-            raise ValueError(
-                "Each step must be a JSON object."
-            )
+            raise ValueError("Each step must be a JSON object.")
 
         missing = self.REQUIRED_FIELDS - step.keys()
 
         if missing:
-            raise ValueError(
-                f"Missing JSON fields: {missing}"
-            )
+            raise ValueError(f"Missing JSON fields: {missing}")
 
         tool_name = step["tool"]
         arguments = step["arguments"]
 
         if not isinstance(tool_name, str):
-            raise TypeError(
-                "Tool name must be a string."
-            )
+            raise TypeError("Tool name must be a string.")
 
         if not isinstance(arguments, dict):
-            raise TypeError(
-                "Arguments must be a dictionary."
-            )
+            raise TypeError("Arguments must be a dictionary.")
 
         return ToolCall(
             tool_name=tool_name,

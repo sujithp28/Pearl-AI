@@ -1,16 +1,21 @@
 {
   "name": "pearl-vscode",
   "displayName": "Pearl",
-  "description": "VS Code extension scaffold for Pearl, the AI coding agent.",
-  "version": "0.0.1",
+  "description": "Chat, autonomous execution, patch-preview approval, and repository-aware assistance from Pearl, a self-hostable AI coding agent.",
+  "version": "1.2.0-beta.0",
   "publisher": "pearl",
-  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sujithp28/Pearl-AI.git"
+  },
   "engines": {
     "vscode": "^1.85.0",
     "node": ">=18"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Machine Learning"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -74,7 +79,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -w -p ./",
     "pretest": "npm run compile",
-    "test": "node --test \"out/test/**/*.test.js\""
+    "test": "node --test \"out/test/**/*.test.js\"",
+    "package": "npm run compile && npx vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

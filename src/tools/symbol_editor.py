@@ -98,9 +98,7 @@ class SymbolEditor:
     def __init__(self, path: str, source: str | None = None) -> None:
         self.path = path
         self.source = (
-            source
-            if source is not None
-            else Path(path).read_text(encoding="utf-8")
+            source if source is not None else Path(path).read_text(encoding="utf-8")
         )
         self._lines = self.source.splitlines(keepends=True)
 
@@ -125,9 +123,7 @@ class SymbolEditor:
             ):
                 return self._location(node, "function")
 
-        raise SymbolNotFoundError(
-            f"Function '{name}' not found in {self.path}."
-        )
+        raise SymbolNotFoundError(f"Function '{name}' not found in {self.path}.")
 
     def find_class(self, name: str) -> SymbolLocation:
         """
@@ -210,18 +206,14 @@ class SymbolEditor:
 
         return self._splice(self.find_class(name), new_source)
 
-    def replace_method(
-        self, class_name: str, method_name: str, new_source: str
-    ) -> str:
+    def replace_method(self, class_name: str, method_name: str, new_source: str) -> str:
         """
         Replace a method within a top-level class with `new_source`,
         preserving its indentation context in the rest of the file.
         Returns the file's full updated content.
         """
 
-        return self._splice(
-            self.find_method(class_name, method_name), new_source
-        )
+        return self._splice(self.find_method(class_name, method_name), new_source)
 
     def insert_after_symbol(self, name: str, new_source: str) -> str:
         """
@@ -262,9 +254,7 @@ class SymbolEditor:
 
         new_lines = _as_lines(new_source)
 
-        result = (
-            self._lines[:after_line] + new_lines + self._lines[after_line:]
-        )
+        result = self._lines[:after_line] + new_lines + self._lines[after_line:]
 
         return "".join(result)
 
@@ -320,9 +310,7 @@ def _load_editor(file_path: Path) -> SymbolEditor:
     return SymbolEditor(str(file_path))
 
 
-def _apply_or_stage(
-    file_path: Path, updated_content: str, summary: str
-) -> str:
+def _apply_or_stage(file_path: Path, updated_content: str, summary: str) -> str:
     """
     Route an edit's new full-file content through the same
     preview/apply mechanism every other editing tool uses.
@@ -391,16 +379,12 @@ def find_class(name: str, path: str = "") -> dict[str, Any]:
     parameters={"path": "str", "class_name": "str", "method_name": "str"},
     returns="dict",
 )
-def find_method(
-    class_name: str, method_name: str, path: str = ""
-) -> dict[str, Any]:
+def find_method(class_name: str, method_name: str, path: str = "") -> dict[str, Any]:
     file_path = _resolve_path(path, class_name)
     editor = _load_editor(file_path)
     location = editor.find_method(class_name, method_name)
 
-    logger.info(
-        "Found method '%s.%s' in %s", class_name, method_name, file_path
-    )
+    logger.info("Found method '%s.%s' in %s", class_name, method_name, file_path)
 
     return _location_to_dict(location, file_path)
 
@@ -493,9 +477,7 @@ def insert_before_symbol(name: str, new_source: str, path: str = "") -> str:
     )
 
 
-def _location_to_dict(
-    location: SymbolLocation, file_path: Path
-) -> dict[str, Any]:
+def _location_to_dict(location: SymbolLocation, file_path: Path) -> dict[str, Any]:
     return {
         "file": str(file_path),
         "name": location.name,

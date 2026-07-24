@@ -222,16 +222,10 @@ class PearlAgent:
                 error=step.error,
             )
 
-        status = (
-            "completed"
-            if all(step.succeeded for step in results)
-            else "failed"
-        )
+        status = "completed" if all(step.succeeded for step in results) else "failed"
         self.memory.complete_task(task.id, status=status)
 
-        self.memory.record_turn(
-            "agent", f"Executed {len(results)} step(s)."
-        )
+        self.memory.record_turn("agent", f"Executed {len(results)} step(s).")
 
         return results
 

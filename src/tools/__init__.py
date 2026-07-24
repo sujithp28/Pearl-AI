@@ -10,7 +10,6 @@ from .edit_tools import (
     patch_file,
     replace_in_file,
 )
-
 from .file_tools import (
     append_file,
     delete_file,
@@ -21,7 +20,6 @@ from .file_tools import (
     read_file,
     write_file,
 )
-
 from .git_tools import (
     git_commit,
     git_create_branch,
@@ -30,13 +28,9 @@ from .git_tools import (
     git_restore,
     git_status,
 )
-
 from .metadata import tool
-
 from .models import Tool
-
 from .registry import ToolRegistry
-
 from .repo_tools import (
     explain_file,
     find_references,
@@ -45,7 +39,6 @@ from .repo_tools import (
     search_text,
     summarize_project,
 )
-
 from .shell_tools import (
     current_user,
     execute_shell,
@@ -56,7 +49,6 @@ from .shell_tools import (
     run_python,
     which,
 )
-
 from .symbol_editor import (
     find_class,
     find_function,
@@ -70,13 +62,10 @@ from .symbol_editor import (
 __all__ = [
     # Models
     "Tool",
-
     # Registry
     "ToolRegistry",
-
     # Decorator
     "tool",
-
     # File tools
     "read_file",
     "write_file",
@@ -86,13 +75,11 @@ __all__ = [
     "file_size",
     "list_directory",
     "make_directory",
-
     # Edit tools
     "create_file",
     "replace_in_file",
     "edit_lines",
     "patch_file",
-
     # Repository intelligence tools
     "index_repository",
     "find_symbol",
@@ -100,7 +87,6 @@ __all__ = [
     "search_text",
     "summarize_project",
     "explain_file",
-
     # Shell tools
     "execute_shell",
     "run_python",
@@ -110,7 +96,6 @@ __all__ = [
     "is_command_available",
     "operating_system",
     "current_user",
-
     # Git tools
     "git_diff",
     "git_status",
@@ -118,7 +103,6 @@ __all__ = [
     "git_create_branch",
     "git_commit",
     "git_restore",
-
     # Symbol-aware editing tools
     "find_function",
     "find_class",

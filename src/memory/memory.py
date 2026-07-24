@@ -238,9 +238,7 @@ class Memory:
             "conversation": [asdict(turn) for turn in self.conversation],
             "tasks": [asdict(task) for task in self.tasks],
             "project": dict(self.project),
-            "execution_history": [
-                asdict(record) for record in self.execution_history
-            ],
+            "execution_history": [asdict(record) for record in self.execution_history],
         }
 
     @classmethod
@@ -258,15 +256,13 @@ class Memory:
         memory.tasks = [Task(**task) for task in data.get("tasks", [])]
         memory.project = dict(data.get("project", {}))
         memory.execution_history = [
-            ExecutionRecord(**record)
-            for record in data.get("execution_history", [])
+            ExecutionRecord(**record) for record in data.get("execution_history", [])
         ]
 
         task_numbers = [
             int(task.id.split("-")[-1])
             for task in memory.tasks
-            if task.id.startswith("task-")
-            and task.id.split("-")[-1].isdigit()
+            if task.id.startswith("task-") and task.id.split("-")[-1].isdigit()
         ]
         memory._task_counter = max(task_numbers, default=0)
 

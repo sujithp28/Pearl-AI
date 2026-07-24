@@ -2,7 +2,6 @@ import pytest
 
 from src.memory import ConversationTurn, ExecutionRecord, Memory, Task
 
-
 # ---------------------------------------------------------------------
 # Conversation memory
 # ---------------------------------------------------------------------

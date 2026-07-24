@@ -87,9 +87,7 @@ def _write_lines(
     Write `lines` back to `file_path`, restoring the trailing newline.
     """
 
-    file_path.write_text(
-        _lines_to_text(lines, trailing_newline), encoding="utf-8"
-    )
+    file_path.write_text(_lines_to_text(lines, trailing_newline), encoding="utf-8")
 
 
 def _parse_hunks(patch: str) -> list[dict[str, Any]]:
@@ -162,8 +160,7 @@ def _apply_hunks(
 
         if result[start:end] != old_segment:
             raise ValueError(
-                "Patch does not apply: context mismatch near "
-                f"line {hunk['old_start']}."
+                f"Patch does not apply: context mismatch near line {hunk['old_start']}."
             )
 
         result[start:end] = new_segment
@@ -173,9 +170,7 @@ def _apply_hunks(
 
 
 @tool(
-    description=(
-        "Create a new UTF-8 text file. Fails if the file already exists."
-    ),
+    description=("Create a new UTF-8 text file. Fails if the file already exists."),
     parameters={
         "path": "str",
         "content": "str",
@@ -216,8 +211,7 @@ def create_file(path: str, content: str = "") -> None | str:
 
 @tool(
     description=(
-        "Replace occurrences of a search string with a replacement "
-        "string in a file."
+        "Replace occurrences of a search string with a replacement string in a file."
     ),
     parameters={
         "path": "str",
@@ -280,8 +274,7 @@ def replace_in_file(
 
 @tool(
     description=(
-        "Replace a 1-indexed, inclusive range of lines in a file with "
-        "new content."
+        "Replace a 1-indexed, inclusive range of lines in a file with new content."
     ),
     parameters={
         "path": "str",
@@ -314,8 +307,7 @@ def edit_lines(
 
     if start_line < 1 or end_line < start_line or end_line > len(lines):
         raise ValueError(
-            f"Invalid line range {start_line}-{end_line} for a "
-            f"{len(lines)}-line file."
+            f"Invalid line range {start_line}-{end_line} for a {len(lines)}-line file."
         )
 
     replacement = new_content.splitlines() if new_content else []
@@ -334,9 +326,7 @@ def edit_lines(
 
         return f"Preview staged: lines {start_line}-{end_line} in '{path}'."
 
-    logger.info(
-        "Editing lines %d-%d in %s", start_line, end_line, file_path
-    )
+    logger.info("Editing lines %d-%d in %s", start_line, end_line, file_path)
 
     _write_lines(file_path, new_lines, trailing_newline)
 

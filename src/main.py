@@ -42,15 +42,6 @@ from src.tools.repo_tools import (
     search_text,
     summarize_project,
 )
-from src.tools.symbol_editor import (
-    find_class,
-    find_function,
-    find_method,
-    insert_after_symbol,
-    insert_before_symbol,
-    replace_class,
-    replace_function,
-)
 from src.tools.shell_tools import (
     current_user,
     execute_shell,
@@ -60,6 +51,15 @@ from src.tools.shell_tools import (
     pwd,
     run_python,
     which,
+)
+from src.tools.symbol_editor import (
+    find_class,
+    find_function,
+    find_method,
+    insert_after_symbol,
+    insert_before_symbol,
+    replace_class,
+    replace_function,
 )
 
 logging.basicConfig(

@@ -134,21 +134,15 @@ def parse_request(raw: str) -> JsonRpcRequest:
         raise MCPProtocolError(PARSE_ERROR, "Invalid JSON.") from exc
 
     if not isinstance(payload, dict):
-        raise MCPProtocolError(
-            INVALID_REQUEST, "Request must be a JSON object."
-        )
+        raise MCPProtocolError(INVALID_REQUEST, "Request must be a JSON object.")
 
     if payload.get("jsonrpc") != JSONRPC_VERSION:
-        raise MCPProtocolError(
-            INVALID_REQUEST, "Missing or invalid 'jsonrpc' version."
-        )
+        raise MCPProtocolError(INVALID_REQUEST, "Missing or invalid 'jsonrpc' version.")
 
     method = payload.get("method")
 
     if not isinstance(method, str) or not method:
-        raise MCPProtocolError(
-            INVALID_REQUEST, "Missing or invalid 'method'."
-        )
+        raise MCPProtocolError(INVALID_REQUEST, "Missing or invalid 'method'.")
 
     params = payload.get("params")
 

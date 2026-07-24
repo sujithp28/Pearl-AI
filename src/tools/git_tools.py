@@ -198,9 +198,7 @@ def git_log(limit: int = 10) -> list[dict[str, Any]]:
     commits = []
 
     for line in result.stdout.splitlines():
-        commit_hash, author, date, message = line.split(
-            _LOG_FIELD_SEPARATOR, 3
-        )
+        commit_hash, author, date, message = line.split(_LOG_FIELD_SEPARATOR, 3)
 
         commits.append(
             {
@@ -242,9 +240,7 @@ def git_create_branch(name: str) -> str:
     result = _run_git("checkout", "-b", name)
 
     if result.returncode != 0:
-        raise GitError(
-            f"Could not create branch '{name}': {result.stderr.strip()}"
-        )
+        raise GitError(f"Could not create branch '{name}': {result.stderr.strip()}")
 
     logger.info("Switched to new branch '%s'.", name)
 
@@ -281,7 +277,7 @@ def git_commit(message: str) -> str:
     if not status["staged"]:
         raise GitError(
             "Nothing staged to commit. Stage changes (e.g. via "
-            "execute_shell(\"git add <files>\")) before committing."
+            'execute_shell("git add <files>")) before committing.'
         )
 
     logger.info("Committing %d staged file(s).", len(status["staged"]))

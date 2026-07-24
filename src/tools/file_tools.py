@@ -26,9 +26,7 @@ def _ensure_within_workspace(path: str) -> Path:
     resolved = Path(path).resolve()
 
     if not resolved.is_relative_to(workspace_root):
-        raise PermissionError(
-            f"Path escapes workspace: {path}"
-        )
+        raise PermissionError(f"Path escapes workspace: {path}")
 
     return resolved
 
@@ -148,10 +146,7 @@ def list_directory(path: str = ".") -> list[str]:
 
     logger.info("Listing directory: %s", directory)
 
-    return sorted(
-        item.name
-        for item in directory.iterdir()
-    )
+    return sorted(item.name for item in directory.iterdir())
 
 
 @tool(

@@ -1,8 +1,6 @@
 import io
 import json
 
-import pytest
-
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
 from src.mcp.protocol import (
@@ -53,9 +51,7 @@ class StubLLM:
         return self.response
 
 
-def build_server(
-    with_planner: bool = False, llm: object | None = None
-) -> MCPServer:
+def build_server(with_planner: bool = False, llm: object | None = None) -> MCPServer:
     registry = build_registry()
     dispatcher = ToolDispatcher(registry)
     memory = Memory()
@@ -78,9 +74,7 @@ def build_server(
 def test_initialize_returns_protocol_and_server_info():
     server = build_server()
 
-    response = server.handle_request(
-        JsonRpcRequest(method="initialize", id=1)
-    )
+    response = server.handle_request(JsonRpcRequest(method="initialize", id=1))
 
     assert response.error is None
     assert response.result["serverInfo"]["name"] == "pearl-mcp"
@@ -92,13 +86,9 @@ def test_initialize_returns_protocol_and_server_info():
 def test_initialize_reports_chat_capability_when_llm_provided():
     server = build_server(llm=StubLLM())
 
-    response = server.handle_request(
-        JsonRpcRequest(method="initialize", id=1)
-    )
+    response = server.handle_request(JsonRpcRequest(method="initialize", id=1))
 
-    assert response.result["capabilities"]["experimental"] == {
-        "pearlChat": {}
-    }
+    assert response.result["capabilities"]["experimental"] == {"pearlChat": {}}
 
 
 # ---------------------------------------------------------------------
@@ -110,9 +100,7 @@ def test_tools_list_reflects_the_registry_exactly():
     registry = build_registry()
     server = MCPServer(registry)
 
-    response = server.handle_request(
-        JsonRpcRequest(method="tools/list", id=1)
-    )
+    response = server.handle_request(JsonRpcRequest(method="tools/list", id=1))
 
     mcp_names = {tool_["name"] for tool_ in response.result["tools"]}
     registry_names = set(registry.list_tools())
@@ -124,9 +112,7 @@ def test_tools_list_descriptions_match_registry_metadata():
     registry = build_registry()
     server = MCPServer(registry)
 
-    response = server.handle_request(
-        JsonRpcRequest(method="tools/list", id=1)
-    )
+    response = server.handle_request(JsonRpcRequest(method="tools/list", id=1))
 
     by_name = {t["name"]: t for t in response.result["tools"]}
 
@@ -225,9 +211,7 @@ def test_tools_call_non_object_arguments_is_a_protocol_error():
 def test_unknown_method_returns_method_not_found():
     server = build_server()
 
-    response = server.handle_request(
-        JsonRpcRequest(method="not/a/real/method", id=1)
-    )
+    response = server.handle_request(JsonRpcRequest(method="not/a/real/method", id=1))
 
     assert response.error.code == METHOD_NOT_FOUND
 
@@ -235,9 +219,7 @@ def test_unknown_method_returns_method_not_found():
 def test_unknown_notification_returns_none():
     server = build_server()
 
-    response = server.handle_request(
-        JsonRpcRequest(method="notifications/unknown")
-    )
+    response = server.handle_request(JsonRpcRequest(method="notifications/unknown"))
 
     assert response is None
 
@@ -266,9 +248,7 @@ def test_plan_run_without_planner_is_a_protocol_error():
     server = build_server(with_planner=False)
 
     response = server.handle_request(
-        JsonRpcRequest(
-            method="pearl/plan", id=1, params={"prompt": "do something"}
-        )
+        JsonRpcRequest(method="pearl/plan", id=1, params={"prompt": "do something"})
     )
 
     assert response.error.code == INVALID_PARAMS
@@ -309,9 +289,7 @@ def test_plan_run_marks_task_failed_on_step_error(monkeypatch):
     )
 
     response = server.handle_request(
-        JsonRpcRequest(
-            method="pearl/plan", id=1, params={"prompt": "do something bad"}
-        )
+        JsonRpcRequest(method="pearl/plan", id=1, params={"prompt": "do something bad"})
     )
 
     assert response.result["steps"][0]["error"] is not None
@@ -339,15 +317,11 @@ def test_plan_only_returns_steps_without_executing(monkeypatch):
     monkeypatch.setattr(
         server.planner.client,
         "generate_json",
-        lambda prompt: {
-            "steps": [{"tool": "add", "arguments": {"a": 1, "b": 2}}]
-        },
+        lambda prompt: {"steps": [{"tool": "add", "arguments": {"a": 1, "b": 2}}]},
     )
 
     response = server.handle_request(
-        JsonRpcRequest(
-            method="pearl/planOnly", id=1, params={"prompt": "add 1 and 2"}
-        )
+        JsonRpcRequest(method="pearl/planOnly", id=1, params={"prompt": "add 1 and 2"})
     )
 
     assert response.error is None
@@ -387,9 +361,7 @@ def test_plan_only_without_planner_is_a_protocol_error():
     server = build_server(with_planner=False)
 
     response = server.handle_request(
-        JsonRpcRequest(
-            method="pearl/planOnly", id=1, params={"prompt": "add 1 and 2"}
-        )
+        JsonRpcRequest(method="pearl/planOnly", id=1, params={"prompt": "add 1 and 2"})
     )
 
     assert response.error.code == INVALID_PARAMS
@@ -442,9 +414,7 @@ def test_chat_rejects_empty_message():
     server = build_server(llm=StubLLM())
 
     response = server.handle_request(
-        JsonRpcRequest(
-            method="pearl/chat", id=1, params={"message": ""}
-        )
+        JsonRpcRequest(method="pearl/chat", id=1, params={"message": ""})
     )
 
     assert response.error.code == INVALID_PARAMS
@@ -452,9 +422,7 @@ def test_chat_rejects_empty_message():
 
 def test_chat_lazily_constructs_llm_client_when_not_provided(monkeypatch):
     stub_llm = StubLLM(response="lazy reply")
-    monkeypatch.setattr(
-        "src.mcp.server.LLMClient", lambda: stub_llm
-    )
+    monkeypatch.setattr("src.mcp.server.LLMClient", lambda: stub_llm)
 
     server = build_server(llm=None)
     assert server.llm is None
@@ -475,9 +443,7 @@ def test_chat_lazily_constructs_llm_client_when_not_provided(monkeypatch):
 def test_memory_returns_empty_snapshot_for_a_fresh_server():
     server = build_server()
 
-    response = server.handle_request(
-        JsonRpcRequest(method="pearl/memory", id=1)
-    )
+    response = server.handle_request(JsonRpcRequest(method="pearl/memory", id=1))
 
     assert response.error is None
     assert response.result == {
@@ -497,9 +463,7 @@ def test_memory_matches_memory_to_dict_exactly(monkeypatch):
     )
     server.memory.remember_project_fact("language", "python")
 
-    response = server.handle_request(
-        JsonRpcRequest(method="pearl/memory", id=2)
-    )
+    response = server.handle_request(JsonRpcRequest(method="pearl/memory", id=2))
 
     assert response.result == server.memory.to_dict()
 
@@ -515,9 +479,7 @@ def test_memory_reflects_tool_execution_history():
         )
     )
 
-    response = server.handle_request(
-        JsonRpcRequest(method="pearl/memory", id=2)
-    )
+    response = server.handle_request(JsonRpcRequest(method="pearl/memory", id=2))
 
     assert len(response.result["execution_history"]) == 1
     assert response.result["execution_history"][0]["tool_name"] == "add"
@@ -530,18 +492,14 @@ def test_memory_reflects_planned_task_history(monkeypatch):
     monkeypatch.setattr(
         server.planner.client,
         "generate_json",
-        lambda prompt: {
-            "steps": [{"tool": "add", "arguments": {"a": 1, "b": 2}}]
-        },
+        lambda prompt: {"steps": [{"tool": "add", "arguments": {"a": 1, "b": 2}}]},
     )
 
     server.handle_request(
         JsonRpcRequest(method="pearl/plan", id=1, params={"prompt": "add"})
     )
 
-    response = server.handle_request(
-        JsonRpcRequest(method="pearl/memory", id=2)
-    )
+    response = server.handle_request(JsonRpcRequest(method="pearl/memory", id=2))
 
     assert len(response.result["tasks"]) == 1
     assert response.result["tasks"][0]["status"] == "completed"
@@ -642,8 +600,7 @@ def test_run_stdio_reports_parse_errors_and_continues():
     server = build_server()
 
     input_stream = io.StringIO(
-        "not valid json\n"
-        + _lines({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+        "not valid json\n" + _lines({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
     )
     output_stream = io.StringIO()
 

@@ -32,9 +32,7 @@ class ToolRegistry:
         """
 
         if not hasattr(func, "_tool_name"):
-            raise TypeError(
-                f"{func.__name__} is not decorated with @tool."
-            )
+            raise TypeError(f"{func.__name__} is not decorated with @tool.")
 
         tool = Tool(
             name=func._tool_name,
@@ -45,9 +43,7 @@ class ToolRegistry:
         )
 
         if tool.name in self._tools:
-            raise ValueError(
-                f"Tool '{tool.name}' already registered."
-            )
+            raise ValueError(f"Tool '{tool.name}' already registered.")
 
         self._tools[tool.name] = tool
 
@@ -73,9 +69,7 @@ class ToolRegistry:
         try:
             return self._tools[tool_name]
         except KeyError as exc:
-            raise ValueError(
-                f"Unknown tool: {tool_name}"
-            ) from exc
+            raise ValueError(f"Unknown tool: {tool_name}") from exc
 
     def has_tool(self, tool_name: str) -> bool:
         """
@@ -96,10 +90,7 @@ class ToolRegistry:
         Return tool metadata for the LLM.
         """
 
-        return [
-            tool.to_dict()
-            for tool in self._tools.values()
-        ]
+        return [tool.to_dict() for tool in self._tools.values()]
 
     def describe_tool(self, tool_name: str) -> dict[str, Any]:
         """

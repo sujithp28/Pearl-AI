@@ -33,9 +33,7 @@ def test_generate_retries_transient_errors_then_succeeds(monkeypatch):
 
         return _make_response("hello")
 
-    monkeypatch.setattr(
-        client.provider.client.chat.completions, "create", flaky_create
-    )
+    monkeypatch.setattr(client.provider.client.chat.completions, "create", flaky_create)
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
 
     result = client.generate("hi")
@@ -50,9 +48,7 @@ def test_generate_gives_up_after_max_retries(monkeypatch):
     def always_fails(**kwargs):
         raise _make_connection_error()
 
-    monkeypatch.setattr(
-        client.provider.client.chat.completions, "create", always_fails
-    )
+    monkeypatch.setattr(client.provider.client.chat.completions, "create", always_fails)
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
 
     with pytest.raises(APIConnectionError):

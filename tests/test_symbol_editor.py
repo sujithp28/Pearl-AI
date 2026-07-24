@@ -66,7 +66,7 @@ def test_find_function_locates_correct_span():
     assert location.name == "foo"
     assert location.kind == "function"
     assert location.source.startswith("def foo(a, b):")
-    assert location.source.strip().endswith('return a + b')
+    assert location.source.strip().endswith("return a + b")
 
 
 def test_find_function_includes_decorators_in_span():
@@ -148,9 +148,7 @@ def test_find_method_missing_method_raises():
 def test_replace_function_preserves_rest_of_file():
     editor = SymbolEditor("mod.py", SAMPLE)
 
-    updated = editor.replace_function(
-        "foo", "def foo(a, b):\n    return a - b\n"
-    )
+    updated = editor.replace_function("foo", "def foo(a, b):\n    return a - b\n")
 
     assert "def foo(a, b):\n    return a - b\n" in updated
     assert "return a + b" not in updated
@@ -221,9 +219,7 @@ def test_replace_method_preserves_class_and_siblings():
 def test_insert_after_symbol_places_code_right_after_the_symbol():
     editor = SymbolEditor("mod.py", SAMPLE)
 
-    updated = editor.insert_after_symbol(
-        "foo", "def inserted():\n    return 42\n"
-    )
+    updated = editor.insert_after_symbol("foo", "def inserted():\n    return 42\n")
 
     foo_index = updated.index("def foo(a, b):")
     inserted_index = updated.index("def inserted():")
@@ -235,9 +231,7 @@ def test_insert_after_symbol_places_code_right_after_the_symbol():
 def test_insert_before_symbol_places_code_right_before_the_symbol():
     editor = SymbolEditor("mod.py", SAMPLE)
 
-    updated = editor.insert_before_symbol(
-        "Greeter", "def inserted():\n    return 42\n"
-    )
+    updated = editor.insert_before_symbol("Greeter", "def inserted():\n    return 42\n")
 
     bar_index = updated.index("def bar():")
     inserted_index = updated.index("def inserted():")
@@ -292,9 +286,7 @@ def test_tool_find_method_returns_dict_for_nested_method(sample_file):
 
 
 def test_tool_replace_function_writes_file_in_apply_mode(sample_file):
-    replace_function(
-        "foo", "def foo(a, b):\n    return a * b\n", path=str(sample_file)
-    )
+    replace_function("foo", "def foo(a, b):\n    return a * b\n", path=str(sample_file))
 
     content = sample_file.read_text()
     assert "return a * b" in content
@@ -315,9 +307,7 @@ def test_tool_replace_class_writes_file_in_apply_mode(sample_file):
 
 
 def test_tool_insert_after_symbol_writes_file_in_apply_mode(sample_file):
-    insert_after_symbol(
-        "foo", "def new_func():\n    return 1\n", path=str(sample_file)
-    )
+    insert_after_symbol("foo", "def new_func():\n    return 1\n", path=str(sample_file))
 
     content = sample_file.read_text()
     assert content.index("def foo") < content.index("def new_func")
@@ -382,9 +372,7 @@ def test_tool_insert_after_symbol_preview_mode_stages_instead_of_writing(
     manager = PatchManager()
     set_active_patch_manager(manager)
 
-    insert_after_symbol(
-        "foo", "def new_func():\n    return 1\n", path=str(sample_file)
-    )
+    insert_after_symbol("foo", "def new_func():\n    return 1\n", path=str(sample_file))
 
     assert manager.has_pending()
     assert "def new_func" not in sample_file.read_text()
@@ -468,9 +456,7 @@ def test_replace_function_resolves_file_via_repository_index_when_no_path(
     assert "return a * b" in (tmp_path / "a.py").read_text()
 
 
-def test_find_function_without_path_raises_when_symbol_unknown(
-    tmp_path, monkeypatch
-):
+def test_find_function_without_path_raises_when_symbol_unknown(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "a.py").write_text(SAMPLE)
 

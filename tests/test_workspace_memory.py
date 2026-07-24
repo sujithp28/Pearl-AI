@@ -1,7 +1,6 @@
 from src.agent.executor import ExecutionReport, ExecutionStep
 from src.memory.workspace_memory import WorkspaceMemory
 
-
 # ---------------------------------------------------------------------
 # Generic remember / recall
 # ---------------------------------------------------------------------
@@ -49,9 +48,7 @@ def test_observe_tool_result_recognizes_create_file():
         succeeded=True,
     )
 
-    assert memory.summary()["recently_edited_files"] == [
-        "src/new_module.py"
-    ]
+    assert memory.summary()["recently_edited_files"] == ["src/new_module.py"]
     assert memory.recent_changes()[0]["kind"] == "file_created"
 
 
@@ -71,9 +68,7 @@ def test_observe_tool_result_recognizes_modify_tools():
 def test_observe_tool_result_ignores_failed_calls():
     memory = WorkspaceMemory()
 
-    memory.observe_tool_result(
-        "create_file", {"path": "a.py"}, succeeded=False
-    )
+    memory.observe_tool_result("create_file", {"path": "a.py"}, succeeded=False)
 
     assert memory.recent_changes() == []
 
@@ -98,12 +93,8 @@ def test_record_symbol_added_and_removed():
     memory.record_symbol_removed("bar", kind="function", file="a.py")
 
     changed = memory.changed_symbols()
-    assert changed["added"] == [
-        {"name": "foo", "kind": "function", "file": "a.py"}
-    ]
-    assert changed["removed"] == [
-        {"name": "bar", "kind": "function", "file": "a.py"}
-    ]
+    assert changed["added"] == [{"name": "foo", "kind": "function", "file": "a.py"}]
+    assert changed["removed"] == [{"name": "bar", "kind": "function", "file": "a.py"}]
 
 
 def test_observe_tool_result_recognizes_symbol_insert_tools():
@@ -167,12 +158,8 @@ def test_observe_tool_result_recognizes_git_tools():
 def test_observe_tool_result_recognizes_git_create_branch_and_restore():
     memory = WorkspaceMemory()
 
-    memory.observe_tool_result(
-        "git_create_branch", {"name": "feature"}, succeeded=True
-    )
-    memory.observe_tool_result(
-        "git_restore", {"files": ["a.py"]}, succeeded=True
-    )
+    memory.observe_tool_result("git_create_branch", {"name": "feature"}, succeeded=True)
+    memory.observe_tool_result("git_restore", {"files": ["a.py"]}, succeeded=True)
 
     kinds = [c["kind"] for c in memory.recent_changes()]
     assert kinds == ["git_operation", "git_operation"]

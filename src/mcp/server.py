@@ -24,8 +24,8 @@ from src.llm.client import LLMClient
 from src.mcp.protocol import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
-    METHOD_NOT_FOUND,
     MCP_PROTOCOL_VERSION,
+    METHOD_NOT_FOUND,
     JsonRpcError,
     JsonRpcRequest,
     JsonRpcResponse,
@@ -39,7 +39,7 @@ from src.tools.registry import ToolRegistry
 logger = logging.getLogger(__name__)
 
 SERVER_NAME = "pearl-mcp"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "1.2.0-beta"
 
 
 def _json_safe(value: Any) -> Any:
@@ -150,9 +150,7 @@ class MCPServer:
             try:
                 handler(self, request.params)
             except Exception:
-                logger.exception(
-                    "Error handling notification: %s", request.method
-                )
+                logger.exception("Error handling notification: %s", request.method)
             return None
 
         try:
@@ -163,9 +161,7 @@ class MCPServer:
                 error=JsonRpcError(exc.code, exc.message),
             )
         except Exception as exc:
-            logger.exception(
-                "Internal error handling method: %s", request.method
-            )
+            logger.exception("Internal error handling method: %s", request.method)
             return JsonRpcResponse(
                 id=request.id,
                 error=JsonRpcError(INTERNAL_ERROR, str(exc)),
@@ -207,11 +203,7 @@ class MCPServer:
         List every tool currently in the registry.
         """
 
-        return {
-            "tools": [
-                tool_to_mcp_schema(tool) for tool in self.registry
-            ]
-        }
+        return {"tools": [tool_to_mcp_schema(tool) for tool in self.registry]}
 
     def _tools_call(self, params: dict[str, Any]) -> dict[str, Any]:
         """
@@ -229,9 +221,7 @@ class MCPServer:
             arguments = {}
 
         if not isinstance(arguments, dict):
-            raise MCPProtocolError(
-                INVALID_PARAMS, "'arguments' must be an object."
-            )
+            raise MCPProtocolError(INVALID_PARAMS, "'arguments' must be an object.")
 
         try:
             result = self.dispatcher.execute(name, **arguments)
@@ -283,11 +273,7 @@ class MCPServer:
                 error=step.error,
             )
 
-        status = (
-            "completed"
-            if all(step.succeeded for step in results)
-            else "failed"
-        )
+        status = "completed" if all(step.succeeded for step in results) else "failed"
         self.memory.complete_task(task.id, status=status)
 
         return {
@@ -329,8 +315,7 @@ class MCPServer:
 
         return {
             "steps": [
-                {"tool": step.tool_name, "arguments": step.kwargs}
-                for step in steps
+                {"tool": step.tool_name, "arguments": step.kwargs} for step in steps
             ]
         }
 
@@ -485,9 +470,7 @@ class MCPServer:
         """
 
         input_stream = input_stream if input_stream is not None else sys.stdin
-        output_stream = (
-            output_stream if output_stream is not None else sys.stdout
-        )
+        output_stream = output_stream if output_stream is not None else sys.stdout
 
         logger.info("MCP server listening on stdio.")
 

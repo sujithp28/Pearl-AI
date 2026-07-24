@@ -40,9 +40,7 @@ class LLMToolSelector:
         Build the prompt for the LLM using the external prompt template.
         """
 
-        prompt_template = self.client.load_prompt(
-            self.PROMPT_FILE
-        )
+        prompt_template = self.client.load_prompt(self.PROMPT_FILE)
 
         tools = json.dumps(
             self.registry.get_tools(),

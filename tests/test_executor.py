@@ -454,16 +454,12 @@ def test_events_include_current_step_total_steps_action_and_status(
 
     report = executor.run("add")
 
-    executing = next(
-        e for e in report.events if e.status == "executing_step"
-    )
+    executing = next(e for e in report.events if e.status == "executing_step")
     assert executing.current_step == 1
     assert executing.total_steps == 1
     assert executing.current_action == "🛠️ Hammering out some code..."
 
-    completed = next(
-        e for e in report.events if e.status == "step_completed"
-    )
+    completed = next(e for e in report.events if e.status == "step_completed")
     assert completed.current_step == 1
     assert completed.total_steps == 1
     assert completed.current_action == "✨ Looking much better now."
@@ -472,10 +468,7 @@ def test_events_include_current_step_total_steps_action_and_status(
     assert task_completed.status == "task_completed"
     assert task_completed.current_step == 1
     assert task_completed.total_steps == 1
-    assert (
-        task_completed.current_action
-        == "🎉 Done! No bugs were intentionally added."
-    )
+    assert task_completed.current_action == "🎉 Done! No bugs were intentionally added."
 
 
 def test_run_emits_step_failed_and_replanning_events(monkeypatch):
@@ -508,8 +501,7 @@ def test_run_emits_step_failed_and_replanning_events(monkeypatch):
 
     replanning_event = report.events[3]
     assert (
-        replanning_event.current_action
-        == "🔄 Plot twist! Trying another approach..."
+        replanning_event.current_action == "🔄 Plot twist! Trying another approach..."
     )
 
 
@@ -996,9 +988,7 @@ def test_rejection_discards_patches_and_returns_cleanly(monkeypatch, workspace):
     assert final.steps == paused.steps
 
 
-def test_resume_after_approval_continues_without_replanning(
-    monkeypatch, workspace
-):
+def test_resume_after_approval_continues_without_replanning(monkeypatch, workspace):
     executor, planner = build_executor()
     target = str(workspace / "a.py")
 
@@ -1214,9 +1204,7 @@ def test_diff_is_generated_for_a_previewed_edit(monkeypatch, workspace):
     assert "+new = 1" in edit.diff
 
 
-def test_empty_patch_when_nothing_to_replace_does_not_pause(
-    monkeypatch, workspace
-):
+def test_empty_patch_when_nothing_to_replace_does_not_pause(monkeypatch, workspace):
     file = workspace / "a.py"
     file.write_text("hello world\n")
 

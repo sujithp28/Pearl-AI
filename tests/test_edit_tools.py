@@ -176,9 +176,7 @@ def test_patch_file_applies_single_hunk(tmp_path):
 
     patch_file(str(file), patch)
 
-    assert file.read_text() == (
-        "line1\nline2 modified\nline2.5\nline3\nline4\n"
-    )
+    assert file.read_text() == ("line1\nline2 modified\nline2.5\nline3\nline4\n")
 
 
 def test_patch_file_applies_multiple_hunks_with_offset(tmp_path):

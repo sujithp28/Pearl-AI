@@ -1,7 +1,4 @@
-import pytest
-
 from src.tools.patch_manager import PatchManager, unified_diff
-
 
 # ---------------------------------------------------------------------
 # unified_diff

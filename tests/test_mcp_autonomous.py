@@ -116,16 +116,19 @@ def test_run_autonomous_completes_directly_when_no_edits_are_staged(monkeypatch)
     )
 
     response = server.handle_request(
-        JsonRpcRequest(
-            method="pearl/runAutonomous", id=1, params={"prompt": "add 1+2"}
-        )
+        JsonRpcRequest(method="pearl/runAutonomous", id=1, params={"prompt": "add 1+2"})
     )
 
     assert response.error is None
     assert response.result["stopReason"] == "completed"
     assert response.result["patches"] == []
     assert response.result["steps"] == [
-        {"tool": "add", "arguments": {"a": 1, "b": 2}, "succeeded": True, "summary": "'add' succeeded: 3"}
+        {
+            "tool": "add",
+            "arguments": {"a": 1, "b": 2},
+            "succeeded": True,
+            "summary": "'add' succeeded: 3",
+        }
     ]
 
 
@@ -460,9 +463,7 @@ def test_run_autonomous_without_planner_is_a_protocol_error():
     server = MCPServer(registry, dispatcher=ToolDispatcher(registry))
 
     response = server.handle_request(
-        JsonRpcRequest(
-            method="pearl/runAutonomous", id=1, params={"prompt": "do it"}
-        )
+        JsonRpcRequest(method="pearl/runAutonomous", id=1, params={"prompt": "do it"})
     )
 
     assert response.error.code == INVALID_PARAMS

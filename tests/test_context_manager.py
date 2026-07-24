@@ -149,9 +149,7 @@ def test_rank_files_boosted_by_recently_edited_files(_workspace):
     manager = ContextManager()
     # Query matches neither file directly — only the workspace signal
     # should surface anything.
-    ranked = manager.rank_files(
-        "what should I look at", workspace_memory=memory
-    )
+    ranked = manager.rank_files("what should I look at", workspace_memory=memory)
 
     assert len(ranked) == 1
     assert ranked[0].path == "a.py"
@@ -364,9 +362,7 @@ def test_context_builder_without_workspace_memory_has_no_summary(
 # ---------------------------------------------------------------------
 
 
-def test_context_builder_output_feeds_directly_into_planner(
-    _workspace, monkeypatch
-):
+def test_context_builder_output_feeds_directly_into_planner(_workspace, monkeypatch):
     from pathlib import Path as _Path
 
     from src.agent.dispatcher import ToolDispatcher

@@ -28,7 +28,7 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -36,8 +36,17 @@ PEARL_ROOT = Path(__file__).resolve().parent.parent
 PYTHON = str(PEARL_ROOT / ".venv" / "bin" / "python")
 
 IGNORED_DIRS = {
-    ".git", "__pycache__", ".venv", "venv", "node_modules",
-    ".pytest_cache", ".mypy_cache", "dist", "build", ".tox", ".eggs",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "node_modules",
+    ".pytest_cache",
+    ".mypy_cache",
+    "dist",
+    "build",
+    ".tox",
+    ".eggs",
 }
 
 # (directory slug under --repos-dir, display label)
@@ -176,7 +185,9 @@ class MCPProbe:
                     return self.results.pop(mid), time.time() - start
 
             if self.proc.poll() is not None:
-                return {"error": {"message": "server process exited"}}, time.time() - start
+                return {
+                    "error": {"message": "server process exited"}
+                }, time.time() - start
 
             time.sleep(0.15)
 
@@ -238,9 +249,7 @@ def run_autonomous_benchmark(
 
             final = approve_response.get("result", {})
             result.stop_reason = final.get("stopReason")
-            result.replans_used = max(
-                result.replans_used, final.get("replansUsed", 0)
-            )
+            result.replans_used = max(result.replans_used, final.get("replansUsed", 0))
             result.steps = max(result.steps, len(final.get("steps", [])))
 
         result.success = result.stop_reason == "completed"

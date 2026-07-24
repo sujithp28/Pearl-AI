@@ -25,9 +25,7 @@ def validate_tool_call(tool_call: ToolCall, registry: ToolRegistry) -> None:
         return
 
     if not registry.has_tool(tool_call.tool_name):
-        raise ValueError(
-            f"Unknown tool: {tool_call.tool_name}"
-        )
+        raise ValueError(f"Unknown tool: {tool_call.tool_name}")
 
     tool = registry.get_tool(tool_call.tool_name)
     allowed = set(tool.parameters.keys())
