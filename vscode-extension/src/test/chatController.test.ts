@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ApprovalDecision, ToolApprovalRequest, ToolApprover } from "../chat/approval";
 import { ChatController, ChatMessage } from "../chat/chatController";
+import { PlanApprover, PlanDecision } from "../chat/planApproval";
 import { RequestSender } from "../mcp/requestSender";
+import { PlannedStep } from "../mcp/planClient";
 
 type Handler = (
   params?: Record<string, unknown>
@@ -60,8 +62,24 @@ function fixedApprover(decision: ApprovalDecision): {
   };
 }
 
+function fixedPlanApprover(decision: PlanDecision): {
+  approvePlan: PlanApprover;
+  calls: PlannedStep[][];
+} {
+  const calls: PlannedStep[][] = [];
+
+  return {
+    calls,
+    approvePlan: async (steps) => {
+      calls.push(steps);
+      return decision;
+    },
+  };
+}
+
 // ---------------------------------------------------------------------
-// No tool needed -- falls back to the existing conversational chat
+// No tool needed -- falls back to the existing conversational chat,
+// and the plan preview / plan approval is never involved.
 // ---------------------------------------------------------------------
 
 test("falls back to pearl/chat when the plan needs no tool", async () => {
@@ -71,15 +89,17 @@ test("falls back to pearl/chat when the plan needs no tool", async () => {
   });
   const { messages, post } = collectingPost();
   const { approve, requests } = fixedApprover("approved");
+  const { approvePlan, calls: planCalls } = fixedPlanApprover("execute");
 
-  const controller = new ChatController(sender, post, approve);
+  const controller = new ChatController(sender, post, approve, approvePlan);
   await controller.handleUserMessage("hi");
 
   assert.deepEqual(messages, [
     { role: "user", text: "hi" },
     { role: "assistant", text: "Hello there." },
   ]);
-  assert.equal(requests.length, 0, "no approval should be requested");
+  assert.equal(requests.length, 0, "no tool approval should be requested");
+  assert.equal(planCalls.length, 0, "no plan approval should be requested");
   assert.deepEqual(
     calls.map((c) => c.method),
     ["pearl/planOnly", "pearl/chat"]
@@ -95,15 +115,112 @@ test("falls back to pearl/chat when planning itself fails", async () => {
   });
   const { messages, post } = collectingPost();
   const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
 
-  const controller = new ChatController(sender, post, approve);
+  const controller = new ChatController(sender, post, approve, approvePlan);
   await controller.handleUserMessage("hi");
 
   assert.deepEqual(messages[1], { role: "assistant", text: "Plain reply." });
 });
 
 // ---------------------------------------------------------------------
-// Tool approval
+// Plan visualization / plan-level Execute vs Cancel
+// ---------------------------------------------------------------------
+
+test("shows the full plan for approval before requesting any tool approval", async () => {
+  const { sender, calls } = fakeSender({
+    "pearl/planOnly": () => ({
+      steps: [
+        { tool: "read_file", arguments: { path: "a.txt" } },
+        { tool: "write_file", arguments: { path: "b.txt", content: "x" } },
+      ],
+    }),
+    "tools/call": () => ({
+      content: [{ type: "text", text: "ok" }],
+      isError: false,
+    }),
+  });
+  const { post } = collectingPost();
+  const { approve, requests: toolRequests } = fixedApprover("approved");
+
+  const planCalls: PlannedStep[][] = [];
+  const approvePlan: PlanApprover = async (steps) => {
+    planCalls.push(steps);
+    // At the moment the plan is shown, no tool approval must have
+    // happened yet, and no tools/call must have been sent yet.
+    assert.equal(toolRequests.length, 0);
+    assert.equal(calls.some((c) => c.method === "tools/call"), false);
+    return "execute";
+  };
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("read a.txt then write b.txt");
+
+  assert.equal(planCalls.length, 1);
+  assert.deepEqual(planCalls[0], [
+    { tool: "read_file", arguments: { path: "a.txt" } },
+    { tool: "write_file", arguments: { path: "b.txt", content: "x" } },
+  ]);
+  // Once "execute" is chosen, the existing per-tool flow proceeds
+  // for every step, unchanged.
+  assert.equal(toolRequests.length, 2);
+  assert.equal(
+    calls.filter((c) => c.method === "tools/call").length,
+    2
+  );
+});
+
+test("cancelling the plan performs no tool approvals or tool executions", async () => {
+  const { sender, calls } = fakeSender({
+    "pearl/planOnly": () => ({
+      steps: [{ tool: "delete_file", arguments: { path: "a.txt" } }],
+    }),
+    "tools/call": () => {
+      throw new Error("tools/call should never be called after cancel");
+    },
+  });
+  const { messages, post } = collectingPost();
+  const { approve, requests: toolRequests } = fixedApprover("approved");
+  const { approvePlan, calls: planCalls } = fixedPlanApprover("cancel");
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("delete a.txt");
+
+  assert.equal(planCalls.length, 1);
+  assert.equal(toolRequests.length, 0, "no tool approval should be requested");
+  assert.equal(
+    calls.some((c) => c.method === "tools/call"),
+    false,
+    "tools/call must never be sent after cancelling the plan"
+  );
+  assert.deepEqual(messages[1], {
+    role: "assistant",
+    text: "Plan cancelled. No changes were made.",
+  });
+});
+
+test("a single-step plan still goes through the plan preview gate", async () => {
+  const { sender } = fakeSender({
+    "pearl/planOnly": () => ({
+      steps: [{ tool: "read_file", arguments: { path: "a.txt" } }],
+    }),
+  });
+  const { messages, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan, calls: planCalls } = fixedPlanApprover("cancel");
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("read a.txt");
+
+  assert.equal(planCalls.length, 1);
+  assert.deepEqual(messages[1], {
+    role: "assistant",
+    text: "Plan cancelled. No changes were made.",
+  });
+});
+
+// ---------------------------------------------------------------------
+// Tool approval (unchanged behavior once the plan is executed)
 // ---------------------------------------------------------------------
 
 test("requests approval with the tool name and arguments before calling tools/call", async () => {
@@ -118,8 +235,9 @@ test("requests approval with the tool name and arguments before calling tools/ca
   });
   const { messages, post } = collectingPost();
   const { approve, requests } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
 
-  const controller = new ChatController(sender, post, approve);
+  const controller = new ChatController(sender, post, approve, approvePlan);
   await controller.handleUserMessage("read a.txt");
 
   assert.deepEqual(requests, [
@@ -149,8 +267,9 @@ test("rejecting a tool cancels execution cleanly and reports it to chat", async 
   });
   const { messages, post } = collectingPost();
   const { approve, requests } = fixedApprover("rejected");
+  const { approvePlan } = fixedPlanApprover("execute");
 
-  const controller = new ChatController(sender, post, approve);
+  const controller = new ChatController(sender, post, approve, approvePlan);
   await controller.handleUserMessage("delete a.txt");
 
   assert.equal(requests.length, 1);
@@ -183,6 +302,7 @@ test("a rejected step stops any remaining steps in the plan", async () => {
     },
   });
   const { messages, post } = collectingPost();
+  const { approvePlan } = fixedPlanApprover("execute");
 
   let call = 0;
   const requests: ToolApprovalRequest[] = [];
@@ -192,7 +312,7 @@ test("a rejected step stops any remaining steps in the plan", async () => {
     return call === 1 ? "approved" : "rejected";
   };
 
-  const controller = new ChatController(sender, post, approve);
+  const controller = new ChatController(sender, post, approve, approvePlan);
   await controller.handleUserMessage("do three things");
 
   assert.equal(requests.length, 2, "should stop requesting after the rejection");
@@ -224,8 +344,9 @@ test("a failed tool execution stops the remaining plan", async () => {
   });
   const { messages, post } = collectingPost();
   const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
 
-  const controller = new ChatController(sender, post, approve);
+  const controller = new ChatController(sender, post, approve, approvePlan);
   await controller.handleUserMessage("do something that fails");
 
   assert.equal(messages[1].role, "error");
@@ -248,8 +369,9 @@ test("a transport-level failure calling tools/call is reported as an error", asy
   });
   const { messages, post } = collectingPost();
   const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
 
-  const controller = new ChatController(sender, post, approve);
+  const controller = new ChatController(sender, post, approve, approvePlan);
   await controller.handleUserMessage("read a.txt");
 
   assert.equal(messages[1].role, "error");
@@ -264,8 +386,9 @@ test("ignores blank input", async () => {
   const { sender, calls } = fakeSender({});
   const { messages, post } = collectingPost();
   const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
 
-  const controller = new ChatController(sender, post, approve);
+  const controller = new ChatController(sender, post, approve, approvePlan);
   await controller.handleUserMessage("   ");
 
   assert.deepEqual(messages, []);
@@ -279,8 +402,9 @@ test("trims whitespace from the user message", async () => {
   });
   const { messages, post } = collectingPost();
   const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
 
-  const controller = new ChatController(sender, post, approve);
+  const controller = new ChatController(sender, post, approve, approvePlan);
   await controller.handleUserMessage("  hi there  ");
 
   assert.equal(messages[0].text, "hi there");

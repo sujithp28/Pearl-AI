@@ -108,10 +108,15 @@ test("integration: approving a planned tool call sends tools/call over the real 
   const approvalRequests: ToolApprovalRequest[] = [];
   const decision: ApprovalDecision = "approved";
 
-  const controller = new ChatController(connection, post, async (request) => {
-    approvalRequests.push(request);
-    return decision;
-  });
+  const controller = new ChatController(
+    connection,
+    post,
+    async (request) => {
+      approvalRequests.push(request);
+      return decision;
+    },
+    async () => "execute"
+  );
 
   const handling = controller.handleUserMessage("read a.txt please");
 
@@ -161,7 +166,8 @@ test("integration: rejecting a planned tool call never sends tools/call", async 
   const controller = new ChatController(
     connection,
     post,
-    async () => "rejected"
+    async () => "rejected",
+    async () => "execute"
   );
 
   const handling = controller.handleUserMessage("delete a.txt");
@@ -201,7 +207,8 @@ test("integration: a plan needing no tool falls back to pearl/chat", async () =>
   const controller = new ChatController(
     connection,
     post,
-    async () => "approved"
+    async () => "approved",
+    async () => "execute"
   );
 
   const handling = controller.handleUserMessage("just say hi");

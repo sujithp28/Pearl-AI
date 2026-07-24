@@ -3,7 +3,8 @@
 This extension registers one command, connects to Pearl's existing MCP
 server over stdio (showing connection status in the status bar), and opens
 a simple chat webview that talks to Pearl through that same connection —
-gating every tool call behind an approval dialog before it runs.
+showing the full proposed plan for review before gating each tool call
+behind an approval dialog.
 
 **Not implemented yet (by design, later phases):**
 
@@ -33,15 +34,25 @@ vscode-extension/
 │   │   └── toolCallClient.ts    # Executes one approved tool via
 │   │                             `tools/call` (pure).
 │   ├── chat/
-│   │   ├── approval.ts          # Tool-approval types (`ToolApprover`, pure).
-│   │   ├── chatController.ts    # Chat message flow: plan -> approve each
-│   │   │                         tool step -> execute or reject -> post
+│   │   ├── approval.ts          # Per-tool approval types (`ToolApprover`, pure).
+│   │   ├── planFormatting.ts    # Formats plan steps for display: step
+│   │   │                         number, tool, args text, collapse-if-long
+│   │   │                         decision (pure, independently testable).
+│   │   ├── planApproval.ts      # Shows the plan in the webview and
+│   │   │                         resolves once "Execute Plan"/"Cancel" is
+│   │   │                         chosen there (pure — driven by an
+│   │   │                         injected `post` + fed-back `resolveDecision`).
+│   │   ├── chatController.ts    # Chat message flow: plan -> show full plan
+│   │   │                         for Execute/Cancel -> (if executed) approve
+│   │   │                         each tool step -> execute or reject -> post
 │   │   │                         messages (pure, no `vscode`/webview).
 │   │   ├── chatHtml.ts          # Static webview HTML: message list, input,
-│   │   │                         send button (pure string builder).
+│   │   │                         send button, plan preview with collapsible
+│   │   │                         arguments and Execute Plan/Cancel buttons
+│   │   │                         (pure string builder).
 │   │   ├── chatPanel.ts         # Owns the real `vscode.WebviewPanel` and
-│   │   │                         wires it to `ChatController`.
-│   │   └── vscodeToolApprover.ts # The real approval dialog
+│   │   │                         wires it to `ChatController`/`WebviewPlanApprover`.
+│   │   └── vscodeToolApprover.ts # The real per-tool approval dialog
 │   │                              (`vscode.window.showWarningMessage`).
 │   └── test/
 │       ├── protocolClient.test.ts
@@ -50,9 +61,12 @@ vscode-extension/
 │       ├── chatClient.test.ts
 │       ├── planClient.test.ts
 │       ├── toolCallClient.test.ts
+│       ├── planFormatting.test.ts
+│       ├── planApproval.test.ts
 │       ├── chatController.test.ts
 │       ├── chatHtml.test.ts
-│       └── chatApproval.integration.test.ts
+│       ├── chatApproval.integration.test.ts
+│       └── planVisualization.integration.test.ts
 ├── .vscode/
 │   ├── launch.json              # F5 debug config (Extension Development Host).
 │   └── tasks.json               # Background `tsc --watch` build task.
@@ -121,28 +135,42 @@ Typing a message and pressing **Enter** (or clicking **Send**) runs this
 flow (`ChatController.handleUserMessage`):
 
 1. Renders the message immediately under the `user` role.
-2. Asks the *existing* `Planner` what it would do, via a new
-   `pearl/planOnly` JSON-RPC method (reuses `Planner.plan()` — previously
+2. Asks the *existing* `Planner` what it would do, via the `pearl/planOnly`
+   JSON-RPC method added in Step 4 (reuses `Planner.plan()` — previously
    only used internally by `Planner.run()` — without dispatching or
-   recording anything; see `src/mcp/server.py`).
+   recording anything; see `src/mcp/server.py`, unchanged in this step).
 3. **If no tool is needed**, falls back to the plain conversational
-   `pearl/chat` method from Step 3, unchanged.
-4. **If one or more tools are proposed**, for each one in order:
-   - Shows a modal **approval dialog** (`vscodeToolApprover.ts`) with the
-     tool name and its arguments (pretty-printed JSON), and **Approve** /
-     **Reject** buttons.
-   - **Approve** → executes it through the *existing* `tools/call` method
-     (the *existing* `ToolDispatcher`, reused as-is), and posts the result
-     to the chat.
-   - **Reject** → sends nothing to the server (`tools/call` is never
-     called for a rejected step), cancels the rest of the plan, and posts
-     `Tool "<name>" was rejected. No changes were made.` to the chat.
-   - A tool that fails once approved (`isError: true`, or a transport-level
-     failure) also stops any remaining steps and reports the failure to
-     the chat — the webview never crashes or hangs silently on failure.
+   `pearl/chat` method from Step 3, unchanged — no plan preview and no
+   approval of any kind, since nothing would execute.
+4. **If one or more tools are proposed**, before any tool approval is
+   requested, the **complete plan** is shown in the chat as its own block
+   (`planFormatting.ts` + `planApproval.ts`, rendered by `appendPlan` in
+   the webview): each step numbered, with its tool name, and its
+   arguments — pretty-printed inline, or collapsed behind a plain
+   `<details>`/"Arguments" toggle when the pretty-printed JSON exceeds 100
+   characters. Below the steps are two buttons: **Execute Plan** and
+   **Cancel**.
+   - **Cancel** → posts `Plan cancelled. No changes were made.` to the
+     chat. No tool approval is requested and `tools/call` is never sent
+     for any step in the plan.
+   - **Execute Plan** → continues into the existing per-tool approval loop
+     from Step 4, **unchanged**: for each step in order —
+     - Shows a modal **approval dialog** (`vscodeToolApprover.ts`) with the
+       tool name and its arguments, and **Approve** / **Reject** buttons.
+     - **Approve** → executes it through the *existing* `tools/call`
+       method (the *existing* `ToolDispatcher`, reused as-is), and posts
+       the result to the chat.
+     - **Reject** → sends nothing to the server, cancels the rest of the
+       plan, and posts `Tool "<name>" was rejected. No changes were made.`
+       to the chat.
+     - A tool that fails once approved (`isError: true`, or a
+       transport-level failure) also stops any remaining steps and
+       reports the failure to the chat.
 
-No approval is requested for the no-tool / plain-chat path, since nothing
-executes there.
+The plan preview is not a native modal — it renders in the chat webview
+itself via a `showPlan` message, and the webview posts a `planDecision`
+message back once the user clicks a button. `WebviewPlanApprover`
+correlates that one round trip per plan (see `planApproval.ts`).
 
 ---
 
@@ -203,10 +231,14 @@ output in `out/`. The MCP connection and chat tests use a fake child
 process / fake MCP sender (no real `python` process is spawned), so they
 run without Pearl's Python dependencies installed.
 
-`chatApproval.integration.test.ts` is a step above the per-module unit
-tests: it drives the real `MCPConnection` (talking JSON-RPC over a fake
-child process, exactly as it would over a real one) with the real
-`ChatController`/`planClient`/`toolCallClient`, verifying the full
-plan → approve/reject → `tools/call` (or `pearl/chat` fallback) pipeline
-end-to-end — everything except the actual `vscode.Webview` and a real
-Python process.
+`chatApproval.integration.test.ts` and `planVisualization.integration.test.ts`
+are a step above the per-module unit tests: they drive the real
+`MCPConnection` (talking JSON-RPC over a fake child process, exactly as it
+would over a real one) together with the real `ChatController`,
+`planClient`, `toolCallClient`, and `WebviewPlanApprover`, verifying the
+full plan preview → Execute Plan/Cancel → per-tool approve/reject →
+`tools/call` (or `pearl/chat` fallback) pipeline end-to-end — everything
+except the actual `vscode.Webview` and a real Python process. In
+particular, `planVisualization.integration.test.ts` asserts that the
+`showPlan` message reaches the webview, and that `tools/call` is never
+sent over the wire, before a decision is made or after `Cancel`.

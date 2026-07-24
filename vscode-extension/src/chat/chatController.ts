@@ -6,17 +6,22 @@
  *      would do, without executing anything yet.
  *   2. If no tool is needed, reply conversationally (via the
  *      existing `pearl/chat`), unchanged from before this feature.
- *   3. Otherwise, for each proposed tool step, request approval
- *      (name + arguments) before ever calling `tools/call`. A
- *      rejection cancels the rest of the plan cleanly and reports
- *      that back to the chat — no tool call is ever sent for a
- *      rejected step, and no further steps run after a rejection.
+ *   3. Otherwise, before requesting any per-tool approval, show the
+ *      complete plan and ask for a single Execute Plan / Cancel
+ *      decision. Cancel stops here — no tool approvals or tool
+ *      executions occur. Execute Plan continues into the existing
+ *      per-tool approval loop, unchanged.
+ *   4. For each proposed tool step, request approval (name +
+ *      arguments) before ever calling `tools/call`. A rejection
+ *      cancels the rest of the plan cleanly and reports that back
+ *      to the chat — no tool call is ever sent for a rejected step,
+ *      and no further steps run after a rejection.
  *
  * Deliberately independent of the real `vscode.Webview` /
  * `MCPConnection` types (structural `RequestSender` + injectable
- * `ToolApprover` only), so this — the actual behavior worth testing
- * — is unit testable without a webview, a real MCP connection, or a
- * real approval dialog.
+ * `ToolApprover`/`PlanApprover` only), so this — the actual behavior
+ * worth testing — is unit testable without a webview, a real MCP
+ * connection, or real approval UI.
  */
 
 import { sendChatMessage } from "../mcp/chatClient";
@@ -24,6 +29,7 @@ import { PlannedStep, planOnly } from "../mcp/planClient";
 import { RequestSender } from "../mcp/requestSender";
 import { ToolCallResult, callTool } from "../mcp/toolCallClient";
 import { ToolApprover } from "./approval";
+import { PlanApprover } from "./planApproval";
 
 export type ChatRole = "user" | "assistant" | "error";
 
@@ -45,7 +51,8 @@ export class ChatController {
   constructor(
     private readonly connection: RequestSender,
     private readonly post: PostToWebview,
-    private readonly approveTool: ToolApprover
+    private readonly approveTool: ToolApprover,
+    private readonly approvePlan: PlanApprover
   ) {}
 
   getHistory(): readonly ChatMessage[] {
@@ -76,6 +83,16 @@ export class ChatController {
 
     if (actionable.length === 0) {
       await this.replyConversationally(trimmed);
+      return;
+    }
+
+    const planDecision = await this.approvePlan(actionable);
+
+    if (planDecision === "cancel") {
+      this.addAndPost({
+        role: "assistant",
+        text: "Plan cancelled. No changes were made.",
+      });
       return;
     }
 

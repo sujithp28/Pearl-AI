@@ -1,9 +1,14 @@
 /**
  * Static HTML for the Pearl chat webview.
  *
- * Deliberately simple: a message list, an input box, and a send
- * button. No markdown rendering and no streaming yet — messages are
- * inserted as plain text, in full, once a complete reply arrives.
+ * Deliberately simple: a message list, an input box, a send button,
+ * and (before any tool approval) a plan preview with "Execute Plan"
+ * / "Cancel" actions. No markdown rendering and no streaming yet —
+ * messages are inserted as plain text, in full, once a complete
+ * reply arrives. Long tool arguments in the plan preview are
+ * collapsed by default (a plain `<details>` element — the
+ * "collapsed if long" decision itself is made host-side, in
+ * `planFormatting.ts`; this script only renders what it's given).
  *
  * A pure string-producing function (no `vscode` dependency), so its
  * structure can be unit tested directly.
@@ -62,6 +67,43 @@ export function getChatHtml(): string {
     padding: 4px 12px;
     cursor: pointer;
   }
+  .plan {
+    border: 1px solid var(--vscode-panel-border, #444);
+    border-radius: 4px;
+    padding: 8px;
+    margin-bottom: 8px;
+  }
+  .plan-header {
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+  .plan-step {
+    margin: 4px 0;
+  }
+  .plan-step-title {
+    font-weight: bold;
+  }
+  .plan pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin: 4px 0 0 0;
+  }
+  .plan-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+  }
+  .plan-actions button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 4px 12px;
+    cursor: pointer;
+  }
+  .plan-actions button:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
 </style>
 </head>
 <body>
@@ -87,6 +129,71 @@ export function getChatHtml(): string {
         messagesEl.scrollTop = messagesEl.scrollHeight;
       }
 
+      function appendPlan(steps) {
+        const container = document.createElement("div");
+        container.className = "plan";
+
+        const header = document.createElement("div");
+        header.className = "plan-header";
+        header.textContent = "Proposed plan:";
+        container.appendChild(header);
+
+        steps.forEach(function (step) {
+          const stepEl = document.createElement("div");
+          stepEl.className = "plan-step";
+
+          const title = document.createElement("div");
+          title.className = "plan-step-title";
+          title.textContent = "Step " + step.index + ": " + step.tool;
+          stepEl.appendChild(title);
+
+          if (step.collapsed) {
+            const details = document.createElement("details");
+            const summary = document.createElement("summary");
+            summary.textContent = "Arguments";
+            details.appendChild(summary);
+            const pre = document.createElement("pre");
+            pre.textContent = step.argumentsText;
+            details.appendChild(pre);
+            stepEl.appendChild(details);
+          } else {
+            const pre = document.createElement("pre");
+            pre.textContent = step.argumentsText;
+            stepEl.appendChild(pre);
+          }
+
+          container.appendChild(stepEl);
+        });
+
+        const actions = document.createElement("div");
+        actions.className = "plan-actions";
+
+        const executeButton = document.createElement("button");
+        executeButton.textContent = "Execute Plan";
+        const cancelButton = document.createElement("button");
+        cancelButton.textContent = "Cancel";
+
+        function decide(decision) {
+          executeButton.disabled = true;
+          cancelButton.disabled = true;
+          vscode.postMessage({ type: "planDecision", decision: decision });
+        }
+
+        executeButton.addEventListener("click", function () {
+          decide("execute");
+        });
+        cancelButton.addEventListener("click", function () {
+          decide("cancel");
+        });
+
+        actions.appendChild(executeButton);
+        actions.appendChild(cancelButton);
+        container.appendChild(actions);
+
+        messagesEl.appendChild(container);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
       function send() {
         const text = inputEl.value;
         if (!text.trim()) {
@@ -107,6 +214,8 @@ export function getChatHtml(): string {
         const data = event.data;
         if (data && data.type === "addMessage") {
           appendMessage(data.message);
+        } else if (data && data.type === "showPlan") {
+          appendPlan(data.steps);
         }
       });
     })();

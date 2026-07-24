@@ -2,11 +2,17 @@ import * as vscode from "vscode";
 import { MCPConnection } from "../mcp/connection";
 import { ChatController } from "./chatController";
 import { getChatHtml } from "./chatHtml";
+import { PlanDecision, WebviewPlanApprover } from "./planApproval";
 import { showToolApprovalDialog } from "./vscodeToolApprover";
 
 interface WebviewInboundMessage {
   type?: string;
   text?: string;
+  decision?: string;
+}
+
+function isPlanDecision(value: unknown): value is PlanDecision {
+  return value === "execute" || value === "cancel";
 }
 
 /**
@@ -21,24 +27,35 @@ export class ChatPanel {
 
   private readonly panel: vscode.WebviewPanel;
   private readonly controller: ChatController;
+  private readonly planApprover: WebviewPlanApprover;
   private readonly disposables: vscode.Disposable[] = [];
 
   private constructor(panel: vscode.WebviewPanel, connection: MCPConnection) {
     this.panel = panel;
     this.panel.webview.html = getChatHtml();
 
+    this.planApprover = new WebviewPlanApprover((message) => {
+      void this.panel.webview.postMessage(message);
+    });
+
     this.controller = new ChatController(
       connection,
       (message) => {
         void this.panel.webview.postMessage(message);
       },
-      showToolApprovalDialog
+      showToolApprovalDialog,
+      this.planApprover.requestApproval
     );
 
     this.panel.webview.onDidReceiveMessage(
       (message: WebviewInboundMessage) => {
         if (message?.type === "sendMessage" && typeof message.text === "string") {
           void this.controller.handleUserMessage(message.text);
+        } else if (
+          message?.type === "planDecision" &&
+          isPlanDecision(message.decision)
+        ) {
+          this.planApprover.resolveDecision(message.decision);
         }
       },
       undefined,
