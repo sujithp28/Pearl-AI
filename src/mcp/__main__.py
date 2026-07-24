@@ -15,6 +15,7 @@ from src.llm.client import LLMClient
 from src.main import build_registry
 from src.mcp.server import MCPServer
 from src.memory import Memory
+from src.tools.repo_tools import build_startup_index
 
 
 def main() -> None:
@@ -31,6 +32,7 @@ def main() -> None:
     )
 
     registry = build_registry()
+    build_startup_index()
     dispatcher = ToolDispatcher(registry)
     memory = Memory()
     llm = LLMClient()

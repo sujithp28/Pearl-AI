@@ -27,6 +27,7 @@ from src.tools.file_tools import (
 )
 from src.tools.registry import ToolRegistry
 from src.tools.repo_tools import (
+    explain_file,
     find_references,
     find_symbol,
     index_repository,
@@ -79,6 +80,7 @@ def build_registry() -> ToolRegistry:
     registry.register(find_references)
     registry.register(search_text)
     registry.register(summarize_project)
+    registry.register(explain_file)
 
     # Shell tools
     registry.register(execute_shell)

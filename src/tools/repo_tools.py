@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import logging
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -76,44 +77,126 @@ def _iter_files(
     return files
 
 
-def _index_symbols(root: Path) -> dict[str, list[dict[str, Any]]]:
+def _parse_python(file_path: Path) -> ast.AST | None:
     """
-    Build a symbol index (name -> definition sites) for every Python
-    file under `root`.
+    Parse `file_path` as Python source, or return None (logging a
+    warning) if it can't be read or parsed.
     """
 
-    index: dict[str, list[dict[str, Any]]] = {}
+    try:
+        source = file_path.read_text(encoding="utf-8")
+        return ast.parse(source, filename=str(file_path))
+    except (SyntaxError, UnicodeDecodeError) as exc:
+        logger.warning("Skipping unparsable file %s: %s", file_path, exc)
+        return None
 
-    for file_path in _iter_files(root, SOURCE_EXTENSIONS):
-        try:
-            source = file_path.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=str(file_path))
-        except (SyntaxError, UnicodeDecodeError) as exc:
-            logger.warning(
-                "Skipping unparsable file %s: %s", file_path, exc
+
+def _extract_definitions_and_imports(
+    tree: ast.AST,
+) -> tuple[list[tuple[str, int, str]], list[str]]:
+    """
+    Walk `tree` once and return `(definitions, imports)`, where each
+    definition is `(name, line, "function" | "class")` and each
+    import is a dotted module/name string (e.g. `"pathlib.Path"`).
+    """
+
+    definitions: list[tuple[str, int, str]] = []
+    imports: list[str] = []
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            kind = "class" if isinstance(node, ast.ClassDef) else "function"
+            definitions.append((node.name, node.lineno, kind))
+        elif isinstance(node, ast.Import):
+            imports.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            prefix = "." * node.level
+            imports.extend(
+                f"{prefix}{module}.{alias.name}" if module else f"{prefix}{alias.name}"
+                for alias in node.names
             )
+
+    return definitions, imports
+
+
+@dataclass
+class RepositoryIndex:
+    """
+    A cached snapshot of one workspace directory: its source files,
+    the functions/classes defined in them, and their imports.
+    """
+
+    root: Path
+    files: list[str] = field(default_factory=list)
+    symbols: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    imports: dict[str, list[str]] = field(default_factory=dict)
+
+
+# Indexed once per workspace root and reused by find_symbol,
+# find_references-adjacent lookups, index_repository, and
+# summarize_project, instead of re-walking and re-parsing the
+# filesystem on every call. Primed on server startup by
+# `build_startup_index()`, and otherwise built lazily on first use.
+_INDEX_CACHE: dict[Path, RepositoryIndex] = {}
+
+
+def _build_index(root: Path) -> RepositoryIndex:
+    """
+    Parse every source file under `root` once and build a
+    `RepositoryIndex` of its files, symbols, and imports.
+    """
+
+    files = _iter_files(root, SOURCE_EXTENSIONS)
+    symbols: dict[str, list[dict[str, Any]]] = {}
+    imports: dict[str, list[str]] = {}
+
+    for file_path in files:
+        tree = _parse_python(file_path)
+
+        if tree is None:
             continue
 
-        for node in ast.walk(tree):
-            if isinstance(
-                node,
-                (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
-            ):
-                kind = (
-                    "class"
-                    if isinstance(node, ast.ClassDef)
-                    else "function"
-                )
+        rel = str(file_path.relative_to(root))
+        definitions, file_imports = _extract_definitions_and_imports(tree)
 
-                index.setdefault(node.name, []).append(
-                    {
-                        "file": str(file_path.relative_to(root)),
-                        "line": node.lineno,
-                        "type": kind,
-                    }
-                )
+        for name, line, kind in definitions:
+            symbols.setdefault(name, []).append(
+                {"file": rel, "line": line, "type": kind}
+            )
+
+        if file_imports:
+            imports[rel] = file_imports
+
+    return RepositoryIndex(
+        root=root,
+        files=[str(file_path.relative_to(root)) for file_path in files],
+        symbols=symbols,
+        imports=imports,
+    )
+
+
+def _get_index(root: Path) -> RepositoryIndex:
+    """
+    Return the cached `RepositoryIndex` for `root`, building it on
+    first access.
+    """
+
+    index = _INDEX_CACHE.get(root)
+
+    if index is None:
+        index = _build_index(root)
+        _INDEX_CACHE[root] = index
 
     return index
+
+
+def _index_symbols(root: Path) -> dict[str, list[dict[str, Any]]]:
+    """
+    Return the symbol index (name -> definition sites) for `root`.
+    """
+
+    return _get_index(root).symbols
 
 
 def _search(
@@ -331,3 +414,87 @@ def summarize_project(path: str = ".") -> dict[str, Any]:
             item.name for item in root.iterdir()
         ),
     }
+
+
+@tool(
+    description=(
+        "Explain a source file: its imports, classes, and functions, "
+        "with line numbers."
+    ),
+    parameters={
+        "path": "str",
+    },
+    returns="dict",
+)
+def explain_file(path: str) -> dict[str, Any]:
+    """
+    Return a structural breakdown of a single file: its imports,
+    classes, and functions (with line numbers), plus its line count.
+    """
+
+    file_path = _ensure_within_workspace(path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(path)
+
+    if not file_path.is_file():
+        raise IsADirectoryError(path)
+
+    logger.info("Explaining file: %s", file_path)
+
+    try:
+        source = file_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Cannot read {path} as UTF-8 text.") from exc
+
+    classes: list[dict[str, Any]] = []
+    functions: list[dict[str, Any]] = []
+    imports: list[str] = []
+
+    if file_path.suffix in SOURCE_EXTENSIONS:
+        try:
+            tree = ast.parse(source, filename=str(file_path))
+        except SyntaxError as exc:
+            raise ValueError(f"Cannot parse {path}: {exc}") from exc
+
+        definitions, imports = _extract_definitions_and_imports(tree)
+
+        for name, line, kind in definitions:
+            target = classes if kind == "class" else functions
+            target.append({"name": name, "line": line})
+
+    return {
+        "file": path,
+        "total_lines": len(source.splitlines()),
+        "imports": imports,
+        "classes": classes,
+        "functions": functions,
+    }
+
+
+def build_startup_index(path: str = ".") -> None:
+    """
+    Eagerly build and cache the repository index for `path` (the
+    workspace root by default), so the first `find_symbol` /
+    `find_references` / `explain_file` call doesn't pay the parsing
+    cost. Reuses `index_repository()` — the same tool a client could
+    call directly — purely for its side effect of populating
+    `_INDEX_CACHE`.
+
+    Failures (e.g. an inaccessible path) are logged, not raised: a
+    stale or missing startup index degrades repository-intelligence
+    tools to their existing on-demand behavior rather than blocking
+    server startup.
+    """
+
+    try:
+        summary = index_repository(path)
+    except OSError as exc:
+        logger.warning("Could not build startup repository index: %s", exc)
+        return
+
+    logger.info(
+        "Startup repository index built: %d files, %d symbols.",
+        summary["files_indexed"],
+        summary["unique_symbols"],
+    )

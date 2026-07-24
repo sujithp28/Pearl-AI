@@ -1,6 +1,8 @@
 import pytest
 
 from src.tools.repo_tools import (
+    build_startup_index,
+    explain_file,
     find_references,
     find_symbol,
     index_repository,
@@ -233,3 +235,108 @@ def test_summarize_project_reports_counts(tmp_path):
 def test_summarize_project_rejects_path_outside_workspace(tmp_path):
     with pytest.raises(PermissionError):
         summarize_project("..")
+
+
+# ---------------------------------------------------------------------
+# explain_file
+# ---------------------------------------------------------------------
+
+
+def test_explain_file_reports_imports_classes_and_functions(tmp_path):
+    _write_sample_project(tmp_path)
+
+    explanation = explain_file("pkg/a.py")
+
+    assert explanation["file"] == "pkg/a.py"
+    assert explanation["total_lines"] == 7
+    assert explanation["imports"] == []
+    assert explanation["classes"] == [{"name": "Bar", "line": 5}]
+    assert explanation["functions"] == [
+        {"name": "foo", "line": 1},
+        {"name": "method", "line": 6},
+    ]
+
+
+def test_explain_file_reports_imports(tmp_path):
+    _write_sample_project(tmp_path)
+
+    explanation = explain_file("pkg/b.py")
+
+    assert explanation["imports"] == ["pkg.a.foo"]
+    assert explanation["functions"] == [{"name": "baz", "line": 4}]
+    assert explanation["classes"] == []
+
+
+def test_explain_file_handles_non_python_file(tmp_path):
+    _write_sample_project(tmp_path)
+
+    explanation = explain_file("notes.txt")
+
+    assert explanation["imports"] == []
+    assert explanation["classes"] == []
+    assert explanation["functions"] == []
+    assert explanation["total_lines"] == 1
+
+
+def test_explain_file_missing_file_raises(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        explain_file("does-not-exist.py")
+
+
+def test_explain_file_rejects_directory(tmp_path):
+    _write_sample_project(tmp_path)
+
+    with pytest.raises(IsADirectoryError):
+        explain_file("pkg")
+
+
+def test_explain_file_rejects_path_outside_workspace(tmp_path):
+    with pytest.raises(PermissionError):
+        explain_file("../outside.py")
+
+
+def test_explain_file_rejects_unparsable_python(tmp_path):
+    (tmp_path / "broken.py").write_text("def broken(:\n")
+
+    with pytest.raises(ValueError):
+        explain_file("broken.py")
+
+
+# ---------------------------------------------------------------------
+# Repository index caching / startup priming
+# ---------------------------------------------------------------------
+
+
+def test_find_symbol_reuses_cached_index_within_a_session(tmp_path):
+    _write_sample_project(tmp_path)
+
+    first = find_symbol("foo")
+    assert first == [{"file": "pkg/a.py", "line": 1, "type": "function"}]
+
+    # Appending a new definition doesn't change the result: the index
+    # for this root was already built and cached by the first call.
+    (tmp_path / "pkg" / "a.py").write_text(
+        (tmp_path / "pkg" / "a.py").read_text()
+        + "\n\ndef newly_added():\n    return 2\n"
+    )
+
+    second = find_symbol("newly_added")
+    assert second == []
+
+
+def test_build_startup_index_primes_the_cache(tmp_path):
+    _write_sample_project(tmp_path)
+
+    build_startup_index()
+
+    # Delete the file on disk after priming: find_symbol still
+    # resolves it from the cache built during startup, proving the
+    # index was built eagerly rather than lazily on first lookup.
+    (tmp_path / "pkg" / "a.py").unlink()
+
+    locations = find_symbol("foo")
+    assert locations == [{"file": "pkg/a.py", "line": 1, "type": "function"}]
+
+
+def test_build_startup_index_does_not_raise_for_missing_path(tmp_path):
+    build_startup_index("does-not-exist")

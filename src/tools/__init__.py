@@ -29,6 +29,7 @@ from .models import Tool
 from .registry import ToolRegistry
 
 from .repo_tools import (
+    explain_file,
     find_references,
     find_symbol,
     index_repository,
@@ -79,6 +80,7 @@ __all__ = [
     "find_references",
     "search_text",
     "summarize_project",
+    "explain_file",
 
     # Shell tools
     "execute_shell",
