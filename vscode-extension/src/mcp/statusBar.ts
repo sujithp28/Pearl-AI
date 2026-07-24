@@ -8,6 +8,13 @@ const STATUS_TEXT: Record<ConnectionStatus, string> = {
   error: "$(error) Pearl: Connection Error",
 };
 
+const STATUS_LABEL: Record<ConnectionStatus, string> = {
+  connecting: "Connecting",
+  connected: "Connected",
+  disconnected: "Disconnected",
+  error: "Connection Error",
+};
+
 /**
  * The subset of `vscode.StatusBarItem` this wrapper needs, so it
  * can be unit tested with a plain fake object instead of a real
@@ -21,12 +28,57 @@ export interface StatusBarLike {
   show(): void;
 }
 
+/**
+ * Static, rarely-changing context shown alongside connection status:
+ * which LLM provider Pearl is configured to use, and which workspace
+ * is open. Both are display-only — read from extension settings /
+ * the VS Code workspace API, never queried from the MCP server.
+ */
+export interface StatusBarContext {
+  provider?: string;
+  workspace?: string;
+}
+
 export class MCPStatusBar {
+  private context: StatusBarContext = {};
+
   constructor(private readonly item: StatusBarLike) {}
 
+  setContext(context: StatusBarContext): void {
+    this.context = context;
+  }
+
   setStatus(status: ConnectionStatus, detail?: string): void {
-    this.item.text = STATUS_TEXT[status];
-    this.item.tooltip = detail ?? STATUS_TEXT[status];
+    const segments = [STATUS_TEXT[status]];
+
+    if (this.context.provider) {
+      segments.push(this.context.provider);
+    }
+
+    if (this.context.workspace) {
+      segments.push(this.context.workspace);
+    }
+
+    this.item.text = segments.join("  ·  ");
+    this.item.tooltip = this.buildTooltip(status, detail);
     this.item.show();
+  }
+
+  private buildTooltip(status: ConnectionStatus, detail?: string): string {
+    const lines = [`Pearl: ${STATUS_LABEL[status]}`];
+
+    if (detail) {
+      lines.push(detail);
+    }
+
+    if (this.context.provider) {
+      lines.push(`Provider: ${this.context.provider}`);
+    }
+
+    if (this.context.workspace) {
+      lines.push(`Workspace: ${this.context.workspace}`);
+    }
+
+    return lines.join("\n");
   }
 }

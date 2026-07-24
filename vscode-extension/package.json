@@ -61,6 +61,11 @@
           "type": "string",
           "default": "python3",
           "description": "Path to the Python interpreter used to run Pearl's MCP server (`<pythonPath> -m src.mcp`). Point this at the interpreter inside the Pearl repo's virtual environment if 'python3' does not have Pearl's dependencies installed."
+        },
+        "pearl.provider": {
+          "type": "string",
+          "default": "",
+          "description": "Informational only: the LLM provider Pearl's MCP server is configured to use (e.g. claude, openai, ollama, omniroute), shown in the status bar. This mirrors your server-side PEARL_LLM_PROVIDER setting but is not read from the server itself — set it to match if you want it displayed."
         }
       }
     }

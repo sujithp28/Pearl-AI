@@ -9,7 +9,11 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
-import { ChatController, ChatMessage } from "../chat/chatController";
+import {
+  ChatController,
+  ChatMessage,
+  PostToWebview,
+} from "../chat/chatController";
 import { WebviewPlanApprover } from "../chat/planApproval";
 import { ConnectionStatus, MCPConnection } from "../mcp/connection";
 
@@ -100,14 +104,31 @@ function collectingPost<T extends { type: string }>(): {
   return { messages, post: (m) => messages.push(m) };
 }
 
+function collectingChatPost(): {
+  messages: ChatMessage[];
+  post: PostToWebview;
+} {
+  const messages: ChatMessage[] = [];
+  return {
+    messages,
+    post: (m) => {
+      if (m.type === "addMessage") {
+        messages.push(m.message);
+      }
+    },
+  };
+}
+
+/** Strip host-generated `html`/`timestamp` fields for behavior assertions. */
+function strip(messages: ChatMessage[]): Array<{ role: string; text: string }> {
+  return messages.map((m) => ({ role: m.role, text: m.text }));
+}
+
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 test("integration: the plan is shown to the webview before any tool approval, and Execute Plan runs it", async () => {
   const { connection, child } = await connectFakeServer();
-  const { messages: chatMessages, post: postChat } = collectingPost<{
-    type: "addMessage";
-    message: ChatMessage;
-  }>();
+  const { messages: chatMessages, post: postChat } = collectingChatPost();
   const { messages: webviewMessages, post: postWebview } = collectingPost<{
     type: "showPlan";
     steps: unknown[];
@@ -118,7 +139,7 @@ test("integration: the plan is shown to the webview before any tool approval, an
 
   const controller = new ChatController(
     connection,
-    (m) => postChat(m),
+    postChat,
     async (request) => {
       toolApprovalRequests.push(request);
       return "approved";
@@ -178,7 +199,7 @@ test("integration: the plan is shown to the webview before any tool approval, an
   await handling;
 
   assert.equal(toolApprovalRequests.length, 1);
-  assert.deepEqual(chatMessages.map((m) => m.message), [
+  assert.deepEqual(strip(chatMessages), [
     { role: "user", text: "read a.txt" },
     { role: "assistant", text: 'Ran "read_file":\nfile contents' },
   ]);
@@ -188,10 +209,7 @@ test("integration: the plan is shown to the webview before any tool approval, an
 
 test("integration: Cancel from the plan preview performs no tool approvals or tool calls", async () => {
   const { connection, child } = await connectFakeServer();
-  const { messages: chatMessages, post: postChat } = collectingPost<{
-    type: "addMessage";
-    message: ChatMessage;
-  }>();
+  const { messages: chatMessages, post: postChat } = collectingChatPost();
   const { post: postWebview } = collectingPost<{
     type: "showPlan";
     steps: unknown[];
@@ -202,7 +220,7 @@ test("integration: Cancel from the plan preview performs no tool approvals or to
 
   const controller = new ChatController(
     connection,
-    (m) => postChat(m),
+    postChat,
     async (request) => {
       toolApprovalRequests.push(request);
       return "approved";
@@ -236,7 +254,7 @@ test("integration: Cancel from the plan preview performs no tool approvals or to
     "tools/call must never be sent after cancelling the plan"
   );
 
-  assert.deepEqual(chatMessages.map((m) => m.message), [
+  assert.deepEqual(strip(chatMessages), [
     { role: "user", text: "delete a.txt and b.txt" },
     {
       role: "assistant",

@@ -1,17 +1,19 @@
 # Pearl — VS Code Extension
 
 This extension registers one command, connects to Pearl's existing MCP
-server over stdio (showing connection status in the status bar), opens a
-simple chat webview that talks to Pearl through that same connection —
-showing the full proposed plan for review before gating each tool call
-behind an approval dialog — and provides a read-only Memory view (in its
-own "Pearl" activity bar container) showing conversation history, task
-history, execution history, and project facts, refreshable on demand.
+server over stdio (showing connection status, active provider, and
+workspace in the status bar), opens a polished chat webview that talks to
+Pearl through that same connection — with chat bubbles, timestamps, a
+loading indicator, a tool-execution timeline, Markdown rendering, and the
+full proposed plan shown as a card before gating each tool call behind an
+approval dialog — and provides a read-only Memory view (in its own "Pearl"
+activity bar container) showing conversation history, task history,
+execution history, and project facts, refreshable on demand.
 
 **Not implemented yet (by design, later phases):**
 
-- No markdown rendering — messages render as plain text.
-- No streaming — replies appear once complete.
+- No streaming — replies appear once complete (a loading indicator shows
+  in the meantime; see "Chat UI" below).
 
 ---
 
@@ -37,6 +39,11 @@ vscode-extension/
 │   │                             `tools/call` (pure).
 │   ├── chat/
 │   │   ├── approval.ts          # Per-tool approval types (`ToolApprover`, pure).
+│   │   ├── markdown.ts          # Self-contained Markdown -> escaped HTML
+│   │   │                         renderer: code blocks, inline code, bold/
+│   │   │                         italic, lists, tables (pure, no dependency).
+│   │   ├── timeline.ts          # Tool-execution timeline stage constants
+│   │   │                         and labels (pure).
 │   │   ├── planFormatting.ts    # Formats plan steps for display: step
 │   │   │                         number, tool, args text, collapse-if-long
 │   │   │                         decision (pure, independently testable).
@@ -47,11 +54,12 @@ vscode-extension/
 │   │   ├── chatController.ts    # Chat message flow: plan -> show full plan
 │   │   │                         for Execute/Cancel -> (if executed) approve
 │   │   │                         each tool step -> execute or reject -> post
-│   │   │                         messages (pure, no `vscode`/webview).
-│   │   ├── chatHtml.ts          # Static webview HTML: message list, input,
-│   │   │                         send button, plan preview with collapsible
-│   │   │                         arguments and Execute Plan/Cancel buttons
-│   │   │                         (pure string builder).
+│   │   │                         messages, loading indicators, and timeline
+│   │   │                         stage updates (pure, no `vscode`/webview).
+│   │   ├── chatHtml.ts          # Static webview HTML: welcome screen with
+│   │   │                         example prompts, bubble message list with
+│   │   │                         timestamps, loading indicator, timeline,
+│   │   │                         plan card, input row (pure string builder).
 │   │   ├── chatPanel.ts         # Owns the real `vscode.WebviewPanel` and
 │   │   │                         wires it to `ChatController`/`WebviewPlanApprover`.
 │   │   └── vscodeToolApprover.ts # The real per-tool approval dialog
@@ -71,6 +79,8 @@ vscode-extension/
 │       ├── chatClient.test.ts
 │       ├── planClient.test.ts
 │       ├── toolCallClient.test.ts
+│       ├── markdown.test.ts
+│       ├── timeline.test.ts
 │       ├── planFormatting.test.ts
 │       ├── planApproval.test.ts
 │       ├── memoryClient.test.ts
@@ -119,8 +129,12 @@ about the server, including how tools actually execute, is unchanged.)
   (crashes on import, wrong working directory, etc.), is treated as a
   startup failure — not a crash of the extension.
 - **Status bar**: shows `Pearl: Connecting...`, `Pearl: Connected`,
-  `Pearl: Connection Error`, or `Pearl: Disconnected`, with the failure
-  detail (if any) as the tooltip.
+  `Pearl: Connection Error`, or `Pearl: Disconnected`, alongside the
+  configured provider and current workspace name (e.g. `Pearl: Connected
+  · omniroute · pearl-agent`), with full detail in the tooltip. Provider
+  and workspace are set once via `MCPStatusBar.setContext()` — the
+  workspace name comes from the VS Code workspace API; the provider name
+  is *not* queried from the server (see `pearl.provider` below).
 - **Automatic reconnect**: if the server process exits unexpectedly (not
   via the extension's own `stop()`), the extension waits 2s and retries.
   This repeats until it either connects or the extension is deactivated.
@@ -133,6 +147,7 @@ about the server, including how tools actually execute, is unchanged.)
 | Setting | Default | Description |
 |---|---|---|
 | `pearl.pythonPath` | `python3` | Interpreter used to run `-m src.mcp`. Point this at `<repo>/.venv/bin/python` (or wherever Pearl's dependencies are installed) if your system `python3` doesn't have them. |
+| `pearl.provider` | `""` (unset) | **Informational only**: the LLM provider your server is configured for (e.g. `claude`, `openai`, `ollama`, `omniroute`), shown in the status bar. This is *not* read from the server (the extension does not query it) — set it to match your server-side `PEARL_LLM_PROVIDER` if you want it displayed. |
 
 The server is spawned with `cwd` set to the first VS Code workspace
 folder, since `python -m src.mcp` must run from the Pearl repo root.
@@ -141,52 +156,94 @@ folder, since `python -m src.mcp` must run from the Pearl repo root.
 
 ## Chat webview
 
-Running the **"Pearl: Open Chat"** command opens a webview panel with a
-message list, a text input, and a send button. Re-running the command
-reveals the existing panel instead of opening a second one. Messages
-render as plain text with no markdown formatting and no incremental/
-streaming updates — both deferred to later phases.
+Running the **"Pearl: Open Chat"** command opens a webview panel.
+Re-running the command reveals the existing panel instead of opening a
+second one.
 
-Typing a message and pressing **Enter** (or clicking **Send**) runs this
-flow (`ChatController.handleUserMessage`):
+### Welcome screen
 
-1. Renders the message immediately under the `user` role.
+Until the first message is sent, the panel shows a welcome screen instead
+of an empty message list:
+
+> 👋 **Welcome to Pearl**
+> You can ask me to: Explain code · Fix bugs · Edit files · Run tests ·
+> Generate projects
+
+...with **4 clickable example prompts** ("Explain this code", "Fix a bug
+in my code", "Edit a file", "Run my tests") — clicking one sends it
+immediately, same as typing it and pressing Enter.
+
+### Chat UI
+
+Messages render as **chat bubbles** — right-aligned for the user,
+left-aligned for the assistant/errors, colored via VS Code theme
+variables (`--vscode-button-background`, `--vscode-editorWidget-background`,
+`--vscode-inputValidation-errorBackground`, ...) so both light and dark
+themes look correct with no separate stylesheet. Each bubble shows a
+**timestamp** (formatted client-side from an ISO string `ChatController`
+attaches to every message) and its content rendered from **Markdown**
+(`markdown.ts` — a small, dependency-free renderer producing HTML that's
+escaped *before* any markup is applied, so it's safe to insert via
+`innerHTML`): fenced **code blocks** (with a `language-<lang>` class),
+**inline code**, bold/italic, **ordered/unordered lists**, and **tables**.
+While waiting for a response, a bouncing-dots **loading indicator**
+appears as its own bubble and is removed once a reply, error, or plan
+arrives. The message list always **auto-scrolls** to the latest content.
+
+**Error messages** render as a distinct warning-styled card (a bordered,
+tinted bubble with a ⚠️ marker) rather than plain colored text.
+
+### Sending a message
+
+Typing a message and pressing **Enter** (or clicking **Send**, or an
+example prompt) runs this flow (`ChatController.handleUserMessage`):
+
+1. Renders the message immediately under the `user` role; the
+   **tool-execution timeline** starts at **Planning...**.
 2. Asks the *existing* `Planner` what it would do, via the `pearl/planOnly`
    JSON-RPC method added in Step 4 (reuses `Planner.plan()` — previously
    only used internally by `Planner.run()` — without dispatching or
    recording anything; see `src/mcp/server.py`, unchanged in this step).
-3. **If no tool is needed**, falls back to the plain conversational
-   `pearl/chat` method from Step 3, unchanged — no plan preview and no
-   approval of any kind, since nothing would execute.
-4. **If one or more tools are proposed**, before any tool approval is
-   requested, the **complete plan** is shown in the chat as its own block
-   (`planFormatting.ts` + `planApproval.ts`, rendered by `appendPlan` in
-   the webview): each step numbered, with its tool name, and its
-   arguments — pretty-printed inline, or collapsed behind a plain
-   `<details>`/"Arguments" toggle when the pretty-printed JSON exceeds 100
-   characters. Below the steps are two buttons: **Execute Plan** and
-   **Cancel**.
-   - **Cancel** → posts `Plan cancelled. No changes were made.` to the
-     chat. No tool approval is requested and `tools/call` is never sent
-     for any step in the plan.
+3. **If no tool is needed**, the timeline clears and it falls back to the
+   plain conversational `pearl/chat` method from Step 3, unchanged — no
+   plan card and no approval of any kind, since nothing would execute.
+4. **If one or more tools are proposed**, the timeline advances to
+   **Plan Ready** then **Waiting for Approval**, and before any tool
+   approval is requested, the **complete plan** is shown as its own
+   **card** (`planFormatting.ts` + `planApproval.ts`, rendered by
+   `appendPlan` in the webview): each step numbered, with its tool name,
+   and its arguments — pretty-printed inline, or **collapsible** behind a
+   plain `<details>`/"Arguments" toggle when the pretty-printed JSON
+   exceeds 100 characters. Below the steps are two buttons: **Execute
+   Plan** and **Cancel**.
+   - **Cancel** → clears the timeline, posts `Plan cancelled. No changes
+     were made.` to the chat. No tool approval is requested and
+     `tools/call` is never sent for any step in the plan.
    - **Execute Plan** → continues into the existing per-tool approval loop
      from Step 4, **unchanged**: for each step in order —
-     - Shows a modal **approval dialog** (`vscodeToolApprover.ts`) with the
-       tool name and its arguments, and **Approve** / **Reject** buttons.
-     - **Approve** → executes it through the *existing* `tools/call`
-       method (the *existing* `ToolDispatcher`, reused as-is), and posts
-       the result to the chat.
-     - **Reject** → sends nothing to the server, cancels the rest of the
-       plan, and posts `Tool "<name>" was rejected. No changes were made.`
+     - The timeline shows **Waiting for Approval**, then a modal
+       **approval dialog** (`vscodeToolApprover.ts`) with the tool name
+       and its arguments, and **Approve** / **Reject** buttons.
+     - **Approve** → the timeline shows **Running Tool...**; the step
+       executes through the *existing* `tools/call` method (the
+       *existing* `ToolDispatcher`, reused as-is), and the result posts
        to the chat.
+     - **Reject** → clears the timeline, sends nothing to the server,
+       cancels the rest of the plan, and posts `Tool "<name>" was
+       rejected. No changes were made.` to the chat.
      - A tool that fails once approved (`isError: true`, or a
-       transport-level failure) also stops any remaining steps and
-       reports the failure to the chat.
+       transport-level failure) clears the timeline, stops any remaining
+       steps, and reports the failure to the chat as an error card.
+     - If every step succeeds, the timeline finishes at **Completed**.
 
-The plan preview is not a native modal — it renders in the chat webview
+The plan card is not a native modal — it renders in the chat webview
 itself via a `showPlan` message, and the webview posts a `planDecision`
 message back once the user clicks a button. `WebviewPlanApprover`
-correlates that one round trip per plan (see `planApproval.ts`).
+correlates that one round trip per plan (see `planApproval.ts`). The
+timeline and loading indicator are likewise plain `PostToWebview` messages
+(`{type: "timeline", stage}` / `{type: "loading", show}`) that
+`ChatController` posts around each network round trip — they carry no
+control-flow logic themselves.
 
 ---
 

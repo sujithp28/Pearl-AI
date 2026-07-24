@@ -32,22 +32,56 @@ test("setStatus('connected') shows a connected message", () => {
   assert.match(item.text, /Connected/);
 });
 
-test("setStatus('error') includes the provided detail as the tooltip", () => {
+test("setStatus('error') includes the provided detail in the tooltip", () => {
   const item = fakeStatusBarItem();
   const statusBar = new MCPStatusBar(item);
 
   statusBar.setStatus("error", "spawn ENOENT");
 
   assert.match(item.text, /Connection Error/);
-  assert.equal(item.tooltip, "spawn ENOENT");
+  assert.match(String(item.tooltip), /Connection Error/);
+  assert.match(String(item.tooltip), /spawn ENOENT/);
 });
 
-test("setStatus('disconnected') falls back to the status text as tooltip", () => {
+test("setStatus('disconnected') has a tooltip even with no detail", () => {
   const item = fakeStatusBarItem();
   const statusBar = new MCPStatusBar(item);
 
   statusBar.setStatus("disconnected");
 
   assert.match(item.text, /Disconnected/);
-  assert.equal(item.tooltip, item.text);
+  assert.match(String(item.tooltip), /Disconnected/);
+});
+
+test("setContext adds provider and workspace to the status text", () => {
+  const item = fakeStatusBarItem();
+  const statusBar = new MCPStatusBar(item);
+
+  statusBar.setContext({ provider: "omniroute", workspace: "pearl-agent" });
+  statusBar.setStatus("connected");
+
+  assert.match(item.text, /Connected/);
+  assert.match(item.text, /omniroute/);
+  assert.match(item.text, /pearl-agent/);
+});
+
+test("setContext values also appear in the tooltip", () => {
+  const item = fakeStatusBarItem();
+  const statusBar = new MCPStatusBar(item);
+
+  statusBar.setContext({ provider: "claude", workspace: "my-project" });
+  statusBar.setStatus("connected");
+
+  assert.match(String(item.tooltip), /Provider: claude/);
+  assert.match(String(item.tooltip), /Workspace: my-project/);
+});
+
+test("without setContext, no provider/workspace segments are shown", () => {
+  const item = fakeStatusBarItem();
+  const statusBar = new MCPStatusBar(item);
+
+  statusBar.setStatus("connected");
+
+  assert.doesNotMatch(String(item.tooltip), /Provider:/);
+  assert.doesNotMatch(String(item.tooltip), /Workspace:/);
 });

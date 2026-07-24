@@ -10,7 +10,11 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
 import { ApprovalDecision, ToolApprovalRequest } from "../chat/approval";
-import { ChatController, ChatMessage } from "../chat/chatController";
+import {
+  ChatController,
+  ChatMessage,
+  PostToWebview,
+} from "../chat/chatController";
 import { ConnectionStatus, MCPConnection } from "../mcp/connection";
 
 class FakeChildProcess extends EventEmitter {
@@ -95,10 +99,22 @@ async function connectFakeServer(): Promise<{
 
 function collectingPost(): {
   messages: ChatMessage[];
-  post: (m: { type: "addMessage"; message: ChatMessage }) => void;
+  post: PostToWebview;
 } {
   const messages: ChatMessage[] = [];
-  return { messages, post: (m) => messages.push(m.message) };
+  return {
+    messages,
+    post: (m) => {
+      if (m.type === "addMessage") {
+        messages.push(m.message);
+      }
+    },
+  };
+}
+
+/** Strip host-generated `html`/`timestamp` fields for behavior assertions. */
+function strip(messages: ChatMessage[]): Array<{ role: string; text: string }> {
+  return messages.map((m) => ({ role: m.role, text: m.text }));
 }
 
 test("integration: approving a planned tool call sends tools/call over the real MCPConnection", async () => {
@@ -151,7 +167,7 @@ test("integration: approving a planned tool call sends tools/call over the real 
   assert.deepEqual(approvalRequests, [
     { tool: "read_file", arguments: { path: "a.txt" } },
   ]);
-  assert.deepEqual(messages, [
+  assert.deepEqual(strip(messages), [
     { role: "user", text: "read a.txt please" },
     { role: "assistant", text: 'Ran "read_file":\nhello world' },
   ]);
@@ -189,7 +205,7 @@ test("integration: rejecting a planned tool call never sends tools/call", async 
     "tools/call must never be sent for a rejected tool"
   );
 
-  assert.deepEqual(messages, [
+  assert.deepEqual(strip(messages), [
     { role: "user", text: "delete a.txt" },
     {
       role: "assistant",
@@ -228,7 +244,7 @@ test("integration: a plan needing no tool falls back to pearl/chat", async () =>
 
   await handling;
 
-  assert.deepEqual(messages, [
+  assert.deepEqual(strip(messages), [
     { role: "user", text: "just say hi" },
     { role: "assistant", text: "Hi! How can I help?" },
   ]);

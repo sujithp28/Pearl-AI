@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ApprovalDecision, ToolApprovalRequest, ToolApprover } from "../chat/approval";
-import { ChatController, ChatMessage } from "../chat/chatController";
+import {
+  ChatController,
+  ChatMessage,
+  PostToWebview,
+  WebviewMessage,
+} from "../chat/chatController";
 import { PlanApprover, PlanDecision } from "../chat/planApproval";
 import { RequestSender } from "../mcp/requestSender";
 import { PlannedStep } from "../mcp/planClient";
@@ -37,14 +42,27 @@ function fakeSender(handlers: Record<string, Handler>): {
 
 function collectingPost(): {
   messages: ChatMessage[];
-  post: (m: { type: "addMessage"; message: ChatMessage }) => void;
+  events: WebviewMessage[];
+  post: PostToWebview;
 } {
   const messages: ChatMessage[] = [];
+  const events: WebviewMessage[] = [];
 
   return {
     messages,
-    post: (m) => messages.push(m.message),
+    events,
+    post: (m) => {
+      events.push(m);
+      if (m.type === "addMessage") {
+        messages.push(m.message);
+      }
+    },
   };
+}
+
+/** Strip host-generated `html`/`timestamp` fields for behavior assertions. */
+function strip(messages: ChatMessage[]): Array<{ role: string; text: string }> {
+  return messages.map((m) => ({ role: m.role, text: m.text }));
 }
 
 function fixedApprover(decision: ApprovalDecision): {
@@ -94,7 +112,7 @@ test("falls back to pearl/chat when the plan needs no tool", async () => {
   const controller = new ChatController(sender, post, approve, approvePlan);
   await controller.handleUserMessage("hi");
 
-  assert.deepEqual(messages, [
+  assert.deepEqual(strip(messages), [
     { role: "user", text: "hi" },
     { role: "assistant", text: "Hello there." },
   ]);
@@ -120,7 +138,10 @@ test("falls back to pearl/chat when planning itself fails", async () => {
   const controller = new ChatController(sender, post, approve, approvePlan);
   await controller.handleUserMessage("hi");
 
-  assert.deepEqual(messages[1], { role: "assistant", text: "Plain reply." });
+  assert.deepEqual(strip(messages)[1], {
+    role: "assistant",
+    text: "Plain reply.",
+  });
 });
 
 // ---------------------------------------------------------------------
@@ -193,7 +214,7 @@ test("cancelling the plan performs no tool approvals or tool executions", async 
     false,
     "tools/call must never be sent after cancelling the plan"
   );
-  assert.deepEqual(messages[1], {
+  assert.deepEqual(strip(messages)[1], {
     role: "assistant",
     text: "Plan cancelled. No changes were made.",
   });
@@ -213,7 +234,7 @@ test("a single-step plan still goes through the plan preview gate", async () => 
   await controller.handleUserMessage("read a.txt");
 
   assert.equal(planCalls.length, 1);
-  assert.deepEqual(messages[1], {
+  assert.deepEqual(strip(messages)[1], {
     role: "assistant",
     text: "Plan cancelled. No changes were made.",
   });
@@ -250,7 +271,7 @@ test("requests approval with the tool name and arguments before calling tools/ca
     arguments: { path: "a.txt" },
   });
 
-  assert.deepEqual(messages[1], {
+  assert.deepEqual(strip(messages)[1], {
     role: "assistant",
     text: 'Ran "read_file":\nfile contents',
   });
@@ -279,7 +300,7 @@ test("rejecting a tool cancels execution cleanly and reports it to chat", async 
     "tools/call must not be sent for a rejected tool"
   );
 
-  assert.deepEqual(messages[1], {
+  assert.deepEqual(strip(messages)[1], {
     role: "assistant",
     text: 'Tool "delete_file" was rejected. No changes were made.',
   });
@@ -408,4 +429,111 @@ test("trims whitespace from the user message", async () => {
   await controller.handleUserMessage("  hi there  ");
 
   assert.equal(messages[0].text, "hi there");
+});
+
+// ---------------------------------------------------------------------
+// Message metadata (timestamp / rendered html)
+// ---------------------------------------------------------------------
+
+test("every posted message carries an ISO timestamp and rendered html", async () => {
+  const { sender } = fakeSender({
+    "pearl/planOnly": () => ({ steps: [{ tool: "none", arguments: {} }] }),
+    "pearl/chat": () => ({ message: "**bold** reply" }),
+  });
+  const { messages, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("hi");
+
+  for (const message of messages) {
+    assert.match(
+      message.timestamp,
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+    );
+    assert.equal(typeof message.html, "string");
+    assert.ok(message.html.length > 0);
+  }
+
+  assert.match(messages[1].html, /<strong>bold<\/strong>/);
+});
+
+// ---------------------------------------------------------------------
+// Loading indicator / timeline events
+// ---------------------------------------------------------------------
+
+test("loading is shown while waiting and hidden once the conversational reply arrives", async () => {
+  const { sender } = fakeSender({
+    "pearl/planOnly": () => ({ steps: [{ tool: "none", arguments: {} }] }),
+    "pearl/chat": () => ({ message: "hi" }),
+  });
+  const { events, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("hi");
+
+  const loadingEvents = events.filter((e) => e.type === "loading");
+  assert.deepEqual(
+    loadingEvents.map((e) => (e as { show: boolean }).show),
+    [true, false]
+  );
+});
+
+test("timeline progresses through planning, plan_ready, and waiting_approval before a plan decision", async () => {
+  const { sender } = fakeSender({
+    "pearl/planOnly": () => ({
+      steps: [{ tool: "read_file", arguments: { path: "a.txt" } }],
+    }),
+  });
+  const { events, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("cancel");
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("read a.txt");
+
+  const timelineStages = events
+    .filter((e) => e.type === "timeline")
+    .map((e) => (e as { stage: string | null }).stage);
+
+  assert.deepEqual(timelineStages, [
+    "planning",
+    "plan_ready",
+    "waiting_approval",
+    null, // cleared after cancel
+  ]);
+});
+
+test("timeline reaches 'completed' after every step in an executed plan succeeds", async () => {
+  const { sender } = fakeSender({
+    "pearl/planOnly": () => ({
+      steps: [{ tool: "read_file", arguments: { path: "a.txt" } }],
+    }),
+    "tools/call": () => ({
+      content: [{ type: "text", text: "ok" }],
+      isError: false,
+    }),
+  });
+  const { events, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("read a.txt");
+
+  const timelineStages = events
+    .filter((e) => e.type === "timeline")
+    .map((e) => (e as { stage: string | null }).stage);
+
+  assert.deepEqual(timelineStages, [
+    "planning",
+    "plan_ready",
+    "waiting_approval",
+    "waiting_approval",
+    "running_tool",
+    "completed",
+  ]);
 });

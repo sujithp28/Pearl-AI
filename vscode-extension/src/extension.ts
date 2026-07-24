@@ -16,6 +16,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(statusBarItem);
 
   const statusBar = new MCPStatusBar(statusBarItem);
+  statusBar.setContext({
+    provider: getConfiguredProvider(),
+    workspace: getWorkspaceName(),
+  });
 
   connection = new MCPConnection({
     command: getPythonCommand(),
@@ -79,6 +83,18 @@ function getPythonCommand(): string {
 
 function getWorkspaceRoot(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
+function getWorkspaceName(): string | undefined {
+  return vscode.workspace.workspaceFolders?.[0]?.name;
+}
+
+function getConfiguredProvider(): string | undefined {
+  const provider = vscode.workspace
+    .getConfiguration("pearl")
+    .get<string>("provider", "");
+
+  return provider.trim() ? provider.trim() : undefined;
 }
 
 function createStatusBarItem(): vscode.StatusBarItem {
