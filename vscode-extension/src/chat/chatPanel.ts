@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { MCPConnection } from "../mcp/connection";
 import { ChatController } from "./chatController";
 import { getChatHtml } from "./chatHtml";
+import { PatchDecision, WebviewPatchApprover } from "./patchApproval";
 import { PlanDecision, WebviewPlanApprover } from "./planApproval";
 import { showToolApprovalDialog } from "./vscodeToolApprover";
 
@@ -13,6 +14,10 @@ interface WebviewInboundMessage {
 
 function isPlanDecision(value: unknown): value is PlanDecision {
   return value === "execute" || value === "cancel";
+}
+
+function isPatchDecision(value: unknown): value is PatchDecision {
+  return value === "approve" || value === "reject";
 }
 
 /**
@@ -28,6 +33,7 @@ export class ChatPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly controller: ChatController;
   private readonly planApprover: WebviewPlanApprover;
+  private readonly patchApprover: WebviewPatchApprover;
   private readonly disposables: vscode.Disposable[] = [];
 
   private constructor(panel: vscode.WebviewPanel, connection: MCPConnection) {
@@ -38,13 +44,18 @@ export class ChatPanel {
       void this.panel.webview.postMessage(message);
     });
 
+    this.patchApprover = new WebviewPatchApprover((message) => {
+      void this.panel.webview.postMessage(message);
+    });
+
     this.controller = new ChatController(
       connection,
       (message) => {
         void this.panel.webview.postMessage(message);
       },
       showToolApprovalDialog,
-      this.planApprover.requestApproval
+      this.planApprover.requestApproval,
+      this.patchApprover.requestApproval
     );
 
     this.panel.webview.onDidReceiveMessage(
@@ -56,6 +67,16 @@ export class ChatPanel {
           isPlanDecision(message.decision)
         ) {
           this.planApprover.resolveDecision(message.decision);
+        } else if (
+          message?.type === "patchDecision" &&
+          isPatchDecision(message.decision)
+        ) {
+          this.patchApprover.resolveDecision(message.decision);
+        } else if (
+          message?.type === "copyDiff" &&
+          typeof message.text === "string"
+        ) {
+          void vscode.env.clipboard.writeText(message.text);
         }
       },
       undefined,

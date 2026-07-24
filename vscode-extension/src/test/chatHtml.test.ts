@@ -196,3 +196,81 @@ test("getChatHtml only uses VS Code theme CSS variables for colors, no hardcoded
   assert.match(styleBlock, /var\(--vscode-button-background\)/);
   assert.doesNotMatch(styleBlock, /prefers-color-scheme/);
 });
+
+// ---------------------------------------------------------------------
+// Patch preview & approval
+// ---------------------------------------------------------------------
+
+test("getChatHtml handles showPatchBatch messages and renders a file per patch", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /function appendPatchBatch/);
+  assert.match(html, /data\.type === "showPatchBatch"/);
+  assert.match(html, /appendPatchBatch\(data\.files\)/);
+  assert.match(html, /className = "patch-file-path"/);
+});
+
+test("getChatHtml shows added/removed line-count badges per file", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /class="additions">\+' \+ file\.additions/);
+  assert.match(html, /class="removals">-' \+ file\.removals/);
+});
+
+test("getChatHtml offers Approve / Reject actions and disables them once decided", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /"Approve"/);
+  assert.match(html, /rejectButton\.className = "secondary"/);
+  assert.match(html, /rejectButton\.textContent = "Reject"/);
+  assert.match(html, /type: "patchDecision"/);
+  assert.match(html, /approveButton\.disabled = true/);
+  assert.match(html, /rejectButton\.disabled = true/);
+});
+
+test("getChatHtml offers expand/collapse for large diffs via a plain <details> element", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /file\.collapsed/);
+  assert.match(html, /"Show diff"/);
+});
+
+test("getChatHtml offers a copy-diff action that posts the raw diff text", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /className = "patch-file-copy"/);
+  assert.match(html, /"Copy diff"/);
+  assert.match(html, /type: "copyDiff", text: file\.diff/);
+});
+
+test("getChatHtml renders diffs with added/removed line highlighting", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /function renderDiffLines/);
+  assert.match(html, /"diff-line add"/);
+  assert.match(html, /"diff-line remove"/);
+});
+
+test("getChatHtml renders new-file patches with a distinct badge", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /file\.isNewFile/);
+  assert.match(html, /className = "patch-file-new"/);
+});
+
+test("getChatHtml handles executionState messages for all five required states", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /function updateExecutionState/);
+  assert.match(html, /data\.type === "executionState"/);
+  assert.match(html, /"Awaiting Approval"/);
+  assert.match(html, /"Applying Patches\.\.\."/);
+  assert.match(html, /"Resuming Execution\.\.\."/);
+  assert.match(html, /EXECUTION_STATE_LABELS\[state\]/);
+});
+
+test("getChatHtml clears the execution-state banner when the state is null", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /executionStateEl\.remove\(\)/);
+});

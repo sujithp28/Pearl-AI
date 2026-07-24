@@ -238,6 +238,116 @@ export function getChatHtml(): string {
     cursor: default;
   }
 
+  /* -- Execution state banner --------------------------------------------- */
+  .execution-state {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    background-color: var(--vscode-editorWidget-background, transparent);
+    font-size: 0.85em;
+    font-weight: bold;
+    color: var(--vscode-textLink-foreground);
+  }
+
+  /* -- Patch batch card ---------------------------------------------------- */
+  .patch-batch {
+    border: 1px solid var(--vscode-panel-border, #444);
+    border-radius: 8px;
+    background-color: var(--vscode-editorWidget-background, transparent);
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  .patch-batch-header {
+    font-weight: bold;
+    margin-bottom: 6px;
+  }
+  .patch-file {
+    margin: 6px 0;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background-color: var(--vscode-editor-background);
+  }
+  .patch-file-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .patch-file-path {
+    font-weight: bold;
+    font-family: var(--vscode-editor-font-family, monospace);
+  }
+  .patch-file-badge {
+    font-size: 0.85em;
+    font-family: var(--vscode-editor-font-family, monospace);
+  }
+  .patch-file-badge .additions { color: var(--vscode-gitDecoration-addedResourceForeground, #4caf50); }
+  .patch-file-badge .removals { color: var(--vscode-gitDecoration-deletedResourceForeground, #f44336); }
+  .patch-file-new {
+    font-size: 0.8em;
+    opacity: 0.8;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background-color: var(--vscode-badge-background, transparent);
+    color: var(--vscode-badge-foreground, inherit);
+  }
+  .patch-file-copy {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--vscode-panel-border, transparent);
+    color: var(--vscode-foreground);
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+    font-size: 0.85em;
+  }
+  .patch-file-copy:hover {
+    background-color: var(--vscode-list-hoverBackground);
+  }
+  .diff-view {
+    margin: 6px 0 0 0;
+    padding: 6px;
+    border-radius: 4px;
+    background-color: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.15));
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 0.9em;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .diff-line { padding: 0 4px; }
+  .diff-line.add {
+    background-color: var(--vscode-diffEditor-insertedTextBackground, rgba(76,175,80,0.15));
+    color: var(--vscode-gitDecoration-addedResourceForeground, inherit);
+  }
+  .diff-line.remove {
+    background-color: var(--vscode-diffEditor-removedTextBackground, rgba(244,67,54,0.15));
+    color: var(--vscode-gitDecoration-deletedResourceForeground, inherit);
+  }
+  .patch-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+  }
+  .patch-actions button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+  }
+  .patch-actions button.secondary {
+    background-color: var(--vscode-button-secondaryBackground, transparent);
+    color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  }
+  .patch-actions button:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
   /* -- Input row ---------------------------------------------------------- */
   #inputRow {
     display: flex;
@@ -298,6 +408,7 @@ export function getChatHtml(): string {
 
       let loadingEl = null;
       let timelineEl = null;
+      let executionStateEl = null;
 
       const TIMELINE_STAGES = [
         ["planning", "Planning..."],
@@ -306,6 +417,14 @@ export function getChatHtml(): string {
         ["running_tool", "Running Tool..."],
         ["completed", "Completed"]
       ];
+
+      const EXECUTION_STATE_LABELS = {
+        awaiting_approval: "Awaiting Approval",
+        applying_patches: "Applying Patches...",
+        resuming: "Resuming Execution...",
+        completed: "Completed",
+        cancelled: "Cancelled"
+      };
 
       function showChat() {
         welcomeEl.style.display = "none";
@@ -486,6 +605,149 @@ export function getChatHtml(): string {
         messagesEl.scrollTop = messagesEl.scrollHeight;
       }
 
+      function updateExecutionState(state) {
+        if (!state) {
+          if (executionStateEl) {
+            executionStateEl.remove();
+            executionStateEl = null;
+          }
+          return;
+        }
+
+        showChat();
+
+        if (!executionStateEl) {
+          executionStateEl = document.createElement("div");
+          executionStateEl.className = "execution-state";
+          messagesEl.appendChild(executionStateEl);
+        }
+
+        executionStateEl.textContent = EXECUTION_STATE_LABELS[state] || state;
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      function renderDiffLines(diffText) {
+        // Basic diff-aware highlighting (added/removed/context
+        // lines) rather than full language syntax highlighting, so
+        // this stays dependency-free — large diffs render as plain
+        // text nodes per line, which keeps the UI responsive even
+        // for very long diffs.
+        const pre = document.createElement("pre");
+        pre.className = "diff-view";
+
+        diffText.split("\\n").forEach(function (line) {
+          const lineEl = document.createElement("div");
+
+          if (line.indexOf("+++") === 0 || line.indexOf("---") === 0) {
+            lineEl.className = "diff-line";
+          } else if (line.indexOf("+") === 0) {
+            lineEl.className = "diff-line add";
+          } else if (line.indexOf("-") === 0) {
+            lineEl.className = "diff-line remove";
+          } else {
+            lineEl.className = "diff-line";
+          }
+
+          lineEl.textContent = line;
+          pre.appendChild(lineEl);
+        });
+
+        return pre;
+      }
+
+      function appendPatchBatch(files) {
+        showChat();
+
+        const container = document.createElement("div");
+        container.className = "patch-batch";
+
+        const header = document.createElement("div");
+        header.className = "patch-batch-header";
+        header.textContent =
+          "Pending changes (" + files.length + " file" +
+          (files.length === 1 ? "" : "s") + "):";
+        container.appendChild(header);
+
+        files.forEach(function (file) {
+          const fileEl = document.createElement("div");
+          fileEl.className = "patch-file";
+
+          const fileHeader = document.createElement("div");
+          fileHeader.className = "patch-file-header";
+
+          const pathEl = document.createElement("span");
+          pathEl.className = "patch-file-path";
+          pathEl.textContent = file.path;
+          fileHeader.appendChild(pathEl);
+
+          if (file.isNewFile) {
+            const newBadge = document.createElement("span");
+            newBadge.className = "patch-file-new";
+            newBadge.textContent = "new file";
+            fileHeader.appendChild(newBadge);
+          }
+
+          const badge = document.createElement("span");
+          badge.className = "patch-file-badge";
+          badge.innerHTML =
+            '<span class="additions">+' + file.additions + "</span> " +
+            '<span class="removals">-' + file.removals + "</span>";
+          fileHeader.appendChild(badge);
+
+          const copyButton = document.createElement("button");
+          copyButton.className = "patch-file-copy";
+          copyButton.textContent = "Copy diff";
+          copyButton.addEventListener("click", function () {
+            vscode.postMessage({ type: "copyDiff", text: file.diff });
+          });
+          fileHeader.appendChild(copyButton);
+
+          fileEl.appendChild(fileHeader);
+
+          if (file.collapsed) {
+            const details = document.createElement("details");
+            const summary = document.createElement("summary");
+            summary.textContent = "Show diff";
+            details.appendChild(summary);
+            details.appendChild(renderDiffLines(file.diff));
+            fileEl.appendChild(details);
+          } else {
+            fileEl.appendChild(renderDiffLines(file.diff));
+          }
+
+          container.appendChild(fileEl);
+        });
+
+        const actions = document.createElement("div");
+        actions.className = "patch-actions";
+
+        const approveButton = document.createElement("button");
+        approveButton.textContent = "Approve";
+        const rejectButton = document.createElement("button");
+        rejectButton.className = "secondary";
+        rejectButton.textContent = "Reject";
+
+        function decide(decision) {
+          approveButton.disabled = true;
+          rejectButton.disabled = true;
+          vscode.postMessage({ type: "patchDecision", decision: decision });
+        }
+
+        approveButton.addEventListener("click", function () {
+          decide("approve");
+        });
+        rejectButton.addEventListener("click", function () {
+          decide("reject");
+        });
+
+        actions.appendChild(approveButton);
+        actions.appendChild(rejectButton);
+        container.appendChild(actions);
+
+        messagesEl.appendChild(container);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
       function sendText(text) {
         if (!text || !text.trim()) {
           return;
@@ -521,10 +783,14 @@ export function getChatHtml(): string {
           appendMessage(data.message);
         } else if (data.type === "showPlan") {
           appendPlan(data.steps);
+        } else if (data.type === "showPatchBatch") {
+          appendPatchBatch(data.files);
         } else if (data.type === "loading") {
           setLoading(!!data.show);
         } else if (data.type === "timeline") {
           updateTimeline(data.stage);
+        } else if (data.type === "executionState") {
+          updateExecutionState(data.state);
         }
       });
     })();

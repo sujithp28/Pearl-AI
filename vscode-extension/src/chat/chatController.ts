@@ -31,11 +31,19 @@
  */
 
 import { sendChatMessage } from "../mcp/chatClient";
+import {
+  ExecutionReportResult,
+  approvePatches,
+  rejectPatches,
+  runAutonomous as requestAutonomousRun,
+} from "../mcp/patchClient";
 import { PlannedStep, planOnly } from "../mcp/planClient";
 import { RequestSender } from "../mcp/requestSender";
 import { ToolCallResult, callTool } from "../mcp/toolCallClient";
 import { ToolApprover } from "./approval";
+import { ExecutionState } from "./executionState";
 import { renderMarkdownToHtml } from "./markdown";
+import { PatchApprover } from "./patchApproval";
 import { PlanApprover } from "./planApproval";
 import { TimelineStage } from "./timeline";
 
@@ -51,7 +59,8 @@ export interface ChatMessage {
 export type WebviewMessage =
   | { type: "addMessage"; message: ChatMessage }
   | { type: "loading"; show: boolean }
-  | { type: "timeline"; stage: TimelineStage | null };
+  | { type: "timeline"; stage: TimelineStage | null }
+  | { type: "executionState"; state: ExecutionState | null };
 
 export type PostToWebview = (message: WebviewMessage) => void;
 
@@ -64,7 +73,8 @@ export class ChatController {
     private readonly connection: RequestSender,
     private readonly post: PostToWebview,
     private readonly approveTool: ToolApprover,
-    private readonly approvePlan: PlanApprover
+    private readonly approvePlan: PlanApprover,
+    private readonly approvePatch?: PatchApprover
   ) {}
 
   getHistory(): readonly ChatMessage[] {
@@ -183,6 +193,129 @@ export class ChatController {
     } finally {
       this.postLoading(false);
     }
+  }
+
+  /**
+   * Run `prompt` through Pearl's autonomous executor (`pearl/
+   * runAutonomous`), which stages any file edits it wants to make
+   * via `PatchManager` instead of writing them directly. Whenever
+   * the run pauses with a patch batch awaiting approval, this shows
+   * it (via `approvePatch`) and either resumes execution — via
+   * `pearl/approvePatches`, which writes the patches and continues
+   * from exactly where it paused, without re-planning or re-running
+   * completed steps — or discards it via `pearl/rejectPatches` and
+   * stops cleanly. Repeats for as many approval rounds as the run
+   * produces.
+   *
+   * Requires `approvePatch` to have been supplied at construction;
+   * without it (e.g. a caller not wired up for this feature yet)
+   * this reports a clear error instead of a silent no-op.
+   */
+  async runAutonomous(prompt: string): Promise<void> {
+    const trimmed = prompt.trim();
+
+    if (!trimmed) {
+      return;
+    }
+
+    if (!this.approvePatch) {
+      this.addAndPost(
+        "error",
+        "Autonomous execution with patch approval is not configured."
+      );
+      return;
+    }
+
+    this.addAndPost("user", trimmed);
+    this.postLoading(true);
+
+    let report: ExecutionReportResult;
+
+    try {
+      report = await requestAutonomousRun(this.connection, trimmed);
+    } catch (error) {
+      this.postLoading(false);
+      const detail = error instanceof Error ? error.message : String(error);
+      this.addAndPost("error", `Failed to reach Pearl: ${detail}`);
+      return;
+    }
+
+    this.postLoading(false);
+
+    while (report.stopReason === "awaiting_approval") {
+      this.postExecutionState("awaiting_approval");
+
+      const decision = await this.approvePatch(report.patches);
+
+      if (decision === "reject") {
+        this.postLoading(true);
+
+        try {
+          report = await rejectPatches(this.connection);
+        } catch (error) {
+          this.postLoading(false);
+          const detail =
+            error instanceof Error ? error.message : String(error);
+          this.addAndPost("error", `Failed to reject patches: ${detail}`);
+          this.postExecutionState(null);
+          return;
+        }
+
+        this.postLoading(false);
+        this.finalizeExecutionReport(report);
+        return;
+      }
+
+      this.postExecutionState("applying_patches");
+      this.postLoading(true);
+
+      try {
+        report = await approvePatches(this.connection);
+      } catch (error) {
+        this.postLoading(false);
+        const detail = error instanceof Error ? error.message : String(error);
+        this.addAndPost("error", `Failed to resume execution: ${detail}`);
+        this.postExecutionState(null);
+        return;
+      }
+
+      this.postLoading(false);
+      this.postExecutionState("resuming");
+    }
+
+    this.finalizeExecutionReport(report);
+  }
+
+  private finalizeExecutionReport(report: ExecutionReportResult): void {
+    if (report.stopReason === "completed") {
+      this.postExecutionState("completed");
+      this.addAndPost("assistant", this.formatExecutionSummary(report));
+    } else if (report.stopReason === "cancelled") {
+      this.postExecutionState("cancelled");
+      this.addAndPost("assistant", "Execution was cancelled.");
+    } else if (report.stopReason === "rejected") {
+      this.postExecutionState("cancelled");
+      this.addAndPost(
+        "assistant",
+        "Patches rejected. No changes were written."
+      );
+    } else {
+      this.addAndPost(
+        "error",
+        `Execution stopped: ${report.stopReason}.`
+      );
+    }
+
+    this.postExecutionState(null);
+  }
+
+  private formatExecutionSummary(report: ExecutionReportResult): string {
+    const succeeded = report.steps.filter((step) => step.succeeded).length;
+    return `Done. ${succeeded}/${report.steps.length} step(s) completed successfully.`;
+  }
+
+  private postExecutionState(state: ExecutionState | null): void {
+    this.post({ type: "executionState", state });
   }
 
   private formatToolResult(tool: string, result: ToolCallResult): string {
