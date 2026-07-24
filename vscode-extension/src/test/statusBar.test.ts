@@ -57,11 +57,11 @@ test("setContext adds provider and workspace to the status text", () => {
   const item = fakeStatusBarItem();
   const statusBar = new MCPStatusBar(item);
 
-  statusBar.setContext({ provider: "omniroute", workspace: "pearl-agent" });
+  statusBar.setContext({ provider: "openai", workspace: "pearl-agent" });
   statusBar.setStatus("connected");
 
   assert.match(item.text, /Connected/);
-  assert.match(item.text, /omniroute/);
+  assert.match(item.text, /openai/);
   assert.match(item.text, /pearl-agent/);
 });
 

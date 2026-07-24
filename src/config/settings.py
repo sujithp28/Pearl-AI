@@ -3,12 +3,12 @@ Global configuration for Pearl.
 """
 
 from pathlib import Path
-import os                     # <-- NEW
+import os
 
 import torch
-from dotenv import load_dotenv   # <-- NEW
+from dotenv import load_dotenv
 
-load_dotenv()                    # <-- NEW
+load_dotenv()
 
 
 class Settings:
@@ -40,31 +40,12 @@ class Settings:
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     # ==================================================
-    # OmniRoute Configuration (NEW)
-    # ==================================================
-
-    OMNIROUTE_BASE_URL = os.getenv(
-        "OMNIROUTE_BASE_URL",
-        "http://localhost:20128/v1"
-    )
-
-    OMNIROUTE_API_KEY = os.getenv(
-        "OMNIROUTE_API_KEY",
-        ""
-    )
-
-    OMNIROUTE_MODEL = os.getenv(
-        "OMNIROUTE_MODEL",
-        "openai/gpt-oss-120b"
-    )
-
-    # ==================================================
     # LLM Provider Selection
     # ==================================================
 
     # Which provider LLMClient() connects to by default.
-    # One of: omniroute, openai, openrouter, ollama, claude, gemini.
-    LLM_PROVIDER = os.getenv("PEARL_LLM_PROVIDER", "omniroute")
+    # One of: ollama, openai, openrouter, custom, claude, anthropic, gemini.
+    LLM_PROVIDER = os.getenv("PEARL_LLM_PROVIDER", "ollama")
 
     # -- OpenAI --
 
@@ -107,6 +88,14 @@ class Settings:
     )
 
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+
+    # -- Any other OpenAI-compatible endpoint --
+
+    CUSTOM_API_KEY = os.getenv("CUSTOM_API_KEY", "")
+
+    CUSTOM_BASE_URL = os.getenv("CUSTOM_BASE_URL", "")
+
+    CUSTOM_MODEL = os.getenv("CUSTOM_MODEL", "")
 
     # ==================================================
     # Local Model (Keep this for now)

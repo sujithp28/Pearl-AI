@@ -65,7 +65,7 @@
         "pearl.provider": {
           "type": "string",
           "default": "",
-          "description": "Informational only: the LLM provider Pearl's MCP server is configured to use (e.g. claude, openai, ollama, omniroute), shown in the status bar. This mirrors your server-side PEARL_LLM_PROVIDER setting but is not read from the server itself — set it to match if you want it displayed."
+          "description": "Informational only: the LLM provider Pearl's MCP server is configured to use (e.g. claude, openai, ollama, custom), shown in the status bar. This mirrors your server-side PEARL_LLM_PROVIDER setting but is not read from the server itself — set it to match if you want it displayed."
         }
       }
     }

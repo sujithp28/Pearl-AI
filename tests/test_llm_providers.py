@@ -119,11 +119,14 @@ def test_gemini_provider_raises_clear_error_without_sdk():
 
 @pytest.mark.parametrize(
     "name",
-    ["omniroute", "openai", "openrouter", "ollama"],
+    ["openai", "openrouter", "ollama", "custom"],
 )
 def test_create_provider_builds_openai_compatible_backends(name, monkeypatch):
     monkeypatch.setattr(Settings, "OPENAI_API_KEY", "dummy-key")
     monkeypatch.setattr(Settings, "OPENROUTER_API_KEY", "dummy-key")
+    monkeypatch.setattr(Settings, "CUSTOM_API_KEY", "dummy-key")
+    monkeypatch.setattr(Settings, "CUSTOM_BASE_URL", "http://localhost:9999/v1")
+    monkeypatch.setattr(Settings, "CUSTOM_MODEL", "custom-model")
 
     provider = create_provider(name)
 
@@ -157,22 +160,26 @@ def test_create_provider_rejects_unknown_name():
 
 def test_supported_providers_lists_all_provider_names():
     assert set(SUPPORTED_PROVIDERS) == {
-        "omniroute",
         "openai",
         "openrouter",
         "ollama",
+        "custom",
         "claude",
         "anthropic",
         "gemini",
     }
 
 
-def test_omniroute_provider_uses_omniroute_settings():
-    provider = create_provider("omniroute")
+def test_custom_provider_uses_custom_settings(monkeypatch):
+    monkeypatch.setattr(Settings, "CUSTOM_API_KEY", "dummy-key")
+    monkeypatch.setattr(Settings, "CUSTOM_BASE_URL", "http://localhost:9999/v1")
+    monkeypatch.setattr(Settings, "CUSTOM_MODEL", "custom-model")
 
-    assert provider.model == Settings.OMNIROUTE_MODEL
+    provider = create_provider("custom")
+
+    assert provider.model == Settings.CUSTOM_MODEL
     assert str(provider.client.base_url).rstrip("/") == (
-        Settings.OMNIROUTE_BASE_URL.rstrip("/")
+        Settings.CUSTOM_BASE_URL.rstrip("/")
     )
 
 
@@ -199,7 +206,7 @@ def test_llm_client_defaults_to_settings_provider():
     client = LLMClient()
 
     assert isinstance(client.provider, OpenAICompatibleProvider)
-    assert client.provider.model == Settings.OMNIROUTE_MODEL
+    assert client.provider.model == Settings.OLLAMA_MODEL
 
 
 def test_llm_client_accepts_explicit_provider_name(monkeypatch):

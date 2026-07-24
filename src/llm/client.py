@@ -1,8 +1,9 @@
 """
 LLM Client for Pearl.
 
-Provider-agnostic: the active backend (OmniRoute, OpenAI, Claude,
-Gemini, OpenRouter, or Ollama) is selected via `src.llm.providers`.
+Provider-agnostic: the active backend (OpenAI, Claude, Gemini,
+OpenRouter, Ollama, or any other OpenAI-compatible endpoint) is
+selected via `src.llm.providers`.
 """
 
 from __future__ import annotations
@@ -29,9 +30,8 @@ class LLMClient:
     Provider-agnostic LLM client.
 
     Delegates the actual completion call to an `LLMProvider` backend
-    (OmniRoute by default, matching Pearl's original behavior), so
-    the tool selector, planner, and `PearlAgent.chat` do not need to
-    know which provider is active.
+    (Ollama by default), so the tool selector, planner, and
+    `PearlAgent.chat` do not need to know which provider is active.
     """
 
     def __init__(

@@ -12,6 +12,9 @@ export const MEMORY_VIEW_ID = "pearlMemory";
 let connection: MCPConnection | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
+  const outputChannel = vscode.window.createOutputChannel("Pearl");
+  context.subscriptions.push(outputChannel);
+
   const statusBarItem = createStatusBarItem();
   context.subscriptions.push(statusBarItem);
 
@@ -27,6 +30,9 @@ export function activate(context: vscode.ExtensionContext): void {
     cwd: getWorkspaceRoot(),
     spawnFn: (command, args, options) =>
       spawn(command, args, { cwd: options.cwd }),
+    // Cold-starting Pearl's Python process (heavy imports like torch)
+    // can take well over the library default of 5s.
+    initializeTimeoutMs: 60000,
   });
 
   const memoryTreeProvider = new MemoryTreeProvider(connection);
@@ -36,6 +42,10 @@ export function activate(context: vscode.ExtensionContext): void {
       memoryTreeProvider
     )
   );
+
+  connection.onStderr = (chunk) => {
+    outputChannel.append(chunk);
+  };
 
   connection.onStatusChange = (status, detail) => {
     statusBar.setStatus(status, detail);

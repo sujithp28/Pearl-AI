@@ -24,11 +24,20 @@ function isChatResult(value: unknown): value is ChatResult {
  * Send `message` to Pearl's `pearl/chat` MCP method and return the
  * assistant's reply text.
  */
+// LLM completions (plus the provider's own retry/backoff on transient
+// errors) can comfortably exceed the connection's default 10s request
+// timeout, especially for longer prompts.
+const CHAT_TIMEOUT_MS = 60000;
+
 export async function sendChatMessage(
   sender: RequestSender,
   message: string
 ): Promise<string> {
-  const result = await sender.sendRequest("pearl/chat", { message });
+  const result = await sender.sendRequest(
+    "pearl/chat",
+    { message },
+    CHAT_TIMEOUT_MS
+  );
 
   if (!isChatResult(result)) {
     throw new Error("Malformed response from Pearl MCP server.");

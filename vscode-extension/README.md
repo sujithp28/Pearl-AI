@@ -131,7 +131,7 @@ about the server, including how tools actually execute, is unchanged.)
 - **Status bar**: shows `Pearl: Connecting...`, `Pearl: Connected`,
   `Pearl: Connection Error`, or `Pearl: Disconnected`, alongside the
   configured provider and current workspace name (e.g. `Pearl: Connected
-  · omniroute · pearl-agent`), with full detail in the tooltip. Provider
+  · openai · pearl-agent`), with full detail in the tooltip. Provider
   and workspace are set once via `MCPStatusBar.setContext()` — the
   workspace name comes from the VS Code workspace API; the provider name
   is *not* queried from the server (see `pearl.provider` below).
@@ -147,7 +147,7 @@ about the server, including how tools actually execute, is unchanged.)
 | Setting | Default | Description |
 |---|---|---|
 | `pearl.pythonPath` | `python3` | Interpreter used to run `-m src.mcp`. Point this at `<repo>/.venv/bin/python` (or wherever Pearl's dependencies are installed) if your system `python3` doesn't have them. |
-| `pearl.provider` | `""` (unset) | **Informational only**: the LLM provider your server is configured for (e.g. `claude`, `openai`, `ollama`, `omniroute`), shown in the status bar. This is *not* read from the server (the extension does not query it) — set it to match your server-side `PEARL_LLM_PROVIDER` if you want it displayed. |
+| `pearl.provider` | `""` (unset) | **Informational only**: the LLM provider your server is configured for (e.g. `claude`, `openai`, `ollama`, `custom`), shown in the status bar. This is *not* read from the server (the extension does not query it) — set it to match your server-side `PEARL_LLM_PROVIDER` if you want it displayed. |
 
 The server is spawned with `cwd` set to the first VS Code workspace
 folder, since `python -m src.mcp` must run from the Pearl repo root.

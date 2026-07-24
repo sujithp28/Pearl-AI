@@ -12,6 +12,7 @@ tool already registered with the `ToolRegistry` passed in (see
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 from typing import IO, Any
@@ -38,6 +39,24 @@ logger = logging.getLogger(__name__)
 
 SERVER_NAME = "pearl-mcp"
 SERVER_VERSION = "0.1.0"
+
+
+def _json_safe(value: Any) -> Any:
+    """
+    Return `value` unchanged if it's JSON-serializable, otherwise its
+    string form.
+
+    Tool results aren't guaranteed to be serializable (e.g.
+    `execute_shell` returns a `subprocess.CompletedProcess`), but both
+    Memory (`Memory.to_dict()`) and JSON-RPC responses require it.
+    """
+
+    try:
+        json.dumps(value)
+    except TypeError:
+        return str(value)
+
+    return value
 
 
 class MCPServer:
@@ -183,7 +202,7 @@ class MCPServer:
                 "isError": True,
             }
 
-        self.memory.record_execution(name, arguments, result=result)
+        self.memory.record_execution(name, arguments, result=_json_safe(result))
 
         return {
             "content": [{"type": "text", "text": str(result)}],
@@ -219,7 +238,7 @@ class MCPServer:
             self.memory.record_execution(
                 step.tool_name,
                 step.kwargs,
-                result=step.result,
+                result=_json_safe(step.result) if step.succeeded else None,
                 error=step.error,
             )
 
@@ -235,7 +254,7 @@ class MCPServer:
                 {
                     "tool": step.tool_name,
                     "arguments": step.kwargs,
-                    "result": step.result if step.succeeded else None,
+                    "result": _json_safe(step.result) if step.succeeded else None,
                     "error": step.error,
                 }
                 for step in results

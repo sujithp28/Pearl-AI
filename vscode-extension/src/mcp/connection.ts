@@ -46,6 +46,7 @@ export class MCPConnection {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   public onStatusChange: StatusListener | undefined;
+  public onStderr: ((chunk: string) => void) | undefined;
 
   constructor(private readonly options: ConnectionOptions) {}
 
@@ -177,6 +178,14 @@ export class MCPConnection {
 
     child.stdout?.on("data", (chunk) => {
       this.handleData(chunk.toString());
+    });
+
+    // Must be drained even if nobody wants the contents: Node still
+    // pipes stderr by default, and an unread pipe fills up once the
+    // server logs enough output, blocking the (synchronous) Python
+    // process's next write and hanging every future request.
+    child.stderr?.on("data", (chunk) => {
+      this.onStderr?.(chunk.toString());
     });
 
     this.confirmStartup();

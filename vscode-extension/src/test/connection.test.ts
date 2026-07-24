@@ -11,6 +11,7 @@ class FakeChildProcess extends EventEmitter {
   public written: string[] = [];
   public killed = false;
   public stdout = new EventEmitter();
+  public stderr = new EventEmitter();
   public stdin = {
     write: (chunk: string): boolean => {
       this.written.push(chunk);

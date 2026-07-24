@@ -1,7 +1,8 @@
 """
 Provider backend for any OpenAI-compatible chat completions API:
-OpenAI itself, OmniRoute, OpenRouter, and Ollama's `/v1` endpoint all
-speak this same wire protocol, so they share one implementation.
+OpenAI itself, OpenRouter, Ollama's `/v1` endpoint, and any other
+OpenAI-compatible endpoint all speak this same wire protocol, so they
+share one implementation.
 """
 
 from __future__ import annotations

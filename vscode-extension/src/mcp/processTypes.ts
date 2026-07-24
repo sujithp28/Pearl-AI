@@ -17,6 +17,7 @@ export interface WritableLike {
 export interface ChildProcessLike {
   stdin: WritableLike | null;
   stdout: ReadableLike | null;
+  stderr: ReadableLike | null;
   on(
     event: "exit",
     listener: (code: number | null, signal: string | null) => void

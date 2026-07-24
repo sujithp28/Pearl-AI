@@ -14,10 +14,10 @@ from src.llm.providers.gemini import GeminiProvider
 from src.llm.providers.openai_compatible import OpenAICompatibleProvider
 
 SUPPORTED_PROVIDERS = (
-    "omniroute",
     "openai",
     "openrouter",
     "ollama",
+    "custom",
     "claude",
     "anthropic",
     "gemini",
@@ -30,13 +30,6 @@ def create_provider(name: str) -> LLMProvider:
     """
 
     normalized = name.strip().lower()
-
-    if normalized == "omniroute":
-        return OpenAICompatibleProvider(
-            api_key=Settings.OMNIROUTE_API_KEY,
-            base_url=Settings.OMNIROUTE_BASE_URL,
-            model=Settings.OMNIROUTE_MODEL,
-        )
 
     if normalized == "openai":
         return OpenAICompatibleProvider(
@@ -57,6 +50,13 @@ def create_provider(name: str) -> LLMProvider:
             api_key=Settings.OLLAMA_API_KEY,
             base_url=Settings.OLLAMA_BASE_URL,
             model=Settings.OLLAMA_MODEL,
+        )
+
+    if normalized == "custom":
+        return OpenAICompatibleProvider(
+            api_key=Settings.CUSTOM_API_KEY,
+            base_url=Settings.CUSTOM_BASE_URL,
+            model=Settings.CUSTOM_MODEL,
         )
 
     if normalized in ("claude", "anthropic"):

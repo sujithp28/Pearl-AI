@@ -20,6 +20,7 @@ import { ConnectionStatus, MCPConnection } from "../mcp/connection";
 class FakeChildProcess extends EventEmitter {
   public written: string[] = [];
   public stdout = new EventEmitter();
+  public stderr = new EventEmitter();
   public stdin = {
     write: (chunk: string): boolean => {
       this.written.push(chunk);
