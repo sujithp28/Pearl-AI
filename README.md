@@ -246,7 +246,7 @@ Status
 ⬜ Conversation Memory
 ⬜ Project Memory
 ⬜ Planner
-⬜ MCP Server
+✅ MCP Server
 ⬜ IDE Integrations
 ⬜ Autonomous Execution
 ```
@@ -332,11 +332,76 @@ This is the milestone where Pearl transitions from a collection of utilities int
 
 ## Phase 4 — MCP
 
-- Custom MCP Server
-- JSON-RPC
-- Tool Exposure
-- Resources
-- Prompts
+- [x] Custom MCP Server
+- [x] JSON-RPC
+- [x] Tool Exposure
+- [ ] Resources
+- [ ] Prompts
+
+---
+
+# 🔌 Running the MCP Server
+
+Pearl includes a self-contained MCP (Model Context Protocol) server that
+exposes the same tool registry used by the CLI — no tools are redefined,
+they're reused directly from `src.main.build_registry()`.
+
+## Start it
+
+```bash
+python -m src.mcp
+```
+
+This builds Pearl's tool registry (file, shell, edit, and repository
+intelligence tools — everything registered in `main.py`), wraps it in a
+`ToolDispatcher`, `Planner`, and `Memory`, and serves them over
+newline-delimited JSON-RPC 2.0 on stdio. Logs go to stderr, so stdout stays
+clean for the protocol stream — safe to pipe directly into an MCP client
+that spawns Pearl as a subprocess.
+
+## Supported methods
+
+| Method | Description |
+|---|---|
+| `initialize` | Handshake — returns protocol version, server info, and capabilities. |
+| `tools/list` | Lists every tool in the registry as an MCP tool descriptor (name, description, JSON Schema `inputSchema`). |
+| `tools/call` | Executes a tool by name via the existing `ToolDispatcher`. Tool failures are returned as a result with `isError: true` (per the MCP spec), not a JSON-RPC error. |
+| `pearl/plan` | Pearl extension: runs a natural-language request through the existing `Planner` and executes the resulting steps sequentially. |
+| `shutdown` | Returns a null result; does not stop the server. |
+| `exit` (notification) | Stops the read loop and ends the process. |
+
+Every `tools/call` and `pearl/plan` invocation is recorded in the server's
+`Memory` (execution history, and tasks for planned runs).
+
+## Try it manually
+
+```bash
+printf '%s\n%s\n%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  '{"jsonrpc":"2.0","method":"exit"}' \
+  | python -m src.mcp
+```
+
+## Embedding the server in other code
+
+```python
+from src.agent.dispatcher import ToolDispatcher
+from src.agent.planner import Planner
+from src.main import build_registry
+from src.mcp.server import MCPServer
+from src.memory import Memory
+
+registry = build_registry()
+dispatcher = ToolDispatcher(registry)
+server = MCPServer(
+    registry,
+    dispatcher=dispatcher,
+    planner=Planner(registry, dispatcher),
+    memory=Memory(),
+)
+server.run_stdio()  # or call server.handle_request(...) directly
+```
 
 ---
 
