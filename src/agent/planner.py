@@ -61,9 +61,17 @@ class Planner:
         self.client = client or LLMClient()
         self.parser = ToolParser()
 
-    def build_prompt(self, user_prompt: str) -> str:
+    def build_prompt(
+        self, user_prompt: str, workspace_context: str = ""
+    ) -> str:
         """
         Build the planning prompt from the external prompt template.
+
+        `workspace_context` is an opaque, already-formatted block of
+        text (e.g. from `WorkspaceMemory.generate_context()`)
+        prepended as extra context when non-empty. The Planner
+        doesn't know or care what produced it — this keeps Planner
+        decoupled from any specific context source.
         """
 
         prompt_template = self.client.load_prompt(
@@ -75,20 +83,34 @@ class Planner:
             indent=4,
         )
 
-        return prompt_template.format(
+        prompt = prompt_template.format(
             tools=tools,
             user_prompt=user_prompt,
         )
 
-    def plan(self, user_prompt: str) -> list[ToolCall]:
+        if workspace_context:
+            prompt = (
+                "Current workspace context (recent activity in this "
+                "session):\n\n"
+                f"{workspace_context}\n\n"
+                f"{prompt}"
+            )
+
+        return prompt
+
+    def plan(
+        self, user_prompt: str, workspace_context: str = ""
+    ) -> list[ToolCall]:
         """
         Ask the LLM to break `user_prompt` into an ordered list of
         tool calls.
+
+        `workspace_context`: see `build_prompt`.
         """
 
         logger.info("Planning steps for request: %s", user_prompt)
 
-        prompt = self.build_prompt(user_prompt)
+        prompt = self.build_prompt(user_prompt, workspace_context)
 
         payload = self.client.generate_json(prompt)
 

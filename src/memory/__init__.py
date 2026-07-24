@@ -11,9 +11,18 @@ from .memory import (
     Task,
 )
 
+from .workspace_memory import (
+    ChangeRecord,
+    PlanRecord,
+    WorkspaceMemory,
+)
+
 __all__ = [
     "Memory",
     "ConversationTurn",
     "Task",
     "ExecutionRecord",
+    "WorkspaceMemory",
+    "ChangeRecord",
+    "PlanRecord",
 ]
