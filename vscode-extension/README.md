@@ -1,10 +1,12 @@
 # Pearl — VS Code Extension
 
 This extension registers one command, connects to Pearl's existing MCP
-server over stdio (showing connection status in the status bar), and opens
-a simple chat webview that talks to Pearl through that same connection —
+server over stdio (showing connection status in the status bar), opens a
+simple chat webview that talks to Pearl through that same connection —
 showing the full proposed plan for review before gating each tool call
-behind an approval dialog.
+behind an approval dialog — and provides a read-only Memory view (in its
+own "Pearl" activity bar container) showing conversation history, task
+history, execution history, and project facts, refreshable on demand.
 
 **Not implemented yet (by design, later phases):**
 
@@ -54,6 +56,14 @@ vscode-extension/
 │   │   │                         wires it to `ChatController`/`WebviewPlanApprover`.
 │   │   └── vscodeToolApprover.ts # The real per-tool approval dialog
 │   │                              (`vscode.window.showWarningMessage`).
+│   ├── memory/
+│   │   ├── memoryClient.ts       # Reads Memory via `pearl/memory` (pure).
+│   │   ├── memoryTree.ts         # Formats a snapshot into 4 categories x
+│   │   │                          leaf nodes (pure, independently testable).
+│   │   ├── memoryTreeState.ts    # Fetch/refresh orchestration + onChange
+│   │   │                          callback (pure — driven by `RequestSender`).
+│   │   └── memoryTreeProvider.ts # Owns the real `vscode.TreeDataProvider`
+│   │                              and adapts `MemoryTreeState` to it.
 │   └── test/
 │       ├── protocolClient.test.ts
 │       ├── connection.test.ts
@@ -63,10 +73,14 @@ vscode-extension/
 │       ├── toolCallClient.test.ts
 │       ├── planFormatting.test.ts
 │       ├── planApproval.test.ts
+│       ├── memoryClient.test.ts
+│       ├── memoryTree.test.ts
+│       ├── memoryTreeState.test.ts
 │       ├── chatController.test.ts
 │       ├── chatHtml.test.ts
 │       ├── chatApproval.integration.test.ts
-│       └── planVisualization.integration.test.ts
+│       ├── planVisualization.integration.test.ts
+│       └── memoryPanel.integration.test.ts
 ├── .vscode/
 │   ├── launch.json              # F5 debug config (Extension Development Host).
 │   └── tasks.json               # Background `tsc --watch` build task.
@@ -75,14 +89,16 @@ vscode-extension/
 └── README.md
 ```
 
-Every module under `src/mcp/` and `src/chat/` *except* `chatPanel.ts` and
-`vscodeToolApprover.ts` has **no runtime dependency on `vscode`** — process
-spawning is injected via a `spawnFn` parameter, the chat controller depends
-only on a structural `sendRequest` shape (not the concrete `MCPConnection`
-class) plus an injectable `ToolApprover` function (not a real dialog), and
-the status bar's logic is separated from the real `vscode.StatusBarItem`
-construction. Only `extension.ts`, `chatPanel.ts`, and
-`vscodeToolApprover.ts` import `vscode` as a value; everything else is
+Every module under `src/mcp/`, `src/chat/`, and `src/memory/` *except*
+`chatPanel.ts`, `vscodeToolApprover.ts`, and `memoryTreeProvider.ts` has
+**no runtime dependency on `vscode`** — process spawning is injected via a
+`spawnFn` parameter, the chat controller depends only on a structural
+`sendRequest` shape (not the concrete `MCPConnection` class) plus an
+injectable `ToolApprover` function (not a real dialog), the memory tree
+state depends only on the same structural `sendRequest` shape, and the
+status bar's logic is separated from the real `vscode.StatusBarItem`
+construction. Only `extension.ts`, `chatPanel.ts`, `vscodeToolApprover.ts`,
+and `memoryTreeProvider.ts` import `vscode` as a value; everything else is
 testable with plain Node, no VS Code test harness required.
 
 ---
@@ -93,9 +109,9 @@ On activation, the extension spawns Pearl's MCP server (`src/mcp/server.py`,
 run as `<python> -m src.mcp`) as a child process and speaks its JSON-RPC
 protocol over stdio — see
 [`../README.md`](../README.md#-running-the-mcp-server) for what that
-server exposes. (This step added one new server-side method,
-`pearl/planOnly` — see "Chat webview" below — everything else about the
-server, including how tools actually execute, is unchanged.)
+server exposes. (Prior steps added `pearl/planOnly`, `pearl/chat`; this
+step added `pearl/memory` — see "Memory view" below — everything else
+about the server, including how tools actually execute, is unchanged.)
 
 - **Startup detection**: the extension sends `initialize` right after
   spawning and waits for a response (5s default timeout). A process that
@@ -174,6 +190,35 @@ correlates that one round trip per plan (see `planApproval.ts`).
 
 ---
 
+## Memory view
+
+A **"Pearl"** container in the Activity Bar holds a **Memory** tree view
+with four top-level, always-present categories, each labeled with its
+current count and expandable to its entries:
+
+- **Conversation** — every recorded turn, as `role: content` (truncated in
+  the label past 80 characters; the full text is in the tooltip).
+- **Tasks** — each task's description as the label, its status
+  (`pending`/`in_progress`/`completed`/`failed`) as the description text.
+- **Execution History** — each tool call's name as the label, `ok`/`failed`
+  as the description, and the result or error as the tooltip.
+- **Project Facts** — each key/value pair remembered in `Memory.project`.
+
+This reads `Memory` through the *existing* MCP server via a new
+`pearl/memory` method (`src/mcp/server.py`), which returns
+`Memory.to_dict()` **exactly as-is** — the `Memory` class itself
+(`src/memory/memory.py`) was not touched to build this view. The view is
+read-only: nothing in this feature ever calls a Memory-mutating method.
+
+The view refreshes automatically once the MCP connection is established,
+and again any time you click the refresh icon (**$(refresh)**) in the
+view's title bar, or run **"Pearl: Refresh Memory"** from the Command
+Palette. A failed refresh (e.g. connection down) replaces the tree with a
+single `Failed to load memory: <reason>` node instead of leaving stale
+data or crashing the view.
+
+---
+
 ## Prerequisites
 
 - Node.js >= 18
@@ -218,7 +263,9 @@ In that window, open the Command Palette (`Ctrl+Shift+P` /
 Pearl: Open Chat
 ```
 
-This opens the chat panel described above.
+This opens the chat panel described above. The **Memory** view lives in
+the **Pearl** icon in the Activity Bar (usually the left-hand icon strip)
+of that same Extension Development Host window.
 
 ## Test
 
@@ -231,14 +278,14 @@ output in `out/`. The MCP connection and chat tests use a fake child
 process / fake MCP sender (no real `python` process is spawned), so they
 run without Pearl's Python dependencies installed.
 
-`chatApproval.integration.test.ts` and `planVisualization.integration.test.ts`
-are a step above the per-module unit tests: they drive the real
-`MCPConnection` (talking JSON-RPC over a fake child process, exactly as it
-would over a real one) together with the real `ChatController`,
-`planClient`, `toolCallClient`, and `WebviewPlanApprover`, verifying the
-full plan preview → Execute Plan/Cancel → per-tool approve/reject →
-`tools/call` (or `pearl/chat` fallback) pipeline end-to-end — everything
-except the actual `vscode.Webview` and a real Python process. In
-particular, `planVisualization.integration.test.ts` asserts that the
-`showPlan` message reaches the webview, and that `tools/call` is never
-sent over the wire, before a decision is made or after `Cancel`.
+`chatApproval.integration.test.ts`, `planVisualization.integration.test.ts`,
+and `memoryPanel.integration.test.ts` are a step above the per-module unit
+tests: they drive the real `MCPConnection` (talking JSON-RPC over a fake
+child process, exactly as it would over a real one) together with the real
+`ChatController`/`planClient`/`toolCallClient`/`WebviewPlanApprover` or
+`MemoryTreeState`, verifying their respective pipelines end-to-end —
+everything except the actual `vscode.Webview`/`vscode.TreeView` and a real
+Python process. `memoryPanel.integration.test.ts` specifically covers a
+successful `pearl/memory` fetch building the expected tree, a protocol
+error surfacing as a single error node without crashing, and repeated
+refreshes correctly replacing the previous tree.

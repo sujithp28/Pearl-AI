@@ -3,8 +3,11 @@ import * as vscode from "vscode";
 import { ChatPanel } from "./chat/chatPanel";
 import { MCPConnection } from "./mcp/connection";
 import { MCPStatusBar } from "./mcp/statusBar";
+import { MemoryTreeProvider } from "./memory/memoryTreeProvider";
 
 export const OPEN_CHAT_COMMAND_ID = "pearl.openChat";
+export const REFRESH_MEMORY_COMMAND_ID = "pearl.refreshMemory";
+export const MEMORY_VIEW_ID = "pearlMemory";
 
 let connection: MCPConnection | undefined;
 
@@ -22,12 +25,25 @@ export function activate(context: vscode.ExtensionContext): void {
       spawn(command, args, { cwd: options.cwd }),
   });
 
-  connection.onStatusChange = (status, detail) =>
+  const memoryTreeProvider = new MemoryTreeProvider(connection);
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider(
+      MEMORY_VIEW_ID,
+      memoryTreeProvider
+    )
+  );
+
+  connection.onStatusChange = (status, detail) => {
     statusBar.setStatus(status, detail);
+
+    if (status === "connected") {
+      void memoryTreeProvider.refresh();
+    }
+  };
 
   connection.start();
 
-  const disposable = vscode.commands.registerCommand(
+  const openChatCommand = vscode.commands.registerCommand(
     OPEN_CHAT_COMMAND_ID,
     () => {
       if (!connection) {
@@ -38,7 +54,15 @@ export function activate(context: vscode.ExtensionContext): void {
       ChatPanel.createOrShow(connection);
     }
   );
-  context.subscriptions.push(disposable);
+  context.subscriptions.push(openChatCommand);
+
+  const refreshMemoryCommand = vscode.commands.registerCommand(
+    REFRESH_MEMORY_COMMAND_ID,
+    () => {
+      void memoryTreeProvider.refresh();
+    }
+  );
+  context.subscriptions.push(refreshMemoryCommand);
 
   context.subscriptions.push({ dispose: () => connection?.stop() });
 }

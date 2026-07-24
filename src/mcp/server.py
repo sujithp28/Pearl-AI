@@ -298,6 +298,18 @@ class MCPServer:
 
         return {"message": response}
 
+    def _memory(self, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Return the current contents of Memory (a Pearl-specific
+        extension for inspecting agent state): conversation history,
+        task history, execution history, and project facts.
+
+        Read-only: reuses `Memory.to_dict()` exactly as-is; nothing
+        here mutates Memory or the underlying `Memory` implementation.
+        """
+
+        return self.memory.to_dict()
+
     def _shutdown(self, params: dict[str, Any]) -> None:
         """
         Handle the `shutdown` request.
@@ -314,6 +326,7 @@ class MCPServer:
         "pearl/plan": _plan_run,
         "pearl/planOnly": _plan_only,
         "pearl/chat": _chat,
+        "pearl/memory": _memory,
         "shutdown": _shutdown,
     }
 

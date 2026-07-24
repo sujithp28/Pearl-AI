@@ -21,8 +21,39 @@
       {
         "command": "pearl.openChat",
         "title": "Pearl: Open Chat"
+      },
+      {
+        "command": "pearl.refreshMemory",
+        "title": "Pearl: Refresh Memory",
+        "icon": "$(refresh)"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pearl",
+          "title": "Pearl",
+          "icon": "$(database)"
+        }
+      ]
+    },
+    "views": {
+      "pearl": [
+        {
+          "id": "pearlMemory",
+          "name": "Memory"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "pearl.refreshMemory",
+          "when": "view == pearlMemory",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "Pearl",
       "properties": {

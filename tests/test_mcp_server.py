@@ -468,6 +468,104 @@ def test_chat_lazily_constructs_llm_client_when_not_provided(monkeypatch):
 
 
 # ---------------------------------------------------------------------
+# pearl/memory -- reuses Memory.to_dict() exactly, read-only
+# ---------------------------------------------------------------------
+
+
+def test_memory_returns_empty_snapshot_for_a_fresh_server():
+    server = build_server()
+
+    response = server.handle_request(
+        JsonRpcRequest(method="pearl/memory", id=1)
+    )
+
+    assert response.error is None
+    assert response.result == {
+        "conversation": [],
+        "tasks": [],
+        "project": {},
+        "execution_history": [],
+    }
+
+
+def test_memory_matches_memory_to_dict_exactly(monkeypatch):
+    stub_llm = StubLLM(response="hi there")
+    server = build_server(llm=stub_llm)
+
+    server.handle_request(
+        JsonRpcRequest(method="pearl/chat", id=1, params={"message": "hi"})
+    )
+    server.memory.remember_project_fact("language", "python")
+
+    response = server.handle_request(
+        JsonRpcRequest(method="pearl/memory", id=2)
+    )
+
+    assert response.result == server.memory.to_dict()
+
+
+def test_memory_reflects_tool_execution_history():
+    server = build_server()
+
+    server.handle_request(
+        JsonRpcRequest(
+            method="tools/call",
+            id=1,
+            params={"name": "add", "arguments": {"a": 1, "b": 2}},
+        )
+    )
+
+    response = server.handle_request(
+        JsonRpcRequest(method="pearl/memory", id=2)
+    )
+
+    assert len(response.result["execution_history"]) == 1
+    assert response.result["execution_history"][0]["tool_name"] == "add"
+    assert response.result["execution_history"][0]["result"] == 3
+
+
+def test_memory_reflects_planned_task_history(monkeypatch):
+    server = build_server(with_planner=True)
+
+    monkeypatch.setattr(
+        server.planner.client,
+        "generate_json",
+        lambda prompt: {
+            "steps": [{"tool": "add", "arguments": {"a": 1, "b": 2}}]
+        },
+    )
+
+    server.handle_request(
+        JsonRpcRequest(method="pearl/plan", id=1, params={"prompt": "add"})
+    )
+
+    response = server.handle_request(
+        JsonRpcRequest(method="pearl/memory", id=2)
+    )
+
+    assert len(response.result["tasks"]) == 1
+    assert response.result["tasks"][0]["status"] == "completed"
+
+
+def test_memory_call_is_read_only():
+    server = build_server()
+
+    server.handle_request(
+        JsonRpcRequest(
+            method="tools/call",
+            id=1,
+            params={"name": "add", "arguments": {"a": 1, "b": 2}},
+        )
+    )
+
+    first = server.handle_request(JsonRpcRequest(method="pearl/memory", id=2))
+    second = server.handle_request(JsonRpcRequest(method="pearl/memory", id=3))
+
+    assert first.result == second.result
+    assert len(server.memory.execution_history) == 1
+
+
+# ---------------------------------------------------------------------
 # shutdown
 # ---------------------------------------------------------------------
 
