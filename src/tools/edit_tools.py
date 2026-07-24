@@ -9,6 +9,7 @@ only what changed, preserving the rest of the file's formatting.
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import re
 from pathlib import Path
@@ -16,10 +17,40 @@ from typing import Any
 
 from src.tools.file_tools import _ensure_within_workspace
 from src.tools.metadata import tool
+from src.tools.patch_manager import PatchManager
 
 logger = logging.getLogger(__name__)
 
 _HUNK_HEADER_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+\d+(?:,\d+)? @@")
+
+# When set, every editing tool in this module stages its change in
+# the active PatchManager instead of writing to disk ("preview
+# mode"). Unset (the default), they write directly ("apply mode"),
+# exactly as before this module gained patch-preview support — so
+# calling these tools directly (CLI, tests, `PearlAgent.run`) is
+# completely unaffected. Only `AutonomousExecutor` activates preview
+# mode, for the duration of its own run.
+_active_patch_manager: contextvars.ContextVar[PatchManager | None] = (
+    contextvars.ContextVar("pearl_active_patch_manager", default=None)
+)
+
+
+def set_active_patch_manager(manager: PatchManager | None) -> None:
+    """
+    Activate (or, with `None`, deactivate) preview mode for every
+    editing tool in this module.
+    """
+
+    _active_patch_manager.set(manager)
+
+
+def get_active_patch_manager() -> PatchManager | None:
+    """
+    Return the currently active `PatchManager`, or `None` if preview
+    mode is off (the default).
+    """
+
+    return _active_patch_manager.get()
 
 
 def _read_lines(file_path: Path) -> tuple[list[str], bool]:
@@ -33,6 +64,20 @@ def _read_lines(file_path: Path) -> tuple[list[str], bool]:
     return text.splitlines(), trailing_newline
 
 
+def _lines_to_text(lines: list[str], trailing_newline: bool) -> str:
+    """
+    Join `lines` back into file content, restoring the trailing
+    newline.
+    """
+
+    content = "\n".join(lines)
+
+    if trailing_newline and lines:
+        content += "\n"
+
+    return content
+
+
 def _write_lines(
     file_path: Path,
     lines: list[str],
@@ -42,12 +87,9 @@ def _write_lines(
     Write `lines` back to `file_path`, restoring the trailing newline.
     """
 
-    content = "\n".join(lines)
-
-    if trailing_newline and lines:
-        content += "\n"
-
-    file_path.write_text(content, encoding="utf-8")
+    file_path.write_text(
+        _lines_to_text(lines, trailing_newline), encoding="utf-8"
+    )
 
 
 def _parse_hunks(patch: str) -> list[dict[str, Any]]:
@@ -138,17 +180,31 @@ def _apply_hunks(
         "path": "str",
         "content": "str",
     },
-    returns="None",
+    returns="None | str",
 )
-def create_file(path: str, content: str = "") -> None:
+def create_file(path: str, content: str = "") -> None | str:
     """
     Create a new file. Raises if the file already exists.
+
+    In preview mode (an `AutonomousExecutor` run in progress), stages
+    the new file in the active `PatchManager` and returns a short
+    status string instead of writing anything.
     """
 
     file_path = _ensure_within_workspace(path)
 
     if file_path.exists():
         raise FileExistsError(path)
+
+    manager = get_active_patch_manager()
+
+    if manager is not None:
+        logger.info("Previewing create_file: %s", file_path)
+
+        manager.propose(str(file_path), None, content)
+
+        lines = len(content.splitlines())
+        return f"Preview staged: create '{path}' ({lines} line(s))."
 
     if file_path.parent:
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -199,6 +255,16 @@ def replace_in_file(
         return 0
 
     replaced = occurrences if count < 0 else min(count, occurrences)
+    updated_text = text.replace(search, replacement, count)
+
+    manager = get_active_patch_manager()
+
+    if manager is not None:
+        logger.info("Previewing replace_in_file: %s", file_path)
+
+        manager.propose(str(file_path), text, updated_text)
+
+        return replaced
 
     logger.info(
         "Replacing %d occurrence(s) of %r in %s",
@@ -207,10 +273,7 @@ def replace_in_file(
         file_path,
     )
 
-    file_path.write_text(
-        text.replace(search, replacement, count),
-        encoding="utf-8",
-    )
+    file_path.write_text(updated_text, encoding="utf-8")
 
     return replaced
 
@@ -226,17 +289,20 @@ def replace_in_file(
         "end_line": "int",
         "new_content": "str",
     },
-    returns="None",
+    returns="None | str",
 )
 def edit_lines(
     path: str,
     start_line: int,
     end_line: int,
     new_content: str,
-) -> None:
+) -> None | str:
     """
     Replace lines `start_line`-`end_line` (1-indexed, inclusive)
     with `new_content`.
+
+    In preview mode, stages the change in the active `PatchManager`
+    and returns a short status string instead of writing anything.
     """
 
     file_path = _ensure_within_workspace(path)
@@ -254,13 +320,25 @@ def edit_lines(
 
     replacement = new_content.splitlines() if new_content else []
 
+    new_lines = list(lines)
+    new_lines[start_line - 1 : end_line] = replacement
+
+    manager = get_active_patch_manager()
+
+    if manager is not None:
+        logger.info("Previewing edit_lines: %s", file_path)
+
+        original_text = _lines_to_text(lines, trailing_newline)
+        updated_text = _lines_to_text(new_lines, trailing_newline)
+        manager.propose(str(file_path), original_text, updated_text)
+
+        return f"Preview staged: lines {start_line}-{end_line} in '{path}'."
+
     logger.info(
         "Editing lines %d-%d in %s", start_line, end_line, file_path
     )
 
-    lines[start_line - 1 : end_line] = replacement
-
-    _write_lines(file_path, lines, trailing_newline)
+    _write_lines(file_path, new_lines, trailing_newline)
 
 
 @tool(
@@ -269,11 +347,14 @@ def edit_lines(
         "path": "str",
         "patch": "str",
     },
-    returns="None",
+    returns="None | str",
 )
-def patch_file(path: str, patch: str) -> None:
+def patch_file(path: str, patch: str) -> None | str:
     """
     Apply a unified diff `patch` to an existing file.
+
+    In preview mode, stages the change in the active `PatchManager`
+    and returns a short status string instead of writing anything.
     """
 
     file_path = _ensure_within_workspace(path)
@@ -285,6 +366,17 @@ def patch_file(path: str, patch: str) -> None:
 
     hunks = _parse_hunks(patch)
     patched_lines = _apply_hunks(lines, hunks)
+
+    manager = get_active_patch_manager()
+
+    if manager is not None:
+        logger.info("Previewing patch_file: %s", file_path)
+
+        original_text = _lines_to_text(lines, trailing_newline)
+        updated_text = _lines_to_text(patched_lines, trailing_newline)
+        manager.propose(str(file_path), original_text, updated_text)
+
+        return f"Preview staged: patch for '{path}'."
 
     logger.info("Patching file: %s", file_path)
 

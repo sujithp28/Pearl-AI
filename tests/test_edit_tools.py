@@ -3,9 +3,12 @@ import pytest
 from src.tools.edit_tools import (
     create_file,
     edit_lines,
+    get_active_patch_manager,
     patch_file,
     replace_in_file,
+    set_active_patch_manager,
 )
+from src.tools.patch_manager import PatchManager
 
 
 @pytest.fixture(autouse=True)
@@ -16,6 +19,19 @@ def _workspace(tmp_path, monkeypatch):
     """
 
     monkeypatch.chdir(tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def _no_leaked_patch_manager():
+    """
+    Guarantee preview mode starts (and ends) off for every test, so a
+    test that forgets to clean up its own `set_active_patch_manager`
+    call can't leak preview mode into an unrelated test.
+    """
+
+    assert get_active_patch_manager() is None
+    yield
+    set_active_patch_manager(None)
 
 
 # ---------------------------------------------------------------------
@@ -208,3 +224,120 @@ def test_patch_file_missing_file_raises(tmp_path):
 
     with pytest.raises(FileNotFoundError):
         patch_file(str(tmp_path / "missing.py"), patch)
+
+
+# ---------------------------------------------------------------------
+# Preview mode
+# ---------------------------------------------------------------------
+
+
+def test_create_file_preview_mode_stages_instead_of_writing(tmp_path):
+    file = tmp_path / "new.py"
+    manager = PatchManager()
+    set_active_patch_manager(manager)
+
+    result = create_file(str(file), "print('hi')\n")
+
+    assert not file.exists()
+    assert manager.has_pending()
+    assert manager.pending[0].path == str(file)
+    assert manager.pending[0].original_content is None
+    assert manager.pending[0].updated_content == "print('hi')\n"
+    assert isinstance(result, str)
+    assert "Preview" in result
+
+
+def test_create_file_preview_mode_still_rejects_existing_file(tmp_path):
+    file = tmp_path / "existing.txt"
+    file.write_text("original")
+    manager = PatchManager()
+    set_active_patch_manager(manager)
+
+    with pytest.raises(FileExistsError):
+        create_file(str(file), "overwritten")
+
+    assert not manager.has_pending()
+    assert file.read_text() == "original"
+
+
+def test_replace_in_file_preview_mode_stages_instead_of_writing(tmp_path):
+    file = tmp_path / "code.py"
+    file.write_text("foo = 1\n")
+    manager = PatchManager()
+    set_active_patch_manager(manager)
+
+    replaced = replace_in_file(str(file), "foo", "bar")
+
+    assert replaced == 1
+    assert file.read_text() == "foo = 1\n"
+    assert manager.pending[0].updated_content == "bar = 1\n"
+    assert manager.pending[0].original_content == "foo = 1\n"
+
+
+def test_edit_lines_preview_mode_stages_instead_of_writing(tmp_path):
+    file = tmp_path / "code.py"
+    file.write_text("line1\nline2\nline3\n")
+    manager = PatchManager()
+    set_active_patch_manager(manager)
+
+    result = edit_lines(str(file), 2, 2, "changed")
+
+    assert file.read_text() == "line1\nline2\nline3\n"
+    assert manager.pending[0].updated_content == "line1\nchanged\nline3\n"
+    assert isinstance(result, str)
+
+
+def test_patch_file_preview_mode_stages_instead_of_writing(tmp_path):
+    file = tmp_path / "code.py"
+    file.write_text("line1\nline2\n")
+    manager = PatchManager()
+    set_active_patch_manager(manager)
+
+    patch = "\n".join(["@@ -1,2 +1,2 @@", " line1", "-line2", "+changed"])
+    result = patch_file(str(file), patch)
+
+    assert file.read_text() == "line1\nline2\n"
+    assert manager.pending[0].updated_content == "line1\nchanged\n"
+    assert isinstance(result, str)
+
+
+def test_patch_file_preview_mode_still_validates_the_patch(tmp_path):
+    file = tmp_path / "code.py"
+    file.write_text("line1\nline2\n")
+    manager = PatchManager()
+    set_active_patch_manager(manager)
+
+    patch = "\n".join(["@@ -1,1 +1,1 @@", "-does not match", "+x"])
+
+    with pytest.raises(ValueError):
+        patch_file(str(file), patch)
+
+    assert not manager.has_pending()
+
+
+def test_multiple_edit_tools_stage_into_the_same_batch(tmp_path):
+    existing = tmp_path / "existing.py"
+    existing.write_text("old\n")
+    manager = PatchManager()
+    set_active_patch_manager(manager)
+
+    create_file(str(tmp_path / "new.py"), "print(1)\n")
+    replace_in_file(str(existing), "old", "new")
+
+    assert len(manager.pending) == 2
+    assert manager.affected_files() == [
+        str(tmp_path / "new.py"),
+        str(existing),
+    ]
+
+
+def test_deactivating_preview_mode_restores_direct_writes(tmp_path):
+    file = tmp_path / "new.py"
+    manager = PatchManager()
+    set_active_patch_manager(manager)
+    set_active_patch_manager(None)
+
+    create_file(str(file), "print('hi')\n")
+
+    assert file.read_text() == "print('hi')\n"
+    assert not manager.has_pending()

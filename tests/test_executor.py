@@ -1,10 +1,31 @@
+from pathlib import Path
+
 import pytest
 
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.executor import AutonomousExecutor, ProgressEvent
 from src.agent.planner import Planner
+from src.tools.edit_tools import (
+    create_file,
+    replace_in_file,
+    set_active_patch_manager,
+)
 from src.tools.metadata import tool
+from src.tools.patch_manager import PatchManager
 from src.tools.registry import ToolRegistry
+
+
+@pytest.fixture(autouse=True)
+def _no_leaked_patch_manager():
+    """
+    Guarantee preview mode is off after every test, even if a test
+    leaves a run paused (awaiting_approval) without resolving it —
+    otherwise that state could leak into unrelated tests via the
+    module-level contextvar in `edit_tools.py`.
+    """
+
+    yield
+    set_active_patch_manager(None)
 
 
 @tool(
@@ -21,10 +42,17 @@ def boom() -> None:
     raise ValueError("kaboom")
 
 
-def build_executor(max_iterations: int = 10, max_replans: int = 3, on_progress=None):
+def build_executor(
+    max_iterations: int = 10,
+    max_replans: int = 3,
+    on_progress=None,
+    patch_manager: PatchManager | None = None,
+):
     registry = ToolRegistry()
     registry.register(add)
     registry.register(boom)
+    registry.register(create_file)
+    registry.register(replace_in_file)
 
     dispatcher = ToolDispatcher(registry)
     planner = Planner(registry, dispatcher)
@@ -35,6 +63,7 @@ def build_executor(max_iterations: int = 10, max_replans: int = 3, on_progress=N
         max_iterations=max_iterations,
         max_replans=max_replans,
         on_progress=on_progress,
+        patch_manager=patch_manager,
     ), planner
 
 
@@ -840,3 +869,478 @@ def test_cancel_called_from_another_thread_is_observed(monkeypatch):
     assert not canceller.is_alive()
     assert report.stop_reason == "cancelled"
     assert [step.tool_name for step in report.steps] == ["signal_start"]
+
+
+# ---------------------------------------------------------------------
+# Patch preview & approval
+# ---------------------------------------------------------------------
+#
+# These tests fake the workspace root by monkeypatching `Path.cwd`
+# (which `_ensure_within_workspace` consults) rather than
+# `monkeypatch.chdir` — Planner still needs the *real* process cwd
+# (the repo root) to load its prompt templates by their relative
+# path, and actually `chdir`-ing would break that.
+
+
+@pytest.fixture
+def workspace(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+    return tmp_path
+
+
+def test_single_file_preview_pauses_for_approval(monkeypatch, workspace):
+    executor, planner = build_executor()
+    target = str(workspace / "a.py")
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {"path": target, "content": "print(1)\n"},
+            },
+        ),
+    )
+
+    report = executor.run("create a.py")
+
+    assert report.stop_reason == "awaiting_approval"
+    assert not report.succeeded
+    assert not (workspace / "a.py").exists()
+    assert executor.is_awaiting_approval()
+    assert executor.patch_manager.has_pending()
+    assert executor.patch_manager.affected_files() == [target]
+    assert len(report.steps) == 1
+    assert report.steps[0].succeeded
+
+
+def test_multi_file_preview_groups_into_a_single_batch(monkeypatch, workspace):
+    executor, planner = build_executor()
+    a, b, c = (str(workspace / name) for name in ("a.py", "b.py", "c.py"))
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "create_file", "arguments": {"path": a, "content": "1\n"}},
+            {"tool": "create_file", "arguments": {"path": b, "content": "2\n"}},
+            {"tool": "create_file", "arguments": {"path": c, "content": "3\n"}},
+        ),
+    )
+
+    report = executor.run("create three files")
+
+    assert report.stop_reason == "awaiting_approval"
+    assert len(report.steps) == 3
+    assert all(step.succeeded for step in report.steps)
+    assert not (workspace / "a.py").exists()
+    assert not (workspace / "b.py").exists()
+    assert not (workspace / "c.py").exists()
+    assert executor.patch_manager.affected_files() == [a, b, c]
+
+
+def test_approval_writes_files_and_completes(monkeypatch, workspace):
+    executor, planner = build_executor()
+    target = str(workspace / "a.py")
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {"path": target, "content": "print(1)\n"},
+            },
+        ),
+    )
+
+    paused = executor.run("create a.py")
+    assert paused.stop_reason == "awaiting_approval"
+
+    final = executor.approve()
+
+    assert final.stop_reason == "completed"
+    assert final.succeeded
+    assert (workspace / "a.py").read_text() == "print(1)\n"
+    assert not executor.patch_manager.has_pending()
+    assert not executor.is_awaiting_approval()
+    # Execution history is preserved unchanged across the pause.
+    assert final.steps == paused.steps
+
+
+def test_rejection_discards_patches_and_returns_cleanly(monkeypatch, workspace):
+    executor, planner = build_executor()
+    target = str(workspace / "a.py")
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {"path": target, "content": "print(1)\n"},
+            },
+        ),
+    )
+
+    paused = executor.run("create a.py")
+    assert paused.stop_reason == "awaiting_approval"
+
+    final = executor.reject()
+
+    assert final.stop_reason == "rejected"
+    assert not final.succeeded
+    assert not (workspace / "a.py").exists()
+    assert not executor.patch_manager.has_pending()
+    assert final.steps == paused.steps
+
+
+def test_resume_after_approval_continues_without_replanning(
+    monkeypatch, workspace
+):
+    executor, planner = build_executor()
+    target = str(workspace / "a.py")
+
+    plan_calls = {"n": 0}
+
+    def _plan(prompt):
+        plan_calls["n"] += 1
+        return {
+            "steps": [
+                {
+                    "tool": "create_file",
+                    "arguments": {"path": target, "content": "1\n"},
+                },
+                {"tool": "add", "arguments": {"a": 1, "b": 1}},
+            ]
+        }
+
+    monkeypatch.setattr(planner.client, "generate_json", _plan)
+
+    paused = executor.run("create then add")
+    assert paused.stop_reason == "awaiting_approval"
+    # Both steps already ran (create_file staged its edit, add
+    # executed normally); the pause happens once the plan is
+    # exhausted with a patch still pending approval.
+    assert [step.tool_name for step in paused.steps] == [
+        "create_file",
+        "add",
+    ]
+    assert plan_calls["n"] == 1
+
+    final = executor.approve()
+
+    assert final.stop_reason == "completed"
+    assert [step.tool_name for step in final.steps] == [
+        "create_file",
+        "add",
+    ]
+    # Same two ExecutionStep objects carried through, not re-run.
+    assert final.steps == paused.steps
+    assert final.steps[1].result == 2
+    assert plan_calls["n"] == 1  # no re-plan happened
+    assert (workspace / "a.py").read_text() == "1\n"
+
+
+def test_resume_executes_steps_left_unrun_at_pause_time(monkeypatch, workspace):
+    # With max_replans=0, a failed step exhausts the replan budget
+    # immediately — but there's a patch pending (from the successful
+    # create_file before it), so execution pauses instead of failing,
+    # leaving the plan's final step ("add") genuinely un-run.
+    executor, planner = build_executor(max_replans=0)
+    target = str(workspace / "a.py")
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {"path": target, "content": "1\n"},
+            },
+            {"tool": "boom", "arguments": {}},
+            {"tool": "add", "arguments": {"a": 5, "b": 5}},
+        ),
+    )
+
+    paused = executor.run("create, then fail, then add")
+
+    assert paused.stop_reason == "awaiting_approval"
+    assert [step.tool_name for step in paused.steps] == [
+        "create_file",
+        "boom",
+    ]
+    assert not paused.steps[1].succeeded
+
+    final = executor.approve()
+
+    assert final.stop_reason == "completed"
+    assert [step.tool_name for step in final.steps] == [
+        "create_file",
+        "boom",
+        "add",
+    ]
+    assert final.steps[2].result == 10
+    assert (workspace / "a.py").read_text() == "1\n"
+
+
+def test_resume_does_not_restart_completed_steps(monkeypatch, workspace):
+    registry = ToolRegistry()
+    registry.register(create_file)
+
+    calls = {"n": 0}
+
+    @tool(description="Counts how many times it's called.")
+    def counting_tool() -> int:
+        calls["n"] += 1
+        return calls["n"]
+
+    registry.register(counting_tool)
+
+    dispatcher = ToolDispatcher(registry)
+    planner = Planner(registry, dispatcher)
+    executor = AutonomousExecutor(planner, dispatcher)
+    target = str(workspace / "a.py")
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "counting_tool", "arguments": {}},
+            {
+                "tool": "create_file",
+                "arguments": {"path": target, "content": "x\n"},
+            },
+        ),
+    )
+
+    paused = executor.run("count then create")
+    assert paused.stop_reason == "awaiting_approval"
+    assert calls["n"] == 1
+
+    final = executor.approve()
+
+    assert final.stop_reason == "completed"
+    assert calls["n"] == 1
+    assert [step.tool_name for step in final.steps] == [
+        "counting_tool",
+        "create_file",
+    ]
+
+
+def test_cancel_while_awaiting_approval_via_approve_discards_patches(
+    monkeypatch, workspace
+):
+    executor, planner = build_executor()
+    target = str(workspace / "a.py")
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {"path": target, "content": "1\n"},
+            },
+        ),
+    )
+
+    paused = executor.run("create a.py")
+    assert paused.stop_reason == "awaiting_approval"
+
+    executor.cancel()
+    final = executor.approve()
+
+    assert final.stop_reason == "cancelled"
+    assert not (workspace / "a.py").exists()
+    assert not executor.patch_manager.has_pending()
+    assert final.steps == paused.steps
+
+
+def test_cancel_while_awaiting_approval_via_reject_also_finalizes_cancelled(
+    monkeypatch, workspace
+):
+    executor, planner = build_executor()
+    target = str(workspace / "a.py")
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {"path": target, "content": "1\n"},
+            },
+        ),
+    )
+
+    executor.run("create a.py")
+    executor.cancel()
+    final = executor.reject()
+
+    assert final.stop_reason == "cancelled"
+    assert not (workspace / "a.py").exists()
+
+
+def test_diff_is_generated_for_a_previewed_edit(monkeypatch, workspace):
+    existing = workspace / "existing.py"
+    existing.write_text("old = 1\n")
+
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "replace_in_file",
+                "arguments": {
+                    "path": str(existing),
+                    "search": "old",
+                    "replacement": "new",
+                },
+            },
+        ),
+    )
+
+    report = executor.run("rename old to new")
+    assert report.stop_reason == "awaiting_approval"
+
+    edit = executor.patch_manager.pending[0]
+    assert edit.original_content == "old = 1\n"
+    assert edit.updated_content == "new = 1\n"
+    assert "-old = 1" in edit.diff
+    assert "+new = 1" in edit.diff
+
+
+def test_empty_patch_when_nothing_to_replace_does_not_pause(
+    monkeypatch, workspace
+):
+    file = workspace / "a.py"
+    file.write_text("hello world\n")
+
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "replace_in_file",
+                "arguments": {
+                    "path": str(file),
+                    "search": "missing",
+                    "replacement": "x",
+                },
+            },
+        ),
+    )
+
+    report = executor.run("replace something that isn't there")
+
+    assert report.stop_reason == "completed"
+    assert report.succeeded
+    assert not executor.patch_manager.has_pending()
+    assert report.steps[0].result == 0
+    assert file.read_text() == "hello world\n"
+
+
+def test_approve_without_pending_approval_raises():
+    executor, _ = build_executor()
+
+    with pytest.raises(RuntimeError):
+        executor.approve()
+
+
+def test_reject_without_pending_approval_raises():
+    executor, _ = build_executor()
+
+    with pytest.raises(RuntimeError):
+        executor.reject()
+
+
+def test_run_raises_if_already_awaiting_approval(monkeypatch, workspace):
+    executor, planner = build_executor()
+    target = str(workspace / "a.py")
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {"path": target, "content": "1\n"},
+            },
+        ),
+    )
+
+    executor.run("create a.py")
+
+    with pytest.raises(RuntimeError):
+        executor.run("create a.py again")
+
+
+def test_awaiting_approval_emits_progress_event(monkeypatch, workspace):
+    executor, planner = build_executor()
+    target = str(workspace / "a.py")
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {"path": target, "content": "1\n"},
+            },
+        ),
+    )
+
+    report = executor.run("create a.py")
+
+    assert report.events[-1].status == "awaiting_approval"
+    assert report.events[-1].current_action
+
+
+def test_rejection_emits_progress_event(monkeypatch, workspace):
+    executor, planner = build_executor()
+    target = str(workspace / "a.py")
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {"path": target, "content": "1\n"},
+            },
+        ),
+    )
+
+    executor.run("create a.py")
+    final = executor.reject()
+
+    assert final.events[-1].status == "rejected"
+    assert final.events[-1].current_action
+
+
+def test_shared_patch_manager_can_be_passed_in(monkeypatch, workspace):
+    shared = PatchManager()
+    executor, planner = build_executor(patch_manager=shared)
+    target = str(workspace / "a.py")
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {"path": target, "content": "1\n"},
+            },
+        ),
+    )
+
+    executor.run("create a.py")
+
+    assert executor.patch_manager is shared
+    assert shared.has_pending()

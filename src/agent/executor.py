@@ -1,15 +1,27 @@
 """
 Autonomous multi-step task execution for Pearl, with a reflection
-loop.
+loop and patch-preview approval.
 
 After every tool execution, the outcome is evaluated and summarized.
 A failed step doesn't immediately end the run: the Planner is asked
 for a revised remaining plan (bounded by `max_replans`, to prevent
 infinite replan loops), and execution continues with that plan.
 
+While a run is in progress, every editing tool (`create_file`,
+`replace_in_file`, `edit_lines`, `patch_file`) stages its changes in
+a `PatchManager` instead of writing to disk ("preview mode" — the
+default here). Once the current plan runs out of steps (or would
+otherwise stop) with edits still staged, execution pauses and
+`run()`/`approve()` returns an `ExecutionReport` with
+`stop_reason="awaiting_approval"` instead of finishing. Calling
+`approve()` writes the staged edits and resumes exactly where
+execution paused (no re-planning, no re-running completed steps);
+calling `reject()` discards them and stops cleanly.
+
 Reuses `Planner` (for both the initial plan and any replans) and
 `ToolDispatcher` (for execution) as-is; this module only adds the
-loop, evaluation, and replanning orchestration around them.
+loop, evaluation, replanning, cancellation, and patch-approval
+orchestration around them.
 """
 
 from __future__ import annotations
@@ -22,6 +34,8 @@ from typing import Any, Callable, Literal
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
 from src.llm.parser import ToolCall
+from src.tools.edit_tools import set_active_patch_manager
+from src.tools.patch_manager import PatchManager
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +43,12 @@ DEFAULT_MAX_ITERATIONS = 10
 DEFAULT_MAX_REPLANS = 3
 
 StopReason = Literal[
-    "completed", "max_iterations", "fatal_error", "cancelled"
+    "completed",
+    "max_iterations",
+    "fatal_error",
+    "cancelled",
+    "awaiting_approval",
+    "rejected",
 ]
 
 ProgressStatus = Literal[
@@ -40,6 +59,8 @@ ProgressStatus = Literal[
     "replanning",
     "task_completed",
     "cancelled",
+    "awaiting_approval",
+    "rejected",
 ]
 
 _SUMMARY_TRUNCATE = 200
@@ -57,6 +78,8 @@ _MSG_TASK_COMPLETED_FAILURE = (
     "💀 I fought bravely... but this one needs a human."
 )
 _MSG_CANCELLED = "🛑 Cancelled — stopping right where we are."
+_MSG_AWAITING_APPROVAL = "📄 Patch ready — take a look and let me know."
+_MSG_REJECTED = "🗑️ No worries, discarding that patch."
 
 
 @dataclass(slots=True)
@@ -122,9 +145,10 @@ class ExecutionStep:
 @dataclass(slots=True)
 class ExecutionReport:
     """
-    The complete outcome of an autonomous run: every step taken
-    across any replans (the execution history), why the loop
-    stopped, and how many times it replanned.
+    The complete outcome of an autonomous run (or one leg of it, if
+    it paused for approval): every step taken across any replans
+    (the execution history), why the loop stopped, how many times it
+    replanned, and any progress events emitted.
     """
 
     steps: list[ExecutionStep] = field(default_factory=list)
@@ -136,10 +160,28 @@ class ExecutionReport:
     def succeeded(self) -> bool:
         """
         Return whether the task completed (as opposed to stopping on
-        a fatal error or the iteration cap).
+        a fatal error, the iteration cap, cancellation, rejection, or
+        still awaiting approval).
         """
 
         return self.stop_reason == "completed"
+
+
+@dataclass(slots=True)
+class _PausedState:
+    """
+    Everything needed to resume a run that paused for patch approval,
+    exactly where it left off — no re-planning, no re-running
+    completed steps.
+    """
+
+    prompt: str
+    pending: list[ToolCall]
+    steps: list[ExecutionStep]
+    events: list[ProgressEvent]
+    completed_for_replan: list[dict[str, Any]]
+    replans_used: int
+    iteration: int
 
 
 class AutonomousExecutor:
@@ -154,6 +196,13 @@ class AutonomousExecutor:
     another. Cancellation is checked before every tool execution and
     before every replan — an in-flight tool call itself is never
     interrupted, but the loop stops at the next checkpoint.
+
+    Also supports patch-preview approval: while running, editing
+    tools stage their changes in `self.patch_manager` instead of
+    writing to disk. Whenever the loop would otherwise stop with
+    edits still staged, it pauses instead (`stop_reason=
+    "awaiting_approval"`); `approve()` writes them and resumes,
+    `reject()` discards them and stops cleanly.
     """
 
     def __init__(
@@ -163,13 +212,16 @@ class AutonomousExecutor:
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
         max_replans: int = DEFAULT_MAX_REPLANS,
         on_progress: Callable[[ProgressEvent], None] | None = None,
+        patch_manager: PatchManager | None = None,
     ) -> None:
         self.planner = planner
         self.dispatcher = dispatcher
         self.max_iterations = max_iterations
         self.max_replans = max_replans
         self.on_progress = on_progress
+        self.patch_manager = patch_manager or PatchManager()
         self._cancel_event = threading.Event()
+        self._paused: _PausedState | None = None
 
     def cancel(self) -> None:
         """
@@ -177,7 +229,10 @@ class AutonomousExecutor:
 
         Thread-safe and idempotent: safe to call from any thread,
         including concurrently with `run()`, and safe to call more
-        than once.
+        than once. If execution is currently paused awaiting
+        approval, the next `approve()` or `reject()` call finalizes
+        it as cancelled (discarding any pending patches) instead of
+        resuming or completing normally.
         """
 
         self._cancel_event.set()
@@ -188,6 +243,14 @@ class AutonomousExecutor:
         """
 
         return self._cancel_event.is_set()
+
+    def is_awaiting_approval(self) -> bool:
+        """
+        Return whether execution is currently paused awaiting a call
+        to `approve()` or `reject()`.
+        """
+
+        return self._paused is not None
 
     def _check_cancelled(
         self,
@@ -218,6 +281,96 @@ class AutonomousExecutor:
         )
 
         return True
+
+    def _check_awaiting_approval(
+        self,
+        prompt: str,
+        pending: list[ToolCall],
+        steps: list[ExecutionStep],
+        events: list[ProgressEvent],
+        completed_for_replan: list[dict[str, Any]],
+        replans_used: int,
+        iteration: int,
+    ) -> ExecutionReport | None:
+        """
+        If there are patches staged and not yet approved, pause: save
+        everything needed to resume later, emit the final
+        `awaiting_approval` progress event, and return the paused
+        `ExecutionReport`. Otherwise return None (nothing pending).
+        """
+
+        if not self.patch_manager.has_pending():
+            return None
+
+        affected = self.patch_manager.affected_files()
+
+        logger.info(
+            "Autonomous execution paused: %d file(s) awaiting "
+            "approval: %s",
+            len(affected),
+            affected,
+        )
+
+        self._paused = _PausedState(
+            prompt=prompt,
+            pending=pending,
+            steps=steps,
+            events=events,
+            completed_for_replan=completed_for_replan,
+            replans_used=replans_used,
+            iteration=iteration,
+        )
+
+        self._emit(
+            events,
+            "awaiting_approval",
+            current_step=len(steps),
+            total_steps=len(steps) + len(pending),
+            current_action=_MSG_AWAITING_APPROVAL,
+        )
+
+        return ExecutionReport(
+            steps=steps,
+            stop_reason="awaiting_approval",
+            replans_used=replans_used,
+            events=events,
+        )
+
+    def _finalize_cancelled_while_paused(
+        self, state: _PausedState
+    ) -> ExecutionReport:
+        """
+        Resolve a cancel() that arrived while execution was paused
+        awaiting approval: discard the pending patches and finalize
+        as cancelled, preserving the execution history collected so
+        far.
+        """
+
+        discarded = self.patch_manager.discard_all()
+
+        logger.info(
+            "Cancelled while awaiting approval; discarded %d pending "
+            "file(s): %s",
+            len(discarded),
+            discarded,
+        )
+
+        set_active_patch_manager(None)
+
+        self._emit(
+            state.events,
+            "cancelled",
+            current_step=len(state.steps),
+            total_steps=len(state.steps),
+            current_action=_MSG_CANCELLED,
+        )
+
+        return ExecutionReport(
+            steps=state.steps,
+            stop_reason="cancelled",
+            replans_used=state.replans_used,
+            events=state.events,
+        )
 
     def _emit(
         self,
@@ -258,16 +411,24 @@ class AutonomousExecutor:
         """
         Plan `prompt`, then execute steps one at a time until the
         task completes, a failure can't be recovered from (the
-        replan budget is exhausted), or `max_iterations` is reached.
+        replan budget is exhausted), `max_iterations` is reached,
+        execution is cancelled, or edits are staged and awaiting
+        approval.
         """
+
+        if self._paused is not None:
+            raise RuntimeError(
+                "Execution is already awaiting approval; call "
+                "approve() or reject() first."
+            )
 
         logger.info("Starting autonomous execution for: %s", prompt)
 
         steps: list[ExecutionStep] = []
         events: list[ProgressEvent] = []
         completed_for_replan: list[dict[str, Any]] = []
-        replans_used = 0
-        iteration = 0
+
+        set_active_patch_manager(self.patch_manager)
 
         self._emit(
             events,
@@ -279,6 +440,123 @@ class AutonomousExecutor:
 
         pending: list[ToolCall] = list(self.planner.plan(prompt))
 
+        return self._finish_or_pause(
+            self._execute(
+                prompt, pending, steps, events, completed_for_replan, 0, 0
+            )
+        )
+
+    def approve(self) -> ExecutionReport:
+        """
+        Approve every currently staged patch: write it to disk, then
+        resume execution exactly where it paused — no re-planning,
+        no re-running already-completed steps.
+
+        If cancellation was requested while paused, finalizes as
+        cancelled (discarding the staged patches) instead of
+        resuming.
+        """
+
+        if self._paused is None:
+            raise RuntimeError(
+                "No execution is currently awaiting approval."
+            )
+
+        state = self._paused
+        self._paused = None
+
+        if self.is_cancelled():
+            return self._finalize_cancelled_while_paused(state)
+
+        applied = self.patch_manager.apply_all()
+
+        logger.info("Approved %d file(s): %s", len(applied), applied)
+
+        set_active_patch_manager(self.patch_manager)
+
+        return self._finish_or_pause(
+            self._execute(
+                state.prompt,
+                state.pending,
+                state.steps,
+                state.events,
+                state.completed_for_replan,
+                state.replans_used,
+                state.iteration,
+            )
+        )
+
+    def reject(self) -> ExecutionReport:
+        """
+        Discard every currently staged patch and stop cleanly,
+        preserving the execution history collected so far.
+
+        If cancellation was requested while paused, finalizes as
+        cancelled instead (the practical effect is the same: nothing
+        is written).
+        """
+
+        if self._paused is None:
+            raise RuntimeError(
+                "No execution is currently awaiting approval."
+            )
+
+        state = self._paused
+        self._paused = None
+
+        if self.is_cancelled():
+            return self._finalize_cancelled_while_paused(state)
+
+        discarded = self.patch_manager.discard_all()
+
+        logger.info("Rejected %d file(s): %s", len(discarded), discarded)
+
+        set_active_patch_manager(None)
+
+        self._emit(
+            state.events,
+            "rejected",
+            current_step=len(state.steps),
+            total_steps=len(state.steps),
+            current_action=_MSG_REJECTED,
+        )
+
+        return ExecutionReport(
+            steps=state.steps,
+            stop_reason="rejected",
+            replans_used=state.replans_used,
+            events=state.events,
+        )
+
+    def _finish_or_pause(self, report: ExecutionReport) -> ExecutionReport:
+        """
+        Deactivate preview mode unless the report represents a pause
+        (in which case a later `approve()` reactivates it).
+        """
+
+        if report.stop_reason != "awaiting_approval":
+            set_active_patch_manager(None)
+
+        return report
+
+    def _execute(
+        self,
+        prompt: str,
+        pending: list[ToolCall],
+        steps: list[ExecutionStep],
+        events: list[ProgressEvent],
+        completed_for_replan: list[dict[str, Any]],
+        replans_used: int,
+        iteration: int,
+    ) -> ExecutionReport:
+        """
+        Run the core execution loop starting from the given state.
+
+        Shared by `run()` (starting fresh, iteration 0, an empty
+        history) and `approve()` (resuming exactly where a prior
+        `_execute()` call paused).
+        """
+
         while pending:
             iteration += 1
 
@@ -288,6 +566,18 @@ class AutonomousExecutor:
                     "(%d) reached.",
                     self.max_iterations,
                 )
+
+                awaiting = self._check_awaiting_approval(
+                    prompt,
+                    pending,
+                    steps,
+                    events,
+                    completed_for_replan,
+                    replans_used,
+                    iteration,
+                )
+                if awaiting is not None:
+                    return awaiting
 
                 self._emit(
                     events,
@@ -384,6 +674,18 @@ class AutonomousExecutor:
                         tool_call.tool_name,
                     )
 
+                    awaiting = self._check_awaiting_approval(
+                        prompt,
+                        pending,
+                        steps,
+                        events,
+                        completed_for_replan,
+                        replans_used,
+                        iteration,
+                    )
+                    if awaiting is not None:
+                        return awaiting
+
                     self._emit(
                         events,
                         "task_completed",
@@ -440,6 +742,18 @@ class AutonomousExecutor:
                         tool_call.tool_name,
                         replan_exc,
                     )
+
+                    awaiting = self._check_awaiting_approval(
+                        prompt,
+                        pending,
+                        steps,
+                        events,
+                        completed_for_replan,
+                        replans_used,
+                        iteration,
+                    )
+                    if awaiting is not None:
+                        return awaiting
 
                     self._emit(
                         events,
@@ -502,6 +816,13 @@ class AutonomousExecutor:
             len(steps),
             replans_used,
         )
+
+        awaiting = self._check_awaiting_approval(
+            prompt, pending, steps, events, completed_for_replan,
+            replans_used, iteration,
+        )
+        if awaiting is not None:
+            return awaiting
 
         self._emit(
             events,
