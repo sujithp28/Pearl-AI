@@ -30,6 +30,10 @@ IGNORED_DIRS = {
     "node_modules",
     ".pytest_cache",
     ".mypy_cache",
+    "dist",
+    "build",
+    ".tox",
+    ".eggs",
 }
 
 
@@ -197,6 +201,21 @@ def _index_symbols(root: Path) -> dict[str, list[dict[str, Any]]]:
     """
 
     return _get_index(root).symbols
+
+
+def get_repository_index(path: str = ".") -> RepositoryIndex:
+    """
+    Return the (cached) `RepositoryIndex` for `path`, building it on
+    first access.
+
+    Public, unlike `_get_index`, so other components (e.g.
+    `ContextManager`) can reuse the same index instead of
+    reimplementing indexing — Pearl has exactly one indexing system.
+    """
+
+    root = _ensure_workspace_dir(path)
+
+    return _get_index(root)
 
 
 def _search(
