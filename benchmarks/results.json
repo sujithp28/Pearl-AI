@@ -1,0 +1,114 @@
+{
+  "repos": [
+    {
+      "name": "FastAPI",
+      "path": "/tmp/claude-1000/-home-sujith-pearl-agent/f2c670e4-fbd9-40d4-aa2f-0983b3a83e0b/scratchpad/benchmark_repos/fastapi",
+      "total_files": 3127,
+      "python_files": 1127,
+      "total_lines": 111345
+    },
+    {
+      "name": "Flask",
+      "path": "/tmp/claude-1000/-home-sujith-pearl-agent/f2c670e4-fbd9-40d4-aa2f-0983b3a83e0b/scratchpad/benchmark_repos/flask",
+      "total_files": 236,
+      "python_files": 83,
+      "total_lines": 18337
+    },
+    {
+      "name": "Django",
+      "path": "/tmp/claude-1000/-home-sujith-pearl-agent/f2c670e4-fbd9-40d4-aa2f-0983b3a83e0b/scratchpad/benchmark_repos/django",
+      "total_files": 7077,
+      "python_files": 2927,
+      "total_lines": 523578
+    },
+    {
+      "name": "React",
+      "path": "/tmp/claude-1000/-home-sujith-pearl-agent/f2c670e4-fbd9-40d4-aa2f-0983b3a83e0b/scratchpad/benchmark_repos/react",
+      "total_files": 7274,
+      "python_files": 0,
+      "total_lines": 0
+    },
+    {
+      "name": "LangChain",
+      "path": "/tmp/claude-1000/-home-sujith-pearl-agent/f2c670e4-fbd9-40d4-aa2f-0983b3a83e0b/scratchpad/benchmark_repos/langchain",
+      "total_files": 3022,
+      "python_files": 2536,
+      "total_lines": 388461
+    },
+    {
+      "name": "requests (medium Python project)",
+      "path": "/tmp/claude-1000/-home-sujith-pearl-agent/f2c670e4-fbd9-40d4-aa2f-0983b3a83e0b/scratchpad/benchmark_repos/requests",
+      "total_files": 128,
+      "python_files": 37,
+      "total_lines": 12032
+    }
+  ],
+  "benchmarks": [
+    {
+      "name": "FastAPI",
+      "prompt": "List the top-level files and directories in this project.",
+      "planning_execution_time_s": 50.66,
+      "approval_latency_s": null,
+      "stop_reason": "completed",
+      "success": true,
+      "replans_used": 0,
+      "steps": 1,
+      "error": null
+    },
+    {
+      "name": "Flask",
+      "prompt": "List the top-level files and directories in this project.",
+      "planning_execution_time_s": 26.16,
+      "approval_latency_s": null,
+      "stop_reason": "completed",
+      "success": true,
+      "replans_used": 0,
+      "steps": 1,
+      "error": null
+    },
+    {
+      "name": "Django",
+      "prompt": "List the top-level files and directories in this project.",
+      "planning_execution_time_s": 23.59,
+      "approval_latency_s": null,
+      "stop_reason": "completed",
+      "success": true,
+      "replans_used": 0,
+      "steps": 1,
+      "error": null
+    },
+    {
+      "name": "React",
+      "prompt": "List the top-level files and directories in this project.",
+      "planning_execution_time_s": 21.34,
+      "approval_latency_s": null,
+      "stop_reason": "completed",
+      "success": true,
+      "replans_used": 0,
+      "steps": 1,
+      "error": null
+    },
+    {
+      "name": "LangChain",
+      "prompt": "List the top-level files and directories in this project.",
+      "planning_execution_time_s": 47.04,
+      "approval_latency_s": null,
+      "stop_reason": "completed",
+      "success": true,
+      "replans_used": 0,
+      "steps": 1,
+      "error": null
+    },
+    {
+      "name": "requests (medium Python project)",
+      "prompt": "List the top-level files and directories in this project.",
+      "planning_execution_time_s": 18.04,
+      "approval_latency_s": null,
+      "stop_reason": "completed",
+      "success": true,
+      "replans_used": 0,
+      "steps": 1,
+      "error": null
+    }
+  ]
+}

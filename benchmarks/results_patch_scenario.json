@@ -1,0 +1,60 @@
+{
+  "repos": [
+    {
+      "name": "FastAPI",
+      "path": "/tmp/claude-1000/-home-sujith-pearl-agent/f2c670e4-fbd9-40d4-aa2f-0983b3a83e0b/scratchpad/benchmark_repos/fastapi",
+      "total_files": 3127,
+      "python_files": 1127,
+      "total_lines": 111345
+    },
+    {
+      "name": "React",
+      "path": "/tmp/claude-1000/-home-sujith-pearl-agent/f2c670e4-fbd9-40d4-aa2f-0983b3a83e0b/scratchpad/benchmark_repos/react",
+      "total_files": 7274,
+      "python_files": 0,
+      "total_lines": 0
+    },
+    {
+      "name": "requests (medium Python project)",
+      "path": "/tmp/claude-1000/-home-sujith-pearl-agent/f2c670e4-fbd9-40d4-aa2f-0983b3a83e0b/scratchpad/benchmark_repos/requests",
+      "total_files": 128,
+      "python_files": 37,
+      "total_lines": 12032
+    }
+  ],
+  "benchmarks": [
+    {
+      "name": "FastAPI",
+      "prompt": "Create a new file named PEARL_BENCHMARK_NOTES.md containing one line: 'Benchmarked by Pearl.'",
+      "planning_execution_time_s": 28.42,
+      "approval_latency_s": 0.15,
+      "stop_reason": "completed",
+      "success": true,
+      "replans_used": 0,
+      "steps": 1,
+      "error": null
+    },
+    {
+      "name": "React",
+      "prompt": "Create a new file named PEARL_BENCHMARK_NOTES.md containing one line: 'Benchmarked by Pearl.'",
+      "planning_execution_time_s": 29.9,
+      "approval_latency_s": 0.15,
+      "stop_reason": "completed",
+      "success": true,
+      "replans_used": 0,
+      "steps": 1,
+      "error": null
+    },
+    {
+      "name": "requests (medium Python project)",
+      "prompt": "Create a new file named PEARL_BENCHMARK_NOTES.md containing one line: 'Benchmarked by Pearl.'",
+      "planning_execution_time_s": 17.42,
+      "approval_latency_s": 0.15,
+      "stop_reason": "completed",
+      "success": true,
+      "replans_used": 0,
+      "steps": 1,
+      "error": null
+    }
+  ]
+}

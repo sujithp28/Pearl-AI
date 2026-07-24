@@ -43,6 +43,7 @@ export interface ExecutionReportResult {
   stopReason: ExecutionStopReason;
   steps: ExecutionStepResult[];
   patches: PatchFileSummary[];
+  replansUsed?: number;
 }
 
 function isPatchFileSummary(value: unknown): value is PatchFileSummary {

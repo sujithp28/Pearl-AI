@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from src.agent.dispatcher import ToolDispatcher
@@ -19,6 +20,12 @@ from src.llm.validation import validate_tool_call
 from src.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
+
+# Resolved relative to this file (not the process's cwd): Pearl's
+# workspace root is wherever the *target* project lives, which is
+# never guaranteed to be Pearl's own repo, so these prompt templates
+# must not depend on cwd to be found.
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 
 @dataclass(slots=True)
@@ -47,8 +54,8 @@ class Planner:
     executes them sequentially.
     """
 
-    PROMPT_FILE = "src/prompts/planning.txt"
-    REPLAN_PROMPT_FILE = "src/prompts/replanning.txt"
+    PROMPT_FILE = str(_PROMPTS_DIR / "planning.txt")
+    REPLAN_PROMPT_FILE = str(_PROMPTS_DIR / "replanning.txt")
 
     def __init__(
         self,

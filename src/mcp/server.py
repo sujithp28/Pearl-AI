@@ -18,6 +18,7 @@ import sys
 from typing import IO, Any
 
 from src.agent.dispatcher import ToolDispatcher, ToolExecutionError, ToolNotFoundError
+from src.agent.executor import AutonomousExecutor, ExecutionReport, ExecutionStep
 from src.agent.planner import Planner
 from src.llm.client import LLMClient
 from src.mcp.protocol import (
@@ -59,6 +60,44 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+def _execution_step_to_dict(step: ExecutionStep) -> dict[str, Any]:
+    return {
+        "tool": step.tool_name,
+        "arguments": _json_safe(step.kwargs),
+        "succeeded": step.succeeded,
+        "summary": step.summary,
+    }
+
+
+def _execution_report_to_dict(
+    report: ExecutionReport, executor: AutonomousExecutor
+) -> dict[str, Any]:
+    """
+    Convert an `ExecutionReport` (and, for a paused run, the matching
+    `PatchManager` state) into the camelCase shape the VS Code
+    extension's `patchClient.ts` expects.
+    """
+
+    patches: list[dict[str, Any]] = []
+
+    if report.stop_reason == "awaiting_approval":
+        patches = [
+            {
+                "path": edit.path,
+                "diff": edit.diff,
+                "isNewFile": edit.is_new_file,
+            }
+            for edit in executor.patch_manager.pending
+        ]
+
+    return {
+        "stopReason": report.stop_reason,
+        "steps": [_execution_step_to_dict(step) for step in report.steps],
+        "patches": patches,
+        "replansUsed": report.replans_used,
+    }
+
+
 class MCPServer:
     """
     MCP server exposing Pearl's tool registry (and, optionally, its
@@ -78,6 +117,7 @@ class MCPServer:
         self.planner = planner
         self.memory = memory or Memory()
         self.llm = llm
+        self._autonomous_executor: AutonomousExecutor | None = None
 
     # -- Request handling ---------------------------------------------------
 
@@ -145,6 +185,7 @@ class MCPServer:
 
         if self.planner is not None:
             experimental["pearlPlanning"] = {}
+            experimental["pearlAutonomous"] = {}
 
         if self.llm is not None:
             experimental["pearlChat"] = {}
@@ -317,6 +358,84 @@ class MCPServer:
 
         return {"message": response}
 
+    def _run_autonomous(self, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Start an autonomous run for `prompt` (a Pearl-specific
+        extension beyond the core MCP methods).
+
+        Reuses the existing `AutonomousExecutor` exactly as-is: this
+        just constructs one (bound to the server's own `planner` /
+        `dispatcher`) and calls `.run()`. All planning, execution,
+        reflection, cancellation, and patch-preview logic lives in
+        `AutonomousExecutor`/`PatchManager` — nothing is duplicated
+        here, only translated to/from JSON.
+        """
+
+        if self.planner is None:
+            raise MCPProtocolError(
+                INVALID_PARAMS, "Planning is not enabled on this server."
+            )
+
+        prompt = params.get("prompt")
+
+        if not isinstance(prompt, str) or not prompt:
+            raise MCPProtocolError(INVALID_PARAMS, "'prompt' is required.")
+
+        if (
+            self._autonomous_executor is not None
+            and self._autonomous_executor.is_awaiting_approval()
+        ):
+            raise MCPProtocolError(
+                INVALID_PARAMS,
+                "An autonomous run is already awaiting approval; call "
+                "pearl/approvePatches or pearl/rejectPatches first.",
+            )
+
+        executor = AutonomousExecutor(self.planner, self.dispatcher)
+        self._autonomous_executor = executor
+
+        report = executor.run(prompt)
+
+        return _execution_report_to_dict(report, executor)
+
+    def _approve_patches(self, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Approve the currently pending patch batch: write it to disk
+        and resume execution exactly where it paused (via the same
+        `AutonomousExecutor.approve()` used everywhere else — no
+        re-planning, no re-running completed steps).
+        """
+
+        executor = self._require_awaiting_approval()
+
+        report = executor.approve()
+
+        return _execution_report_to_dict(report, executor)
+
+    def _reject_patches(self, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Discard the currently pending patch batch and stop cleanly
+        (via `AutonomousExecutor.reject()`).
+        """
+
+        executor = self._require_awaiting_approval()
+
+        report = executor.reject()
+
+        return _execution_report_to_dict(report, executor)
+
+    def _require_awaiting_approval(self) -> AutonomousExecutor:
+        if (
+            self._autonomous_executor is None
+            or not self._autonomous_executor.is_awaiting_approval()
+        ):
+            raise MCPProtocolError(
+                INVALID_PARAMS,
+                "No autonomous run is currently awaiting approval.",
+            )
+
+        return self._autonomous_executor
+
     def _memory(self, params: dict[str, Any]) -> dict[str, Any]:
         """
         Return the current contents of Memory (a Pearl-specific
@@ -345,6 +464,9 @@ class MCPServer:
         "pearl/plan": _plan_run,
         "pearl/planOnly": _plan_only,
         "pearl/chat": _chat,
+        "pearl/runAutonomous": _run_autonomous,
+        "pearl/approvePatches": _approve_patches,
+        "pearl/rejectPatches": _reject_patches,
         "pearl/memory": _memory,
         "shutdown": _shutdown,
     }

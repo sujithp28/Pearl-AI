@@ -8,7 +8,13 @@ import os
 import torch
 from dotenv import load_dotenv
 
-load_dotenv()
+# Resolved relative to this file, not the process's cwd: Pearl's
+# workspace root is wherever the *target* project lives (never
+# guaranteed to be Pearl's own repo), so `.env` must not depend on
+# cwd to be found — otherwise every provider setting silently falls
+# back to its hardcoded default (e.g. the wrong Ollama model) when
+# Pearl is pointed at an external project.
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 
 class Settings:
