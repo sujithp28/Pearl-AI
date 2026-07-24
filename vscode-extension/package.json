@@ -12,7 +12,9 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -20,7 +22,17 @@
         "command": "pearl.openChat",
         "title": "Pearl: Open Chat"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Pearl",
+      "properties": {
+        "pearl.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "Path to the Python interpreter used to run Pearl's MCP server (`<pythonPath> -m src.mcp`). Point this at the interpreter inside the Pearl repo's virtual environment if 'python3' does not have Pearl's dependencies installed."
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",
