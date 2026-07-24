@@ -22,6 +22,15 @@ from .file_tools import (
     write_file,
 )
 
+from .git_tools import (
+    git_commit,
+    git_create_branch,
+    git_diff,
+    git_log,
+    git_restore,
+    git_status,
+)
+
 from .metadata import tool
 
 from .models import Tool
@@ -91,4 +100,12 @@ __all__ = [
     "is_command_available",
     "operating_system",
     "current_user",
+
+    # Git tools
+    "git_diff",
+    "git_status",
+    "git_log",
+    "git_create_branch",
+    "git_commit",
+    "git_restore",
 ]

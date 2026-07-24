@@ -48,6 +48,7 @@ class Planner:
     """
 
     PROMPT_FILE = "src/prompts/planning.txt"
+    REPLAN_PROMPT_FILE = "src/prompts/replanning.txt"
 
     def __init__(
         self,
@@ -100,6 +101,73 @@ class Planner:
 
         logger.info(
             "Planned %d step(s): %s",
+            len(steps),
+            [step.tool_name for step in steps],
+        )
+
+        return steps
+
+    def build_replan_prompt(
+        self,
+        user_prompt: str,
+        completed: list[dict[str, Any]],
+        failed: dict[str, Any],
+    ) -> str:
+        """
+        Build the replanning prompt from the external prompt
+        template, given what's already completed and the step that
+        just failed.
+        """
+
+        prompt_template = self.client.load_prompt(
+            self.REPLAN_PROMPT_FILE
+        )
+
+        tools = json.dumps(
+            self.registry.get_tools(),
+            indent=4,
+        )
+
+        return prompt_template.format(
+            tools=tools,
+            user_prompt=user_prompt,
+            completed_steps=json.dumps(completed, indent=4, default=str),
+            failed_step=json.dumps(failed, indent=4, default=str),
+        )
+
+    def replan(
+        self,
+        user_prompt: str,
+        completed: list[dict[str, Any]],
+        failed: dict[str, Any],
+    ) -> list[ToolCall]:
+        """
+        Ask the LLM for a revised remaining plan after `failed`
+        failed, given the steps already completed successfully.
+
+        Reuses the same LLM client, parser, and validation as
+        `plan()` — only the prompt differs.
+        """
+
+        logger.info(
+            "Replanning after '%s' failed: %s",
+            failed.get("tool"),
+            failed.get("error"),
+        )
+
+        prompt = self.build_replan_prompt(user_prompt, completed, failed)
+
+        payload = self.client.generate_json(prompt)
+
+        response = json.dumps(payload)
+
+        steps = self.parser.parse_plan(response)
+
+        for step in steps:
+            validate_tool_call(step, self.registry)
+
+        logger.info(
+            "Replanned %d step(s): %s",
             len(steps),
             [step.tool_name for step in steps],
         )

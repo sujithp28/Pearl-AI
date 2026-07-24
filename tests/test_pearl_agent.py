@@ -162,6 +162,80 @@ def test_plan_and_run_marks_task_failed_on_step_error(monkeypatch):
     assert agent.memory.tasks[0].status == "failed"
 
 
+# ---------------------------------------------------------------------
+# run_autonomous()
+# ---------------------------------------------------------------------
+
+
+def test_run_autonomous_records_task_and_executions(monkeypatch):
+    agent = build_agent()
+
+    monkeypatch.setattr(
+        agent.planner.client,
+        "generate_json",
+        lambda prompt: {
+            "steps": [
+                {"tool": "add", "arguments": {"a": 1, "b": 2}},
+                {"tool": "add", "arguments": {"a": 3, "b": 4}},
+            ]
+        },
+    )
+
+    report = agent.run_autonomous("add twice")
+
+    assert report.succeeded
+    assert report.stop_reason == "completed"
+    assert [step.result for step in report.steps] == [3, 7]
+
+    assert len(agent.memory.tasks) == 1
+    task = agent.memory.tasks[0]
+    assert task.description == "add twice"
+    assert task.status == "completed"
+
+    assert len(agent.memory.execution_history) == 2
+    assert agent.memory.conversation[0].content == "add twice"
+    assert "completed" in agent.memory.conversation[-1].content
+
+
+def test_run_autonomous_marks_task_failed_on_fatal_error(monkeypatch):
+    agent = build_agent()
+
+    monkeypatch.setattr(
+        agent.planner.client,
+        "generate_json",
+        lambda prompt: {"steps": [{"tool": "boom", "arguments": {}}]},
+    )
+
+    report = agent.run_autonomous("do something that fails")
+
+    assert not report.succeeded
+    assert report.stop_reason == "fatal_error"
+    assert agent.memory.tasks[0].status == "failed"
+    assert not agent.memory.execution_history[0].succeeded
+
+
+def test_run_autonomous_marks_task_failed_on_max_iterations(monkeypatch):
+    agent = build_agent()
+
+    monkeypatch.setattr(
+        agent.planner.client,
+        "generate_json",
+        lambda prompt: {
+            "steps": [
+                {"tool": "add", "arguments": {"a": 1, "b": 1}},
+                {"tool": "add", "arguments": {"a": 2, "b": 2}},
+            ]
+        },
+    )
+
+    report = agent.run_autonomous("add twice", max_iterations=1)
+
+    assert not report.succeeded
+    assert report.stop_reason == "max_iterations"
+    assert len(report.steps) == 1
+    assert agent.memory.tasks[0].status == "failed"
+
+
 def test_agent_accepts_injected_memory():
     from src.memory import Memory
 

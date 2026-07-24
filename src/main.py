@@ -25,6 +25,14 @@ from src.tools.file_tools import (
     read_file,
     write_file,
 )
+from src.tools.git_tools import (
+    git_commit,
+    git_create_branch,
+    git_diff,
+    git_log,
+    git_restore,
+    git_status,
+)
 from src.tools.registry import ToolRegistry
 from src.tools.repo_tools import (
     explain_file,
@@ -91,6 +99,14 @@ def build_registry() -> ToolRegistry:
     registry.register(is_command_available)
     registry.register(operating_system)
     registry.register(current_user)
+
+    # Git tools
+    registry.register(git_diff)
+    registry.register(git_status)
+    registry.register(git_log)
+    registry.register(git_create_branch)
+    registry.register(git_commit)
+    registry.register(git_restore)
 
     return registry
 

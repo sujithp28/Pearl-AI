@@ -7,9 +7,16 @@ Main entry point for the AI Coding Agent.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from src.agent.dispatcher import ToolDispatcher
+from src.agent.executor import (
+    DEFAULT_MAX_ITERATIONS,
+    DEFAULT_MAX_REPLANS,
+    AutonomousExecutor,
+    ExecutionReport,
+    ProgressEvent,
+)
 from src.agent.planner import Planner, StepResult
 from src.llm.client import LLMClient
 from src.llm.tool_selector import LLMToolSelector
@@ -227,6 +234,81 @@ class PearlAgent:
         )
 
         return results
+
+    def run_autonomous(
+        self,
+        prompt: str,
+        max_iterations: int = DEFAULT_MAX_ITERATIONS,
+        max_replans: int = DEFAULT_MAX_REPLANS,
+        on_progress: Callable[[ProgressEvent], None] | None = None,
+    ) -> ExecutionReport:
+        """
+        Autonomously execute a multi-step task: plan once via the
+        existing `Planner`, then run each step in turn via the
+        existing `ToolDispatcher`, evaluating and summarizing the
+        result after every step. A failed step triggers a request to
+        the Planner for a revised remaining plan (up to
+        `max_replans` times) instead of stopping immediately.
+        Stops on completion, an unrecoverable failure, or
+        `max_iterations`.
+
+        Workflow
+
+            User
+              │
+              ▼
+             Planner (plan once)
+              │
+              ▼
+        [ ToolCall, ToolCall, ... ]
+              │
+              ▼
+         AutonomousExecutor (evaluate + summarize + replan loop)
+              │
+              ▼
+          ExecutionReport
+        """
+
+        logger.info("Starting autonomous execution for: %s", prompt)
+
+        self.memory.record_turn("user", prompt)
+
+        task = self.memory.start_task(prompt)
+
+        executor = AutonomousExecutor(
+            self.planner,
+            self.dispatcher,
+            max_iterations=max_iterations,
+            max_replans=max_replans,
+            on_progress=on_progress,
+        )
+
+        try:
+            report = executor.run(prompt)
+        except Exception:
+            self.memory.complete_task(task.id, status="failed")
+            raise
+
+        for step in report.steps:
+            self.memory.record_execution(
+                step.tool_name,
+                step.kwargs,
+                result=step.result,
+                error=step.error,
+            )
+
+        self.memory.complete_task(
+            task.id,
+            status="completed" if report.succeeded else "failed",
+        )
+
+        self.memory.record_turn(
+            "agent",
+            f"Autonomous execution finished ({report.stop_reason}): "
+            f"{len(report.steps)} step(s) run.",
+        )
+
+        return report
 
     def available_tools(self) -> list[dict[str, Any]]:
         """

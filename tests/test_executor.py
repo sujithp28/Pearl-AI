@@ -1,0 +1,842 @@
+import pytest
+
+from src.agent.dispatcher import ToolDispatcher
+from src.agent.executor import AutonomousExecutor, ProgressEvent
+from src.agent.planner import Planner
+from src.tools.metadata import tool
+from src.tools.registry import ToolRegistry
+
+
+@tool(
+    description="Add two numbers.",
+    parameters={"a": "int", "b": "int"},
+    returns="int",
+)
+def add(a: int, b: int) -> int:
+    return a + b
+
+
+@tool(description="Always fails.")
+def boom() -> None:
+    raise ValueError("kaboom")
+
+
+def build_executor(max_iterations: int = 10, max_replans: int = 3, on_progress=None):
+    registry = ToolRegistry()
+    registry.register(add)
+    registry.register(boom)
+
+    dispatcher = ToolDispatcher(registry)
+    planner = Planner(registry, dispatcher)
+
+    return AutonomousExecutor(
+        planner,
+        dispatcher,
+        max_iterations=max_iterations,
+        max_replans=max_replans,
+        on_progress=on_progress,
+    ), planner
+
+
+def _plan_of(*steps):
+    """
+    A `generate_json` stub that always returns the same plan,
+    regardless of which prompt (initial plan or replan) asked for it.
+    """
+
+    return lambda prompt: {"steps": list(steps)}
+
+
+def _plan_sequence(*plans):
+    """
+    A `generate_json` stub that returns a different plan on each
+    successive call (the initial plan, then each subsequent replan),
+    repeating the last plan if called more times than provided.
+    """
+
+    calls = {"n": 0}
+
+    def _fn(prompt):
+        index = min(calls["n"], len(plans) - 1)
+        calls["n"] += 1
+        return {"steps": plans[index]}
+
+    return _fn
+
+
+# ---------------------------------------------------------------------
+# Task completed
+# ---------------------------------------------------------------------
+
+
+def test_run_executes_every_step_and_reports_completed(monkeypatch):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "add", "arguments": {"a": 1, "b": 2}},
+            {"tool": "add", "arguments": {"a": 3, "b": 4}},
+        ),
+    )
+
+    report = executor.run("add 1+2 then 3+4")
+
+    assert report.succeeded
+    assert report.stop_reason == "completed"
+    assert report.replans_used == 0
+    assert [step.result for step in report.steps] == [3, 7]
+    assert [step.iteration for step in report.steps] == [1, 2]
+    assert all(step.succeeded for step in report.steps)
+
+
+def test_run_treats_none_step_as_immediate_completion(monkeypatch):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "none", "arguments": {}}),
+    )
+
+    report = executor.run("say hello")
+
+    assert report.succeeded
+    assert report.stop_reason == "completed"
+    assert len(report.steps) == 1
+    assert report.steps[0].tool_name == "none"
+    assert report.steps[0].succeeded
+    assert report.steps[0].result is None
+
+
+def test_run_stops_at_none_step_even_with_more_steps_after_it(monkeypatch):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "add", "arguments": {"a": 1, "b": 2}},
+            {"tool": "none", "arguments": {}},
+            {"tool": "add", "arguments": {"a": 5, "b": 5}},
+        ),
+    )
+
+    report = executor.run("add once, then stop")
+
+    assert report.succeeded
+    assert [step.tool_name for step in report.steps] == ["add", "none"]
+
+
+# ---------------------------------------------------------------------
+# Step evaluation and summaries
+# ---------------------------------------------------------------------
+
+
+def test_step_summary_reports_success(monkeypatch):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "add", "arguments": {"a": 2, "b": 2}}),
+    )
+
+    report = executor.run("add")
+
+    summary = report.steps[0].summary
+    assert "add" in summary
+    assert "succeeded" in summary
+    assert "4" in summary
+
+
+def test_step_summary_reports_failure(monkeypatch):
+    executor, planner = build_executor(max_replans=0)
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "boom", "arguments": {}}),
+    )
+
+    report = executor.run("boom")
+
+    summary = report.steps[0].summary
+    assert "boom" in summary
+    assert "failed" in summary
+    assert "kaboom" in summary
+
+
+# ---------------------------------------------------------------------
+# Reflection: replan on failure
+# ---------------------------------------------------------------------
+
+
+def test_run_recovers_from_failure_via_replan(monkeypatch):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_sequence(
+            [{"tool": "boom", "arguments": {}}],
+            [{"tool": "add", "arguments": {"a": 1, "b": 1}}],
+        ),
+    )
+
+    report = executor.run("try boom, then recover")
+
+    assert report.succeeded
+    assert report.stop_reason == "completed"
+    assert report.replans_used == 1
+    assert [step.tool_name for step in report.steps] == ["boom", "add"]
+    assert not report.steps[0].succeeded
+    assert report.steps[1].succeeded
+    assert report.steps[1].result == 2
+
+
+def test_execution_history_includes_steps_before_and_after_replan(
+    monkeypatch,
+):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_sequence(
+            [
+                {"tool": "add", "arguments": {"a": 1, "b": 1}},
+                {"tool": "boom", "arguments": {}},
+            ],
+            [
+                {"tool": "add", "arguments": {"a": 9, "b": 9}},
+            ],
+        ),
+    )
+
+    report = executor.run("add, boom, replan, add")
+
+    assert report.succeeded
+    assert [step.tool_name for step in report.steps] == [
+        "add",
+        "boom",
+        "add",
+    ]
+    assert report.steps[0].result == 2
+    assert not report.steps[1].succeeded
+    assert report.steps[2].result == 18
+    assert report.replans_used == 1
+
+
+def test_run_stops_after_max_replans_exhausted(monkeypatch):
+    executor, planner = build_executor(max_replans=3)
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "boom", "arguments": {}}),
+    )
+
+    report = executor.run("boom forever")
+
+    assert not report.succeeded
+    assert report.stop_reason == "fatal_error"
+    assert report.replans_used == 3
+    # 1 initial failure + 3 replanned failures.
+    assert len(report.steps) == 4
+    assert all(not step.succeeded for step in report.steps)
+
+
+def test_run_stops_immediately_when_replanning_disabled(monkeypatch):
+    executor, planner = build_executor(max_replans=0)
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "add", "arguments": {"a": 1, "b": 2}},
+            {"tool": "boom", "arguments": {}},
+            {"tool": "add", "arguments": {"a": 5, "b": 5}},
+        ),
+    )
+
+    report = executor.run("add, then boom, then add")
+
+    assert not report.succeeded
+    assert report.stop_reason == "fatal_error"
+    assert report.replans_used == 0
+    assert len(report.steps) == 2
+    assert report.steps[0].succeeded
+    assert not report.steps[1].succeeded
+    assert "boom" in report.steps[1].error
+
+
+def test_run_stops_fatal_if_replanning_itself_fails(monkeypatch):
+    executor, planner = build_executor()
+
+    def _first_call_fails(prompt):
+        return {"steps": [{"tool": "boom", "arguments": {}}]}
+
+    monkeypatch.setattr(planner.client, "generate_json", _first_call_fails)
+
+    def _broken_replan(*args, **kwargs):
+        raise RuntimeError("replanning is unavailable")
+
+    monkeypatch.setattr(planner, "replan", _broken_replan)
+
+    report = executor.run("boom, then fail to replan")
+
+    assert not report.succeeded
+    assert report.stop_reason == "fatal_error"
+    assert report.replans_used == 0
+    assert len(report.steps) == 1
+
+
+# ---------------------------------------------------------------------
+# Max iterations
+# ---------------------------------------------------------------------
+
+
+def test_run_stops_at_max_iterations(monkeypatch):
+    executor, planner = build_executor(max_iterations=2)
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "add", "arguments": {"a": 1, "b": 1}},
+            {"tool": "add", "arguments": {"a": 2, "b": 2}},
+            {"tool": "add", "arguments": {"a": 3, "b": 3}},
+        ),
+    )
+
+    report = executor.run("add three times")
+
+    assert not report.succeeded
+    assert report.stop_reason == "max_iterations"
+    assert len(report.steps) == 2
+    assert [step.result for step in report.steps] == [2, 4]
+
+
+def test_run_within_max_iterations_still_completes(monkeypatch):
+    executor, planner = build_executor(max_iterations=5)
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "add", "arguments": {"a": 1, "b": 1}}),
+    )
+
+    report = executor.run("add once")
+
+    assert report.succeeded
+    assert report.stop_reason == "completed"
+    assert len(report.steps) == 1
+
+
+# ---------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------
+
+
+def test_run_logs_every_step(monkeypatch, caplog):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "add", "arguments": {"a": 1, "b": 2}},
+            {"tool": "add", "arguments": {"a": 3, "b": 4}},
+        ),
+    )
+
+    with caplog.at_level("INFO", logger="src.agent.executor"):
+        executor.run("add 1+2 then 3+4")
+
+    messages = "\n".join(caplog.messages)
+    assert "Step 1:" in messages
+    assert "Step 2:" in messages
+    assert "succeeded" in messages
+
+
+def test_run_logs_replanning(monkeypatch, caplog):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_sequence(
+            [{"tool": "boom", "arguments": {}}],
+            [{"tool": "add", "arguments": {"a": 1, "b": 1}}],
+        ),
+    )
+
+    with caplog.at_level("INFO", logger="src.agent.executor"):
+        executor.run("try boom, then recover")
+
+    messages = "\n".join(caplog.messages)
+    assert "asking Planner for a revised plan" in messages
+    assert "replanned" in messages
+
+
+# ---------------------------------------------------------------------
+# Progress streaming
+# ---------------------------------------------------------------------
+
+
+def test_run_emits_events_for_a_successful_two_step_run(monkeypatch):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "add", "arguments": {"a": 1, "b": 2}},
+            {"tool": "add", "arguments": {"a": 3, "b": 4}},
+        ),
+    )
+
+    report = executor.run("add 1+2 then 3+4")
+
+    statuses = [event.status for event in report.events]
+    assert statuses == [
+        "planning",
+        "executing_step",
+        "step_completed",
+        "executing_step",
+        "step_completed",
+        "task_completed",
+    ]
+    assert all(isinstance(event, ProgressEvent) for event in report.events)
+
+
+def test_events_include_current_step_total_steps_action_and_status(
+    monkeypatch,
+):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "add", "arguments": {"a": 2, "b": 2}}),
+    )
+
+    report = executor.run("add")
+
+    executing = next(
+        e for e in report.events if e.status == "executing_step"
+    )
+    assert executing.current_step == 1
+    assert executing.total_steps == 1
+    assert executing.current_action == "🛠️ Hammering out some code..."
+
+    completed = next(
+        e for e in report.events if e.status == "step_completed"
+    )
+    assert completed.current_step == 1
+    assert completed.total_steps == 1
+    assert completed.current_action == "✨ Looking much better now."
+
+    task_completed = report.events[-1]
+    assert task_completed.status == "task_completed"
+    assert task_completed.current_step == 1
+    assert task_completed.total_steps == 1
+    assert (
+        task_completed.current_action
+        == "🎉 Done! No bugs were intentionally added."
+    )
+
+
+def test_run_emits_step_failed_and_replanning_events(monkeypatch):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_sequence(
+            [{"tool": "boom", "arguments": {}}],
+            [{"tool": "add", "arguments": {"a": 1, "b": 1}}],
+        ),
+    )
+
+    report = executor.run("try boom, then recover")
+
+    statuses = [event.status for event in report.events]
+    assert statuses == [
+        "planning",
+        "executing_step",
+        "step_failed",
+        "replanning",
+        "executing_step",
+        "step_completed",
+        "task_completed",
+    ]
+
+    failed_event = report.events[2]
+    assert failed_event.current_action == "😅 Well... that didn't work."
+
+    replanning_event = report.events[3]
+    assert (
+        replanning_event.current_action
+        == "🔄 Plot twist! Trying another approach..."
+    )
+
+
+def test_run_emits_task_completed_on_max_iterations(monkeypatch):
+    executor, planner = build_executor(max_iterations=1)
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "add", "arguments": {"a": 1, "b": 1}},
+            {"tool": "add", "arguments": {"a": 2, "b": 2}},
+        ),
+    )
+
+    report = executor.run("add twice")
+
+    assert report.events[-1].status == "task_completed"
+    assert (
+        report.events[-1].current_action
+        == "💀 I fought bravely... but this one needs a human."
+    )
+
+
+def test_run_emits_task_completed_on_fatal_error(monkeypatch):
+    executor, planner = build_executor(max_replans=0)
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "boom", "arguments": {}}),
+    )
+
+    report = executor.run("boom")
+
+    statuses = [event.status for event in report.events]
+    assert statuses == [
+        "planning",
+        "executing_step",
+        "step_failed",
+        "task_completed",
+    ]
+    assert (
+        report.events[-1].current_action
+        == "💀 I fought bravely... but this one needs a human."
+    )
+
+
+def test_on_progress_callback_receives_events_in_real_time(monkeypatch):
+    executor, planner = build_executor()
+
+    received: list[ProgressEvent] = []
+    executor.on_progress = received.append
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "add", "arguments": {"a": 1, "b": 1}}),
+    )
+
+    report = executor.run("add")
+
+    assert [event.status for event in received] == [
+        event.status for event in report.events
+    ]
+    assert received == report.events
+
+
+def test_on_progress_callback_can_be_set_via_constructor(monkeypatch):
+    received: list[ProgressEvent] = []
+
+    executor, planner = build_executor(on_progress=received.append)
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "none", "arguments": {}}),
+    )
+
+    executor.run("say hello")
+
+    assert [event.status for event in received] == [
+        "planning",
+        "task_completed",
+    ]
+
+
+def test_broken_progress_callback_does_not_break_execution(monkeypatch):
+    def _broken(event):
+        raise RuntimeError("UI exploded")
+
+    executor, planner = build_executor(on_progress=_broken)
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "add", "arguments": {"a": 1, "b": 1}}),
+    )
+
+    report = executor.run("add")
+
+    assert report.succeeded
+    assert report.steps[0].result == 2
+    assert len(report.events) > 0
+
+
+# ---------------------------------------------------------------------
+# Cancellation
+# ---------------------------------------------------------------------
+
+
+def test_is_cancelled_defaults_to_false_and_is_per_instance():
+    executor1, _ = build_executor()
+    executor2, _ = build_executor()
+
+    assert not executor1.is_cancelled()
+    assert not executor2.is_cancelled()
+
+    executor1.cancel()
+
+    assert executor1.is_cancelled()
+    assert not executor2.is_cancelled()
+
+
+def test_repeated_cancel_calls_are_idempotent():
+    executor, _ = build_executor()
+
+    executor.cancel()
+    executor.cancel()
+    executor.cancel()
+
+    assert executor.is_cancelled()
+
+
+def test_cancel_before_execution_stops_immediately_with_no_steps(
+    monkeypatch,
+):
+    executor, planner = build_executor()
+    executor.cancel()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "add", "arguments": {"a": 1, "b": 1}},
+            {"tool": "add", "arguments": {"a": 2, "b": 2}},
+        ),
+    )
+
+    report = executor.run("add twice")
+
+    assert report.stop_reason == "cancelled"
+    assert not report.succeeded
+    assert report.steps == []
+    assert [event.status for event in report.events] == [
+        "planning",
+        "cancelled",
+    ]
+
+
+def test_cancellation_emits_final_cancelled_event(monkeypatch):
+    executor, planner = build_executor()
+    executor.cancel()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "add", "arguments": {"a": 1, "b": 1}}),
+    )
+
+    report = executor.run("add")
+
+    final_event = report.events[-1]
+    assert final_event.status == "cancelled"
+    assert final_event.current_action
+    assert isinstance(final_event, ProgressEvent)
+
+
+def _build_registry_with_cancel_trigger():
+    """
+    A registry containing `add` plus a `trigger_cancel` tool that
+    cancels the executor it's bound to as a side effect of running
+    (used to simulate cancellation being requested mid-execution).
+    """
+
+    registry = ToolRegistry()
+    registry.register(add)
+
+    holder: dict = {}
+
+    @tool(description="Cancels the bound executor, then succeeds.")
+    def trigger_cancel() -> str:
+        holder["executor"].cancel()
+        return "triggered"
+
+    registry.register(trigger_cancel)
+
+    dispatcher = ToolDispatcher(registry)
+    planner = Planner(registry, dispatcher)
+    executor = AutonomousExecutor(planner, dispatcher)
+    holder["executor"] = executor
+
+    return executor, planner
+
+
+def test_cancel_during_execution_stops_before_next_step(monkeypatch):
+    executor, planner = _build_registry_with_cancel_trigger()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "trigger_cancel", "arguments": {}},
+            {"tool": "add", "arguments": {"a": 1, "b": 1}},
+        ),
+    )
+
+    report = executor.run("trigger cancel then add")
+
+    assert report.stop_reason == "cancelled"
+    assert [step.tool_name for step in report.steps] == ["trigger_cancel"]
+    assert report.steps[0].succeeded
+    assert report.steps[0].result == "triggered"
+    assert report.events[-1].status == "cancelled"
+
+
+def test_cancel_preserves_steps_and_events_executed_so_far(monkeypatch):
+    executor, planner = _build_registry_with_cancel_trigger()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "add", "arguments": {"a": 1, "b": 1}},
+            {"tool": "add", "arguments": {"a": 2, "b": 2}},
+            {"tool": "trigger_cancel", "arguments": {}},
+            {"tool": "add", "arguments": {"a": 3, "b": 3}},
+        ),
+    )
+
+    report = executor.run("do several things then cancel mid-way")
+
+    assert report.stop_reason == "cancelled"
+    assert [step.tool_name for step in report.steps] == [
+        "add",
+        "add",
+        "trigger_cancel",
+    ]
+    assert [step.result for step in report.steps] == [2, 4, "triggered"]
+    assert all(step.succeeded for step in report.steps)
+
+    statuses = [event.status for event in report.events]
+    assert statuses == [
+        "planning",
+        "executing_step",
+        "step_completed",
+        "executing_step",
+        "step_completed",
+        "executing_step",
+        "step_completed",
+        "cancelled",
+    ]
+
+
+def test_cancel_during_replanning_stops_before_replan_call(monkeypatch):
+    registry = ToolRegistry()
+
+    holder: dict = {}
+
+    @tool(description="Fails and requests cancellation as a side effect.")
+    def boom_and_cancel() -> None:
+        holder["executor"].cancel()
+        raise ValueError("kaboom")
+
+    registry.register(boom_and_cancel)
+
+    dispatcher = ToolDispatcher(registry)
+    planner = Planner(registry, dispatcher)
+    executor = AutonomousExecutor(planner, dispatcher)
+    holder["executor"] = executor
+
+    replan_calls = {"count": 0}
+
+    def _replan_spy(*args, **kwargs):
+        replan_calls["count"] += 1
+        return []
+
+    monkeypatch.setattr(planner, "replan", _replan_spy)
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "boom_and_cancel", "arguments": {}}),
+    )
+
+    report = executor.run("boom, then cancel before replanning")
+
+    assert report.stop_reason == "cancelled"
+    assert replan_calls["count"] == 0
+    assert len(report.steps) == 1
+    assert not report.steps[0].succeeded
+
+    statuses = [event.status for event in report.events]
+    assert statuses == [
+        "planning",
+        "executing_step",
+        "step_failed",
+        "cancelled",
+    ]
+
+
+def test_cancel_called_from_another_thread_is_observed(monkeypatch):
+    import threading
+
+    registry = ToolRegistry()
+    registry.register(add)
+
+    started = threading.Event()
+    cancelled = threading.Event()
+
+    @tool(description="Signals it started, then waits for cancellation.")
+    def signal_start() -> str:
+        started.set()
+        # Block until the other thread has actually called cancel(),
+        # so the next loop iteration is guaranteed to observe it —
+        # otherwise this races against the executor moving on to the
+        # next step before cancel() lands.
+        assert cancelled.wait(timeout=5)
+        return "started"
+
+    registry.register(signal_start)
+
+    dispatcher = ToolDispatcher(registry)
+    planner = Planner(registry, dispatcher)
+    executor = AutonomousExecutor(planner, dispatcher)
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "signal_start", "arguments": {}},
+            {"tool": "add", "arguments": {"a": 1, "b": 1}},
+        ),
+    )
+
+    def _cancel_once_started():
+        assert started.wait(timeout=5)
+        executor.cancel()
+        cancelled.set()
+
+    canceller = threading.Thread(target=_cancel_once_started)
+    canceller.start()
+
+    report = executor.run("signal then add")
+
+    canceller.join(timeout=5)
+
+    assert not canceller.is_alive()
+    assert report.stop_reason == "cancelled"
+    assert [step.tool_name for step in report.steps] == ["signal_start"]
