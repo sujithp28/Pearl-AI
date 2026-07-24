@@ -242,6 +242,38 @@ class MCPServer:
             ]
         }
 
+    def _plan_only(self, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Return the steps the Planner would execute for a prompt,
+        without executing them.
+
+        This reuses `Planner.plan()` (already part of the existing
+        planner, previously only used internally by `Planner.run()`)
+        so a client can gate each step behind its own approval step
+        before ever calling `tools/call`. Nothing is dispatched and
+        nothing is recorded in Memory here — only `plan/run` and
+        `tools/call` have execution side effects.
+        """
+
+        if self.planner is None:
+            raise MCPProtocolError(
+                INVALID_PARAMS, "Planning is not enabled on this server."
+            )
+
+        prompt = params.get("prompt")
+
+        if not isinstance(prompt, str) or not prompt:
+            raise MCPProtocolError(INVALID_PARAMS, "'prompt' is required.")
+
+        steps = self.planner.plan(prompt)
+
+        return {
+            "steps": [
+                {"tool": step.tool_name, "arguments": step.kwargs}
+                for step in steps
+            ]
+        }
+
     def _chat(self, params: dict[str, Any]) -> dict[str, Any]:
         """
         Chat directly with the language model (a Pearl-specific
@@ -280,6 +312,7 @@ class MCPServer:
         "tools/list": _tools_list,
         "tools/call": _tools_call,
         "pearl/plan": _plan_run,
+        "pearl/planOnly": _plan_only,
         "pearl/chat": _chat,
         "shutdown": _shutdown,
     }

@@ -367,6 +367,7 @@ that spawns Pearl as a subprocess.
 | `tools/list` | Lists every tool in the registry as an MCP tool descriptor (name, description, JSON Schema `inputSchema`). |
 | `tools/call` | Executes a tool by name via the existing `ToolDispatcher`. Tool failures are returned as a result with `isError: true` (per the MCP spec), not a JSON-RPC error. |
 | `pearl/plan` | Pearl extension: runs a natural-language request through the existing `Planner` and executes the resulting steps sequentially. |
+| `pearl/planOnly` | Pearl extension: returns the steps `Planner.plan()` would take for a request, without executing or recording anything — lets a client gate each step behind its own approval step before calling `tools/call`. |
 | `pearl/chat` | Pearl extension: sends a message straight to the LLM via `LLMClient.generate()` (the same pathway `PearlAgent.chat()` uses) and returns its reply. |
 | `shutdown` | Returns a null result; does not stop the server. |
 | `exit` (notification) | Stops the read loop and ends the process. |

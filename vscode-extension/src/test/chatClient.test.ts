@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { RequestSender, sendChatMessage } from "../mcp/chatClient";
+import { sendChatMessage } from "../mcp/chatClient";
+import { RequestSender } from "../mcp/requestSender";
 
 function fakeSender(response: unknown): {
   sender: RequestSender;

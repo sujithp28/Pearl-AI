@@ -1,7 +1,37 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { ApprovalDecision, ToolApprovalRequest, ToolApprover } from "../chat/approval";
 import { ChatController, ChatMessage } from "../chat/chatController";
-import { RequestSender } from "../mcp/chatClient";
+import { RequestSender } from "../mcp/requestSender";
+
+type Handler = (
+  params?: Record<string, unknown>
+) => unknown | Promise<unknown>;
+
+function fakeSender(handlers: Record<string, Handler>): {
+  sender: RequestSender;
+  calls: Array<{ method: string; params?: Record<string, unknown> }>;
+} {
+  const calls: Array<{ method: string; params?: Record<string, unknown> }> =
+    [];
+
+  return {
+    calls,
+    sender: {
+      sendRequest: async (method, params) => {
+        calls.push({ method, params });
+
+        const handler = handlers[method];
+
+        if (!handler) {
+          throw new Error(`Unexpected method call: ${method}`);
+        }
+
+        return handler(params);
+      },
+    },
+  };
+}
 
 function collectingPost(): {
   messages: ChatMessage[];
@@ -15,63 +45,242 @@ function collectingPost(): {
   };
 }
 
-test("handleUserMessage posts the user message immediately, then the assistant reply", async () => {
-  const sender: RequestSender = {
-    sendRequest: async () => ({ message: "reply text" }),
-  };
-  const { messages, post } = collectingPost();
-  const controller = new ChatController(sender, post);
+function fixedApprover(decision: ApprovalDecision): {
+  approve: ToolApprover;
+  requests: ToolApprovalRequest[];
+} {
+  const requests: ToolApprovalRequest[] = [];
 
-  await controller.handleUserMessage("hello");
-
-  assert.deepEqual(messages, [
-    { role: "user", text: "hello" },
-    { role: "assistant", text: "reply text" },
-  ]);
-  assert.deepEqual([...controller.getHistory()], messages);
-});
-
-test("handleUserMessage posts an error message when the connection call fails", async () => {
-  const sender: RequestSender = {
-    sendRequest: async () => {
-      throw new Error("Not connected to Pearl MCP server.");
+  return {
+    requests,
+    approve: async (request) => {
+      requests.push(request);
+      return decision;
     },
   };
+}
+
+// ---------------------------------------------------------------------
+// No tool needed -- falls back to the existing conversational chat
+// ---------------------------------------------------------------------
+
+test("falls back to pearl/chat when the plan needs no tool", async () => {
+  const { sender, calls } = fakeSender({
+    "pearl/planOnly": () => ({ steps: [{ tool: "none", arguments: {} }] }),
+    "pearl/chat": () => ({ message: "Hello there." }),
+  });
   const { messages, post } = collectingPost();
-  const controller = new ChatController(sender, post);
+  const { approve, requests } = fixedApprover("approved");
 
-  await controller.handleUserMessage("hello");
+  const controller = new ChatController(sender, post, approve);
+  await controller.handleUserMessage("hi");
 
-  assert.equal(messages.length, 2);
-  assert.equal(messages[0].role, "user");
+  assert.deepEqual(messages, [
+    { role: "user", text: "hi" },
+    { role: "assistant", text: "Hello there." },
+  ]);
+  assert.equal(requests.length, 0, "no approval should be requested");
+  assert.deepEqual(
+    calls.map((c) => c.method),
+    ["pearl/planOnly", "pearl/chat"]
+  );
+});
+
+test("falls back to pearl/chat when planning itself fails", async () => {
+  const { sender } = fakeSender({
+    "pearl/planOnly": () => {
+      throw new Error("Planning is not enabled on this server.");
+    },
+    "pearl/chat": () => ({ message: "Plain reply." }),
+  });
+  const { messages, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+
+  const controller = new ChatController(sender, post, approve);
+  await controller.handleUserMessage("hi");
+
+  assert.deepEqual(messages[1], { role: "assistant", text: "Plain reply." });
+});
+
+// ---------------------------------------------------------------------
+// Tool approval
+// ---------------------------------------------------------------------
+
+test("requests approval with the tool name and arguments before calling tools/call", async () => {
+  const { sender, calls } = fakeSender({
+    "pearl/planOnly": () => ({
+      steps: [{ tool: "read_file", arguments: { path: "a.txt" } }],
+    }),
+    "tools/call": () => ({
+      content: [{ type: "text", text: "file contents" }],
+      isError: false,
+    }),
+  });
+  const { messages, post } = collectingPost();
+  const { approve, requests } = fixedApprover("approved");
+
+  const controller = new ChatController(sender, post, approve);
+  await controller.handleUserMessage("read a.txt");
+
+  assert.deepEqual(requests, [
+    { tool: "read_file", arguments: { path: "a.txt" } },
+  ]);
+
+  const toolCallCall = calls.find((c) => c.method === "tools/call");
+  assert.deepEqual(toolCallCall?.params, {
+    name: "read_file",
+    arguments: { path: "a.txt" },
+  });
+
+  assert.deepEqual(messages[1], {
+    role: "assistant",
+    text: 'Ran "read_file":\nfile contents',
+  });
+});
+
+test("rejecting a tool cancels execution cleanly and reports it to chat", async () => {
+  const { sender, calls } = fakeSender({
+    "pearl/planOnly": () => ({
+      steps: [{ tool: "delete_file", arguments: { path: "a.txt" } }],
+    }),
+    "tools/call": () => {
+      throw new Error("tools/call should never be called when rejected");
+    },
+  });
+  const { messages, post } = collectingPost();
+  const { approve, requests } = fixedApprover("rejected");
+
+  const controller = new ChatController(sender, post, approve);
+  await controller.handleUserMessage("delete a.txt");
+
+  assert.equal(requests.length, 1);
+  assert.equal(
+    calls.some((c) => c.method === "tools/call"),
+    false,
+    "tools/call must not be sent for a rejected tool"
+  );
+
+  assert.deepEqual(messages[1], {
+    role: "assistant",
+    text: 'Tool "delete_file" was rejected. No changes were made.',
+  });
+});
+
+test("a rejected step stops any remaining steps in the plan", async () => {
+  const { sender, calls } = fakeSender({
+    "pearl/planOnly": () => ({
+      steps: [
+        { tool: "read_file", arguments: { path: "a.txt" } },
+        { tool: "delete_file", arguments: { path: "a.txt" } },
+        { tool: "write_file", arguments: { path: "b.txt", content: "x" } },
+      ],
+    }),
+    "tools/call": (params) => {
+      if (params?.name === "read_file") {
+        return { content: [{ type: "text", text: "ok" }], isError: false };
+      }
+      throw new Error("should not reach a second tools/call");
+    },
+  });
+  const { messages, post } = collectingPost();
+
+  let call = 0;
+  const requests: ToolApprovalRequest[] = [];
+  const approve: ToolApprover = async (request) => {
+    requests.push(request);
+    call += 1;
+    return call === 1 ? "approved" : "rejected";
+  };
+
+  const controller = new ChatController(sender, post, approve);
+  await controller.handleUserMessage("do three things");
+
+  assert.equal(requests.length, 2, "should stop requesting after the rejection");
+  assert.deepEqual(
+    requests.map((r) => r.tool),
+    ["read_file", "delete_file"]
+  );
+  assert.equal(
+    calls.filter((c) => c.method === "tools/call").length,
+    1,
+    "only the approved step should have been executed"
+  );
+  assert.equal(messages.length, 3); // user + read_file result + rejection notice
+  assert.match(messages[2].text, /"delete_file" was rejected/);
+});
+
+test("a failed tool execution stops the remaining plan", async () => {
+  const { sender, calls } = fakeSender({
+    "pearl/planOnly": () => ({
+      steps: [
+        { tool: "boom", arguments: {} },
+        { tool: "read_file", arguments: { path: "a.txt" } },
+      ],
+    }),
+    "tools/call": () => ({
+      content: [{ type: "text", text: "kaboom" }],
+      isError: true,
+    }),
+  });
+  const { messages, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+
+  const controller = new ChatController(sender, post, approve);
+  await controller.handleUserMessage("do something that fails");
+
+  assert.equal(messages[1].role, "error");
+  assert.match(messages[1].text, /kaboom/);
+  assert.equal(
+    calls.filter((c) => c.method === "tools/call").length,
+    1,
+    "should not attempt the second step after a tool failure"
+  );
+});
+
+test("a transport-level failure calling tools/call is reported as an error", async () => {
+  const { sender } = fakeSender({
+    "pearl/planOnly": () => ({
+      steps: [{ tool: "read_file", arguments: { path: "a.txt" } }],
+    }),
+    "tools/call": () => {
+      throw new Error("Not connected to Pearl MCP server.");
+    },
+  });
+  const { messages, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+
+  const controller = new ChatController(sender, post, approve);
+  await controller.handleUserMessage("read a.txt");
+
   assert.equal(messages[1].role, "error");
   assert.match(messages[1].text, /Not connected to Pearl MCP server\./);
 });
 
-test("handleUserMessage ignores blank input", async () => {
-  let called = false;
-  const sender: RequestSender = {
-    sendRequest: async () => {
-      called = true;
-      return { message: "x" };
-    },
-  };
-  const { messages, post } = collectingPost();
-  const controller = new ChatController(sender, post);
+// ---------------------------------------------------------------------
+// Input handling
+// ---------------------------------------------------------------------
 
+test("ignores blank input", async () => {
+  const { sender, calls } = fakeSender({});
+  const { messages, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+
+  const controller = new ChatController(sender, post, approve);
   await controller.handleUserMessage("   ");
 
-  assert.equal(called, false);
   assert.deepEqual(messages, []);
+  assert.equal(calls.length, 0);
 });
 
-test("handleUserMessage trims whitespace from the user message", async () => {
-  const sender: RequestSender = {
-    sendRequest: async () => ({ message: "ok" }),
-  };
+test("trims whitespace from the user message", async () => {
+  const { sender } = fakeSender({
+    "pearl/planOnly": () => ({ steps: [{ tool: "none", arguments: {} }] }),
+    "pearl/chat": () => ({ message: "ok" }),
+  });
   const { messages, post } = collectingPost();
-  const controller = new ChatController(sender, post);
+  const { approve } = fixedApprover("approved");
 
+  const controller = new ChatController(sender, post, approve);
   await controller.handleUserMessage("  hi there  ");
 
   assert.equal(messages[0].text, "hi there");

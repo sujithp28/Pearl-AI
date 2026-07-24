@@ -329,6 +329,83 @@ def test_plan_run_missing_prompt_is_a_protocol_error():
 
 
 # ---------------------------------------------------------------------
+# pearl/planOnly -- reuses Planner.plan() without executing anything
+# ---------------------------------------------------------------------
+
+
+def test_plan_only_returns_steps_without_executing(monkeypatch):
+    server = build_server(with_planner=True)
+
+    monkeypatch.setattr(
+        server.planner.client,
+        "generate_json",
+        lambda prompt: {
+            "steps": [{"tool": "add", "arguments": {"a": 1, "b": 2}}]
+        },
+    )
+
+    response = server.handle_request(
+        JsonRpcRequest(
+            method="pearl/planOnly", id=1, params={"prompt": "add 1 and 2"}
+        )
+    )
+
+    assert response.error is None
+    assert response.result == {
+        "steps": [{"tool": "add", "arguments": {"a": 1, "b": 2}}]
+    }
+
+    # Nothing was actually dispatched or recorded.
+    assert server.memory.execution_history == []
+    assert server.memory.tasks == []
+
+
+def test_plan_only_supports_multiple_steps(monkeypatch):
+    server = build_server(with_planner=True)
+
+    monkeypatch.setattr(
+        server.planner.client,
+        "generate_json",
+        lambda prompt: {
+            "steps": [
+                {"tool": "add", "arguments": {"a": 1, "b": 2}},
+                {"tool": "boom", "arguments": {}},
+            ]
+        },
+    )
+
+    response = server.handle_request(
+        JsonRpcRequest(
+            method="pearl/planOnly", id=1, params={"prompt": "do two things"}
+        )
+    )
+
+    assert [s["tool"] for s in response.result["steps"]] == ["add", "boom"]
+
+
+def test_plan_only_without_planner_is_a_protocol_error():
+    server = build_server(with_planner=False)
+
+    response = server.handle_request(
+        JsonRpcRequest(
+            method="pearl/planOnly", id=1, params={"prompt": "add 1 and 2"}
+        )
+    )
+
+    assert response.error.code == INVALID_PARAMS
+
+
+def test_plan_only_missing_prompt_is_a_protocol_error():
+    server = build_server(with_planner=True)
+
+    response = server.handle_request(
+        JsonRpcRequest(method="pearl/planOnly", id=1, params={})
+    )
+
+    assert response.error.code == INVALID_PARAMS
+
+
+# ---------------------------------------------------------------------
 # pearl/chat -- reuses LLMClient.generate(), like PearlAgent.chat()
 # ---------------------------------------------------------------------
 

@@ -6,13 +6,7 @@
  * fake sender instead of a real connection/process.
  */
 
-export interface RequestSender {
-  sendRequest(
-    method: string,
-    params?: Record<string, unknown>,
-    timeoutMs?: number
-  ): Promise<unknown>;
-}
+import { RequestSender } from "./requestSender";
 
 interface ChatResult {
   message: string;

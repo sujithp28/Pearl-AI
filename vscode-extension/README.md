@@ -2,13 +2,13 @@
 
 This extension registers one command, connects to Pearl's existing MCP
 server over stdio (showing connection status in the status bar), and opens
-a simple chat webview that talks to Pearl through that same connection.
+a simple chat webview that talks to Pearl through that same connection —
+gating every tool call behind an approval dialog before it runs.
 
 **Not implemented yet (by design, later phases):**
 
 - No markdown rendering — messages render as plain text.
 - No streaming — replies appear once complete.
-- No tool-approval UI.
 
 ---
 
@@ -28,20 +28,31 @@ vscode-extension/
 │   │   └── chatClient.ts        # Sends a chat message through an MCP
 │   │                             connection (pure — depends only on a
 │   │                             structural `sendRequest`).
+│   │   ├── planClient.ts        # Asks the planner what it would do, via
+│   │   │                         `pearl/planOnly`, without executing (pure).
+│   │   └── toolCallClient.ts    # Executes one approved tool via
+│   │                             `tools/call` (pure).
 │   ├── chat/
-│   │   ├── chatController.ts    # Chat message flow: user input -> MCP ->
-│   │   │                         posted messages (pure, no `vscode`/webview).
+│   │   ├── approval.ts          # Tool-approval types (`ToolApprover`, pure).
+│   │   ├── chatController.ts    # Chat message flow: plan -> approve each
+│   │   │                         tool step -> execute or reject -> post
+│   │   │                         messages (pure, no `vscode`/webview).
 │   │   ├── chatHtml.ts          # Static webview HTML: message list, input,
 │   │   │                         send button (pure string builder).
-│   │   └── chatPanel.ts         # Owns the real `vscode.WebviewPanel` and
-│   │                             wires it to `ChatController`.
+│   │   ├── chatPanel.ts         # Owns the real `vscode.WebviewPanel` and
+│   │   │                         wires it to `ChatController`.
+│   │   └── vscodeToolApprover.ts # The real approval dialog
+│   │                              (`vscode.window.showWarningMessage`).
 │   └── test/
 │       ├── protocolClient.test.ts
 │       ├── connection.test.ts
 │       ├── statusBar.test.ts
 │       ├── chatClient.test.ts
+│       ├── planClient.test.ts
+│       ├── toolCallClient.test.ts
 │       ├── chatController.test.ts
-│       └── chatHtml.test.ts
+│       ├── chatHtml.test.ts
+│       └── chatApproval.integration.test.ts
 ├── .vscode/
 │   ├── launch.json              # F5 debug config (Extension Development Host).
 │   └── tasks.json               # Background `tsc --watch` build task.
@@ -50,14 +61,15 @@ vscode-extension/
 └── README.md
 ```
 
-Every module under `src/mcp/` and `src/chat/` *except* `chatPanel.ts` has
-**no runtime dependency on `vscode`** — process spawning is injected via a
-`spawnFn` parameter, the chat controller depends only on a structural
-`sendRequest` shape (not the concrete `MCPConnection` class), and the
-status bar's logic is separated from the real `vscode.StatusBarItem`
-construction. Only `extension.ts` and `chatPanel.ts` import `vscode` as a
-value; everything else is testable with plain Node, no VS Code test
-harness required.
+Every module under `src/mcp/` and `src/chat/` *except* `chatPanel.ts` and
+`vscodeToolApprover.ts` has **no runtime dependency on `vscode`** — process
+spawning is injected via a `spawnFn` parameter, the chat controller depends
+only on a structural `sendRequest` shape (not the concrete `MCPConnection`
+class) plus an injectable `ToolApprover` function (not a real dialog), and
+the status bar's logic is separated from the real `vscode.StatusBarItem`
+construction. Only `extension.ts`, `chatPanel.ts`, and
+`vscodeToolApprover.ts` import `vscode` as a value; everything else is
+testable with plain Node, no VS Code test harness required.
 
 ---
 
@@ -68,8 +80,8 @@ run as `<python> -m src.mcp`) as a child process and speaks its JSON-RPC
 protocol over stdio — see
 [`../README.md`](../README.md#-running-the-mcp-server) for what that
 server exposes. (This step added one new server-side method,
-`pearl/chat` — see below — everything else about the server is
-unchanged.)
+`pearl/planOnly` — see "Chat webview" below — everything else about the
+server, including how tools actually execute, is unchanged.)
 
 - **Startup detection**: the extension sends `initialize` right after
   spawning and waits for a response (5s default timeout). A process that
@@ -100,23 +112,37 @@ folder, since `python -m src.mcp` must run from the Pearl repo root.
 ## Chat webview
 
 Running the **"Pearl: Open Chat"** command opens a webview panel with a
-message list, a text input, and a send button. Typing a message and
-pressing **Enter** (or clicking **Send**):
+message list, a text input, and a send button. Re-running the command
+reveals the existing panel instead of opening a second one. Messages
+render as plain text with no markdown formatting and no incremental/
+streaming updates — both deferred to later phases.
+
+Typing a message and pressing **Enter** (or clicking **Send**) runs this
+flow (`ChatController.handleUserMessage`):
 
 1. Renders the message immediately under the `user` role.
-2. Sends it through the *existing* `MCPConnection` via a new `pearl/chat`
-   JSON-RPC method (added to `src/mcp/server.py` alongside `pearl/plan`;
-   it reuses `LLMClient.generate()` — the same pathway `PearlAgent.chat()`
-   already used — and records both turns in `Memory`).
-3. Renders the assistant's reply once it arrives, or a clear `error`-role
-   message if the request fails (connection down, timeout, LLM backend
-   unreachable, ...) — the webview never crashes or hangs silently on
-   failure.
+2. Asks the *existing* `Planner` what it would do, via a new
+   `pearl/planOnly` JSON-RPC method (reuses `Planner.plan()` — previously
+   only used internally by `Planner.run()` — without dispatching or
+   recording anything; see `src/mcp/server.py`).
+3. **If no tool is needed**, falls back to the plain conversational
+   `pearl/chat` method from Step 3, unchanged.
+4. **If one or more tools are proposed**, for each one in order:
+   - Shows a modal **approval dialog** (`vscodeToolApprover.ts`) with the
+     tool name and its arguments (pretty-printed JSON), and **Approve** /
+     **Reject** buttons.
+   - **Approve** → executes it through the *existing* `tools/call` method
+     (the *existing* `ToolDispatcher`, reused as-is), and posts the result
+     to the chat.
+   - **Reject** → sends nothing to the server (`tools/call` is never
+     called for a rejected step), cancels the rest of the plan, and posts
+     `Tool "<name>" was rejected. No changes were made.` to the chat.
+   - A tool that fails once approved (`isError: true`, or a transport-level
+     failure) also stops any remaining steps and reports the failure to
+     the chat — the webview never crashes or hangs silently on failure.
 
-Re-running the command reveals the existing panel instead of opening a
-second one. Messages render as plain text with no markdown formatting, no
-incremental/streaming updates, and no tool-approval step — all deferred to
-later phases, as scoped for this step.
+No approval is requested for the no-tool / plain-chat path, since nothing
+executes there.
 
 ---
 
@@ -176,3 +202,11 @@ Runs the unit tests (Node's built-in test runner) against the compiled
 output in `out/`. The MCP connection and chat tests use a fake child
 process / fake MCP sender (no real `python` process is spawned), so they
 run without Pearl's Python dependencies installed.
+
+`chatApproval.integration.test.ts` is a step above the per-module unit
+tests: it drives the real `MCPConnection` (talking JSON-RPC over a fake
+child process, exactly as it would over a real one) with the real
+`ChatController`/`planClient`/`toolCallClient`, verifying the full
+plan → approve/reject → `tools/call` (or `pearl/chat` fallback) pipeline
+end-to-end — everything except the actual `vscode.Webview` and a real
+Python process.

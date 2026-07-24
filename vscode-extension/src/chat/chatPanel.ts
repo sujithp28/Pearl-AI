@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { MCPConnection } from "../mcp/connection";
 import { ChatController } from "./chatController";
 import { getChatHtml } from "./chatHtml";
+import { showToolApprovalDialog } from "./vscodeToolApprover";
 
 interface WebviewInboundMessage {
   type?: string;
@@ -26,9 +27,13 @@ export class ChatPanel {
     this.panel = panel;
     this.panel.webview.html = getChatHtml();
 
-    this.controller = new ChatController(connection, (message) => {
-      void this.panel.webview.postMessage(message);
-    });
+    this.controller = new ChatController(
+      connection,
+      (message) => {
+        void this.panel.webview.postMessage(message);
+      },
+      showToolApprovalDialog
+    );
 
     this.panel.webview.onDidReceiveMessage(
       (message: WebviewInboundMessage) => {
