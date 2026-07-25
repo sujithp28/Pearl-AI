@@ -79,6 +79,7 @@ PERSONALITY_TEMPLATES: dict[Personality, dict[EventKind, str]] = {
         EventKind.CANCELLED: "Execution cancelled.",
         EventKind.REJECTED: "Changes discarded.",
         EventKind.PLAN_READY: "Plan ready for review.",
+        EventKind.CHECKPOINT: "Checkpoint saved.",
     },
     Personality.FRIENDLY: {
         EventKind.PLANNING: "Let's work through this.",
@@ -106,6 +107,7 @@ PERSONALITY_TEMPLATES: dict[Personality, dict[EventKind, str]] = {
         EventKind.CANCELLED: "All stopped, right where you left it.",
         EventKind.REJECTED: "No problem — discarding that patch.",
         EventKind.PLAN_READY: "Here's what I'm thinking — take a look!",
+        EventKind.CHECKPOINT: "Saved a checkpoint, just in case.",
     },
     Personality.CHEEKY: {
         EventKind.PLANNING: "Thinking... I already have a few ideas.",
@@ -139,6 +141,7 @@ PERSONALITY_TEMPLATES: dict[Personality, dict[EventKind, str]] = {
         EventKind.CANCELLED: "Cancelled — stopping right where we are.",
         EventKind.REJECTED: "No worries, discarding that patch.",
         EventKind.PLAN_READY: "Got a plan. Let's see what you think.",
+        EventKind.CHECKPOINT: "Snapshot saved. Future me says thanks.",
     },
     Personality.SAVAGE: {
         EventKind.PLANNING: "Let's see what kind of chaos we're dealing with.",
@@ -169,5 +172,6 @@ PERSONALITY_TEMPLATES: dict[Personality, dict[EventKind, str]] = {
         EventKind.CANCELLED: "Stopped. The code lives to be judged another day.",
         EventKind.REJECTED: "Rejected. Back to the drawing board, code.",
         EventKind.PLAN_READY: "Plan's ready. Try to keep up.",
+        EventKind.CHECKPOINT: "Checkpoint saved. Try not to need it.",
     },
 }

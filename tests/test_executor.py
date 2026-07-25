@@ -1656,3 +1656,124 @@ def test_cancel_before_run_starts_is_observed_before_any_plan_call(monkeypatch):
 
     assert report.stop_reason == "cancelled"
     assert call_count["n"] == 0
+
+
+# ---------------------------------------------------------------------
+# Checkpoint timeline integration (Sprint 1)
+# ---------------------------------------------------------------------
+
+
+def test_approve_emits_a_checkpoint_created_event_when_one_is_taken(
+    monkeypatch, workspace
+):
+    from src.tools.checkpoints import CheckpointManager
+
+    # A workspace with nothing in it at all has nothing to capture on
+    # the very first checkpoint either (an empty tree has no changes
+    # to commit even with no parent to compare against) - seed one
+    # real file so there is something for the auto-checkpoint to
+    # actually snapshot.
+    (workspace / "existing.txt").write_text("baseline\n")
+
+    executor, planner = build_executor(patch_manager=PatchManager())
+    executor.checkpoints = CheckpointManager(workspace)
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {
+                    "path": str(workspace / "new.py"),
+                    "content": "x = 1\n",
+                },
+            }
+        ),
+    )
+
+    executor.run("create a file")
+    report = executor.approve()
+
+    statuses = [event.status for event in report.events]
+    assert "checkpoint_created" in statuses
+
+    checkpoint_event = next(
+        e for e in report.events if e.status == "checkpoint_created"
+    )
+    assert checkpoint_event.current_action == _default_progress_text(
+        EventKind.CHECKPOINT
+    )
+
+
+def test_no_checkpoint_created_event_when_checkpointing_is_disabled(
+    monkeypatch, workspace
+):
+    executor, planner = build_executor(patch_manager=PatchManager())
+    executor.checkpoints = None
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {
+                    "path": str(workspace / "new.py"),
+                    "content": "x = 1\n",
+                },
+            }
+        ),
+    )
+
+    executor.run("create a file")
+    report = executor.approve()
+
+    statuses = [event.status for event in report.events]
+    assert "checkpoint_created" not in statuses
+    assert (workspace / "new.py").exists()
+
+
+def test_no_checkpoint_created_event_when_nothing_new_to_capture(
+    monkeypatch, workspace
+):
+    """
+    If the workspace on disk already matches the last checkpoint (a
+    manual checkpoint was just taken, and nothing has reached disk
+    since — a staged-but-not-yet-applied patch doesn't count),
+    create() returns None and no event should fire: a "checkpoint
+    saved" message would be misleading when nothing was actually
+    captured.
+    """
+
+    from src.tools.checkpoints import CheckpointManager
+
+    (workspace / "existing.txt").write_text("baseline\n")
+
+    executor, planner = build_executor(patch_manager=PatchManager())
+    manager = CheckpointManager(workspace)
+    executor.checkpoints = manager
+    manager.create("pre-existing checkpoint")  # captures current state
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {
+                    "path": str(workspace / "new.py"),
+                    "content": "x = 1\n",
+                },
+            }
+        ),
+    )
+
+    executor.run("create a file")
+    assert executor.is_awaiting_approval()  # confirms this actually exercises approve()
+
+    report = executor.approve()
+
+    statuses = [event.status for event in report.events]
+    assert "checkpoint_created" not in statuses
+    assert len(manager.list()) == 1  # still only the pre-existing one

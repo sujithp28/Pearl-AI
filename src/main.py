@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from src.agent import PearlAgent
+from src.tools.checkpoints import CheckpointError
 from src.tools.edit_tools import (
     create_file,
     edit_lines,
@@ -141,6 +142,122 @@ def _print_report(report) -> None:
     print(f"\nStop reason: {report.stop_reason}")
 
 
+def _print_checkpoints(agent: PearlAgent) -> None:
+    checkpoints = agent.checkpoints.list()
+
+    if not checkpoints:
+        print("No checkpoints yet.")
+        return
+
+    for checkpoint in checkpoints:
+        print(f"  {checkpoint.short_id}  {checkpoint.created_at}  {checkpoint.label}")
+
+
+def _handle_checkpoint_command(agent: PearlAgent, command: str) -> bool:
+    """
+    Handle a `:`-prefixed checkpoint command. Returns whether
+    `command` was recognized as one (so the caller knows not to also
+    treat it as a natural-language prompt).
+
+    Kept to the `:` prefix specifically so a plain-English request
+    that happens to start with a word like "list" or "restore" is
+    never mistaken for a command — the parser only ever looks at
+    `:`-prefixed input.
+    """
+
+    head, _, rest = command[1:].partition(" ")
+    action = head.lower()
+    rest = rest.strip()
+
+    if not action:
+        return False
+
+    try:
+        if action == "checkpoints":
+            _print_checkpoints(agent)
+            return True
+
+        if action == "checkpoint":
+            # Everything after "checkpoint " is the label, spaces and
+            # all — not just its first word.
+            label = rest or "Manual checkpoint"
+            checkpoint = agent.checkpoints.create(label)
+
+            if checkpoint is None:
+                print("Nothing has changed since the last checkpoint.")
+            else:
+                print(f"Checkpoint {checkpoint.short_id} saved: {checkpoint.label}")
+
+            return True
+
+        if action == "restore":
+            if not rest:
+                print("Usage: :restore <checkpoint-id>")
+                return True
+
+            checkpoint_id = rest.split(maxsplit=1)[0]
+            preview = agent.checkpoints.preview_restore(checkpoint_id)
+
+            if not preview.changed_anything:
+                print("Nothing to restore — already matches this checkpoint.")
+                return True
+
+            print("Restoring will:")
+            for path in preview.restored:
+                print(f"  revert   {path}")
+            for path in preview.removed:
+                print(f"  remove   {path}")
+
+            answer = input("Proceed? [y/N] ").strip().lower()
+
+            if answer in {"y", "yes"}:
+                agent.checkpoints.restore(checkpoint_id)
+                print("Restored.")
+            else:
+                print("Cancelled.")
+
+            return True
+
+        if action == "delete":
+            if not rest:
+                print("Usage: :delete <checkpoint-id>")
+                return True
+
+            checkpoint_id = rest.split(maxsplit=1)[0]
+            agent.checkpoints.delete(checkpoint_id)
+            print("Deleted.")
+            return True
+
+        if action == "rename":
+            checkpoint_id, _, new_label = rest.partition(" ")
+            new_label = new_label.strip()
+
+            if not checkpoint_id or not new_label:
+                print("Usage: :rename <checkpoint-id> <new label>")
+                return True
+
+            checkpoint = agent.checkpoints.rename(checkpoint_id, new_label)
+            print(f"Renamed to: {checkpoint.label}")
+            return True
+
+    except CheckpointError as exc:
+        print(f"Error: {exc}")
+        return True
+
+    if action in {"checkpoints", "checkpoint", "restore", "delete", "rename"}:
+        # Reachable only if a branch above didn't already return —
+        # kept as a safety net so a future new action isn't silently
+        # sent to the LLM as a natural-language prompt if a return is
+        # ever missed.
+        return True
+
+    print(
+        f"Unknown command ':{action}'. Try :checkpoints, :checkpoint, "
+        ":restore, :delete, or :rename."
+    )
+    return True
+
+
 def _run_and_resolve(agent: PearlAgent, prompt: str) -> None:
     """
     Run `prompt` autonomously, then — if it pauses for a staged patch
@@ -181,7 +298,11 @@ def main() -> None:
     agent = PearlAgent(registry)
 
     print(f"Loaded {len(registry)} tools.")
-    print("Type 'exit' to quit.\n")
+    print("Type 'exit' to quit.")
+    print(
+        "Checkpoints: :checkpoints | :checkpoint [label] | :restore <id> | "
+        ":delete <id> | :rename <id> <label>\n"
+    )
 
     while True:
         try:
@@ -196,6 +317,10 @@ def main() -> None:
             }:
                 print("Goodbye.")
                 break
+
+            if prompt.startswith(":"):
+                if _handle_checkpoint_command(agent, prompt):
+                    continue
 
             _run_and_resolve(agent, prompt)
 

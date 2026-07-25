@@ -57,6 +57,11 @@ class EventKind(str, Enum):
     CANCELLED = "cancelled"
     REJECTED = "rejected"
     PLAN_READY = "plan_ready"
+    #: A workspace snapshot was taken before an approved write reaches
+    #: disk (Sprint 1: the Checkpoint System) — distinct from COMMIT,
+    #: which is about the user's own git history, not Pearl's shadow
+    #: undo store.
+    CHECKPOINT = "checkpoint"
 
 
 EMOJI_MAP: dict[EventKind, str] = {
@@ -85,6 +90,7 @@ EMOJI_MAP: dict[EventKind, str] = {
     EventKind.CANCELLED: "🛑",
     EventKind.REJECTED: "🗑️",
     EventKind.PLAN_READY: "📋",
+    EventKind.CHECKPOINT: "💾",
 }
 
 

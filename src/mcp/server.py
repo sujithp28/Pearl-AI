@@ -43,6 +43,12 @@ from src.mcp.protocol import (
 from src.memory import Memory
 from src.personality import EventKind, PersonalityManager
 from src.prompts.system import build_chat_system_prompt
+from src.tools.checkpoints import (
+    Checkpoint,
+    CheckpointError,
+    CheckpointManager,
+    RestoreReport,
+)
 from src.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -70,6 +76,24 @@ def _progress_event_to_dict(event: ProgressEvent) -> dict[str, Any]:
         "currentStep": event.current_step,
         "totalSteps": event.total_steps,
         "currentAction": event.current_action,
+    }
+
+
+def _checkpoint_to_dict(checkpoint: Checkpoint) -> dict[str, Any]:
+    return {
+        "id": checkpoint.id,
+        "shortId": checkpoint.short_id,
+        "label": checkpoint.label,
+        "createdAt": checkpoint.created_at,
+    }
+
+
+def _restore_report_to_dict(report: RestoreReport) -> dict[str, Any]:
+    return {
+        "checkpointId": report.checkpoint_id,
+        "restored": report.restored,
+        "removed": report.removed,
+        "changedAnything": report.changed_anything,
     }
 
 
@@ -157,6 +181,7 @@ class MCPServer:
         memory: Memory | None = None,
         llm: LLMClient | None = None,
         personality: PersonalityManager | None = None,
+        checkpoints: CheckpointManager | None = None,
     ) -> None:
         self.registry = registry
         self.dispatcher = dispatcher or ToolDispatcher(registry)
@@ -164,6 +189,14 @@ class MCPServer:
         self.memory = memory or Memory()
         self.llm = llm
         self._personality = personality or PersonalityManager()
+        # One store per server, shared between the manual
+        # pearl/checkpoint* methods and the automatic pre-write
+        # checkpoint AutonomousExecutor takes on approval — see
+        # _run_autonomous, which passes this same instance in rather
+        # than letting the executor build its own default, so a
+        # manual checkpoint and an auto checkpoint show up in the same
+        # list.
+        self.checkpoints = checkpoints or CheckpointManager()
         self._autonomous_executor: AutonomousExecutor | None = None
 
     # -- Request handling ---------------------------------------------------
@@ -233,7 +266,10 @@ class MCPServer:
         """
 
         capabilities: dict[str, Any] = {"tools": {}}
-        experimental: dict[str, Any] = {"pearlPersonality": {}}
+        experimental: dict[str, Any] = {
+            "pearlPersonality": {},
+            "pearlCheckpoints": {},
+        }
 
         if self.planner is not None:
             experimental["pearlPlanning"] = {}
@@ -413,6 +449,7 @@ class MCPServer:
             self.planner,
             self.dispatcher,
             on_progress=self._make_progress_forwarder(notify),
+            checkpoints=self.checkpoints,
         )
         self._autonomous_executor = executor
 
@@ -522,6 +559,130 @@ class MCPServer:
 
         return {"labels": labels}
 
+    def _checkpoint_create(
+        self, params: dict[str, Any], notify: NotifyFn
+    ) -> dict[str, Any]:
+        """
+        Snapshot the workspace on demand (a Pearl-specific extension
+        beyond the core MCP methods) — the same store, and the same
+        `CheckpointManager`, that `AutonomousExecutor.approve()`
+        checkpoints into automatically before writing.
+        """
+
+        label = params.get("label")
+
+        if label is not None and not isinstance(label, str):
+            raise MCPProtocolError(INVALID_PARAMS, "'label' must be a string.")
+
+        try:
+            checkpoint = self.checkpoints.create(label or "Manual checkpoint")
+        except CheckpointError as exc:
+            raise MCPProtocolError(INVALID_PARAMS, str(exc)) from exc
+
+        return {
+            "checkpoint": (
+                _checkpoint_to_dict(checkpoint) if checkpoint is not None else None
+            )
+        }
+
+    def _checkpoints_list(
+        self, params: dict[str, Any], notify: NotifyFn
+    ) -> dict[str, Any]:
+        """
+        List checkpoints for the current workspace, newest first.
+        """
+
+        limit = params.get("limit", 50)
+
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+            raise MCPProtocolError(INVALID_PARAMS, "'limit' must be a positive int.")
+
+        checkpoints = self.checkpoints.list(limit=limit)
+
+        return {"checkpoints": [_checkpoint_to_dict(c) for c in checkpoints]}
+
+    def _checkpoint_restore_preview(
+        self, params: dict[str, Any], notify: NotifyFn
+    ) -> dict[str, Any]:
+        """
+        Report what restoring a checkpoint would change, without
+        changing anything — restoring can delete files created since
+        the checkpoint, so a client should show this before the user
+        confirms, the same way Pearl shows a diff before writing.
+        """
+
+        checkpoint_id = self._require_checkpoint_id(params)
+
+        try:
+            report = self.checkpoints.preview_restore(checkpoint_id)
+        except CheckpointError as exc:
+            raise MCPProtocolError(INVALID_PARAMS, str(exc)) from exc
+
+        return _restore_report_to_dict(report)
+
+    def _checkpoint_restore(
+        self, params: dict[str, Any], notify: NotifyFn
+    ) -> dict[str, Any]:
+        """
+        Restore the workspace to a checkpoint.
+        """
+
+        checkpoint_id = self._require_checkpoint_id(params)
+
+        try:
+            report = self.checkpoints.restore(checkpoint_id)
+        except CheckpointError as exc:
+            raise MCPProtocolError(INVALID_PARAMS, str(exc)) from exc
+
+        return _restore_report_to_dict(report)
+
+    def _checkpoint_delete(
+        self, params: dict[str, Any], notify: NotifyFn
+    ) -> dict[str, Any]:
+        """
+        Delete a checkpoint (hides it from listing and future
+        restores — see `CheckpointManager.delete` for why this never
+        rewrites git history).
+        """
+
+        checkpoint_id = self._require_checkpoint_id(params)
+
+        try:
+            self.checkpoints.delete(checkpoint_id)
+        except CheckpointError as exc:
+            raise MCPProtocolError(INVALID_PARAMS, str(exc)) from exc
+
+        return {"deleted": True}
+
+    def _checkpoint_rename(
+        self, params: dict[str, Any], notify: NotifyFn
+    ) -> dict[str, Any]:
+        """
+        Change a checkpoint's display label.
+        """
+
+        checkpoint_id = self._require_checkpoint_id(params)
+        label = params.get("label")
+
+        if not isinstance(label, str) or not label:
+            raise MCPProtocolError(INVALID_PARAMS, "'label' is required.")
+
+        try:
+            checkpoint = self.checkpoints.rename(checkpoint_id, label)
+        except CheckpointError as exc:
+            raise MCPProtocolError(INVALID_PARAMS, str(exc)) from exc
+
+        return {"checkpoint": _checkpoint_to_dict(checkpoint)}
+
+    @staticmethod
+    def _require_checkpoint_id(params: dict[str, Any]) -> str:
+        checkpoint_id = params.get("id")
+
+        if not isinstance(checkpoint_id, str) or not checkpoint_id:
+            raise MCPProtocolError(INVALID_PARAMS, "'id' is required.")
+
+        return checkpoint_id
+
     def _memory(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
         """
         Return the current contents of Memory (a Pearl-specific
@@ -554,6 +715,12 @@ class MCPServer:
         "pearl/rejectPatches": _reject_patches,
         "pearl/memory": _memory,
         "pearl/personality": _personality_labels,
+        "pearl/checkpointCreate": _checkpoint_create,
+        "pearl/checkpoints": _checkpoints_list,
+        "pearl/checkpointRestorePreview": _checkpoint_restore_preview,
+        "pearl/checkpointRestore": _checkpoint_restore,
+        "pearl/checkpointDelete": _checkpoint_delete,
+        "pearl/checkpointRename": _checkpoint_rename,
         "shutdown": _shutdown,
     }
 

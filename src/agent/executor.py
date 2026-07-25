@@ -69,6 +69,7 @@ ProgressStatus = Literal[
     "cancelled",
     "awaiting_approval",
     "rejected",
+    "checkpoint_created",
 ]
 
 _SUMMARY_TRUNCATE = 200
@@ -586,7 +587,12 @@ class AutonomousExecutor:
 
     def _checkpoint_before_writing(self, state: _PausedState) -> None:
         """
-        Record a restore point covering everything about to be written.
+        Record a restore point covering everything about to be
+        written, and emit a progress event when one is actually taken
+        (Sprint 1: Checkpoint System timeline integration) — not when
+        there was nothing new to capture (`create()` returns `None`),
+        and not on failure, both of which already have their own
+        signal (silence, and the warning log below, respectively).
 
         Deliberately swallows every failure: checkpointing is a safety
         net, and a net that refuses to let you proceed when it can't
@@ -598,12 +604,22 @@ class AutonomousExecutor:
             return
 
         try:
-            self.checkpoints.create(f"Before: {state.prompt[:72]}")
+            checkpoint = self.checkpoints.create(f"Before: {state.prompt[:72]}")
         except Exception:
             logger.warning(
                 "Could not create a checkpoint; proceeding without undo "
                 "for this change.",
                 exc_info=True,
+            )
+            return
+
+        if checkpoint is not None:
+            self._emit(
+                state.events,
+                "checkpoint_created",
+                current_step=state.iteration,
+                total_steps=state.iteration + len(state.pending),
+                current_action=self._personality.format(EventKind.CHECKPOINT),
             )
 
     def _finish_or_pause(self, report: ExecutionReport) -> ExecutionReport:

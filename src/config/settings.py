@@ -153,6 +153,20 @@ class Settings:
     CHAT_HISTORY_TURNS = int(os.getenv("PEARL_CHAT_HISTORY_TURNS", "10"))
 
     # ==================================================
+    # Checkpoints (src/tools/checkpoints.py)
+    # ==================================================
+
+    # Auto-cleanup retention: checkpoints beyond this count, or older
+    # than this many days, are hidden from listing and can no longer
+    # be restored. 0 disables that bound (the other still applies).
+    # Deletion is via metadata, never by rewriting the shadow git
+    # history, so it can never corrupt the store — see
+    # CheckpointManager's module docstring.
+    CHECKPOINT_MAX_COUNT = int(os.getenv("PEARL_CHECKPOINT_MAX_COUNT", "50"))
+
+    CHECKPOINT_MAX_AGE_DAYS = int(os.getenv("PEARL_CHECKPOINT_MAX_AGE_DAYS", "30"))
+
+    # ==================================================
     # Shell execution (src/tools/shell_tools.py)
     # ==================================================
 

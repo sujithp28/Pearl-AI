@@ -31,6 +31,31 @@
         "command": "pearl.refreshMemory",
         "title": "Pearl: Refresh Memory",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "pearl.createCheckpoint",
+        "title": "Pearl: Create Checkpoint",
+        "icon": "$(save)"
+      },
+      {
+        "command": "pearl.refreshCheckpoints",
+        "title": "Pearl: Refresh Checkpoints",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "pearl.restoreCheckpoint",
+        "title": "Pearl: Restore Checkpoint",
+        "icon": "$(history)"
+      },
+      {
+        "command": "pearl.deleteCheckpoint",
+        "title": "Pearl: Delete Checkpoint",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "pearl.renameCheckpoint",
+        "title": "Pearl: Rename Checkpoint",
+        "icon": "$(edit)"
       }
     ],
     "viewsContainers": {
@@ -47,6 +72,10 @@
         {
           "id": "pearlMemory",
           "name": "Memory"
+        },
+        {
+          "id": "pearlCheckpoints",
+          "name": "Checkpoints"
         }
       ]
     },
@@ -56,6 +85,33 @@
           "command": "pearl.refreshMemory",
           "when": "view == pearlMemory",
           "group": "navigation"
+        },
+        {
+          "command": "pearl.createCheckpoint",
+          "when": "view == pearlCheckpoints",
+          "group": "navigation"
+        },
+        {
+          "command": "pearl.refreshCheckpoints",
+          "when": "view == pearlCheckpoints",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "pearl.restoreCheckpoint",
+          "when": "view == pearlCheckpoints && viewItem == pearlCheckpoint",
+          "group": "inline@1"
+        },
+        {
+          "command": "pearl.renameCheckpoint",
+          "when": "view == pearlCheckpoints && viewItem == pearlCheckpoint",
+          "group": "inline@2"
+        },
+        {
+          "command": "pearl.deleteCheckpoint",
+          "when": "view == pearlCheckpoints && viewItem == pearlCheckpoint",
+          "group": "inline@3"
         }
       ]
     },

@@ -23,6 +23,7 @@ from src.config.settings import Settings
 from src.llm.client import LLMClient
 from src.memory import Memory
 from src.prompts.system import build_chat_system_prompt
+from src.tools.checkpoints import CheckpointManager
 from src.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ class PearlAgent:
         self,
         registry: ToolRegistry,
         memory: Memory | None = None,
+        checkpoints: CheckpointManager | None = None,
     ) -> None:
 
         self.registry = registry
@@ -55,6 +57,13 @@ class PearlAgent:
         self.planner = Planner(registry, self.dispatcher, self.llm)
 
         self.memory = memory or Memory()
+
+        # Shared between run_autonomous()'s automatic pre-write
+        # checkpoint and any caller (e.g. the CLI) that also wants to
+        # create/list/restore checkpoints on demand — mirrors
+        # MCPServer.checkpoints, same reasoning: one store, not one
+        # the executor builds for itself that nothing else can see.
+        self.checkpoints = checkpoints or CheckpointManager()
 
         # The in-flight AutonomousExecutor, kept across calls so a
         # paused run can be resolved by a later approve()/reject() —
@@ -178,6 +187,7 @@ class PearlAgent:
             max_iterations=max_iterations,
             max_replans=max_replans,
             on_progress=on_progress,
+            checkpoints=self.checkpoints,
         )
 
         try:

@@ -92,10 +92,13 @@ def test_initialize_returns_protocol_and_server_info():
     assert response.result["serverInfo"]["name"] == "pearl-mcp"
     assert "protocolVersion" in response.result
     assert response.result["capabilities"]["tools"] == {}
-    # pearlPersonality is always advertised — personality formatting
-    # doesn't depend on a planner or an LLM being configured, unlike
+    # pearlPersonality/pearlCheckpoints are always advertised — neither
+    # depends on a planner or an LLM being configured, unlike
     # pearlPlanning/pearlAutonomous/pearlChat.
-    assert response.result["capabilities"]["experimental"] == {"pearlPersonality": {}}
+    assert response.result["capabilities"]["experimental"] == {
+        "pearlPersonality": {},
+        "pearlCheckpoints": {},
+    }
 
 
 def test_initialize_reports_chat_capability_when_llm_provided():
@@ -105,6 +108,7 @@ def test_initialize_reports_chat_capability_when_llm_provided():
 
     assert response.result["capabilities"]["experimental"] == {
         "pearlPersonality": {},
+        "pearlCheckpoints": {},
         "pearlChat": {},
     }
 

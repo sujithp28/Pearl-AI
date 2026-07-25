@@ -5,6 +5,91 @@ work landed in this repository.
 
 ## [Unreleased]
 
+### Sprint 1 — Checkpoint System
+
+Complete checkpoint feature: create, restore, delete, rename, list,
+metadata, persistence, auto cleanup, recovery, CLI, MCP, and VS Code
+integration, plus timeline integration for the automatic checkpoint
+already taken before every approved write.
+
+- **Storage moved outside the workspace (ADR-005).** Checkpoints used
+  to live at `<workspace>/.pearl/`, which required also editing the
+  user's `.gitignore` to compensate — itself a sign the design was
+  wrong. Now stored at `~/.pearl/workspaces/<key>/`, keyed by a hash
+  of the workspace's absolute path; Pearl never writes into a user's
+  project directory or `.gitignore` again. A legacy in-workspace store
+  is migrated automatically, once, on first use.
+- **Delete and rename**, via a small JSON metadata sidecar rather than
+  rewriting git history: a git commit is treated as permanent content;
+  the metadata layer is the mutable label/deleted-flag presentation on
+  top of it. Deleting the middle of a linear commit history would mean
+  rewriting every commit after it — real corruption risk for a
+  safety-net feature, for no benefit on content this small.
+- **Auto cleanup (retention)**: `PEARL_CHECKPOINT_MAX_COUNT` (default
+  50) and `PEARL_CHECKPOINT_MAX_AGE_DAYS` (default 30), both 0 to
+  disable. Applied after every `create()`; never prunes the checkpoint
+  that was just created; a retention failure never fails the
+  checkpoint that triggered it.
+- **Recovery**: a stale `index.lock` (left by a killed process)
+  surfaces a specific, actionable error instead of an opaque one. A
+  missing or corrupted metadata file self-heals from `git log` rather
+  than being treated as fatal. Metadata writes are atomic
+  (write-temp-then-rename).
+- **CLI**: `:checkpoints`, `:checkpoint [label]`, `:restore <id>`,
+  `:delete <id>`, `:rename <id> <label>` in the REPL, with a
+  preview-then-confirm step before restoring (restoring can delete
+  files created since the checkpoint).
+- **MCP**: six new methods — `pearl/checkpointCreate`,
+  `pearl/checkpoints`, `pearl/checkpointRestorePreview`,
+  `pearl/checkpointRestore`, `pearl/checkpointDelete`,
+  `pearl/checkpointRename` — plus a `pearlCheckpoints` capability
+  advertised in `initialize`. `MCPServer`/`PearlAgent` now hold one
+  shared `CheckpointManager`, so a manual checkpoint and the automatic
+  pre-write checkpoint appear in the same list — verified live against
+  a real server that both actually land in one store.
+- **VS Code**: a "Checkpoints" view in Pearl's activity bar
+  (`checkpointClient.ts`/`checkpointTree*.ts`/`checkpointCommands.ts`,
+  mirroring the existing Memory panel's structure) — create, refresh,
+  and per-item restore (with a modal confirmation listing exactly what
+  will change)/rename/delete.
+- **Timeline integration**: a new `EventKind.CHECKPOINT` /
+  `checkpoint_created` progress event fires when the automatic
+  pre-write checkpoint actually captures something — not when there
+  was nothing new to record (workspace already matched the last
+  checkpoint), and not on a swallowed failure.
+- **Two real bugs found by testing the mechanics directly, not by
+  reasoning about them:**
+  - `CheckpointManager`'s default workspace argument resolved via
+    `Path(".").resolve()`, which reads the real process `os.getcwd()`
+    and silently ignores `monkeypatch.setattr(Path, "cwd", ...)` — a
+    pattern used throughout this codebase's own tests. A
+    `CheckpointManager()` built with no explicit workspace could end
+    up pointed at a completely different directory than the one a
+    caller (or a test) believed it was operating on; in one observed
+    case, the real Pearl repository itself. Fixed to resolve via an
+    explicit `Path.cwd()` call, matching
+    `file_tools._ensure_within_workspace` and
+    `Planner._workspace_root()`.
+  - The store-exclusion pattern was root-anchored to the *legacy*
+    `.pearl` name, so it only protected the case where the store sat
+    exactly at the workspace root. A workspace that happens to be an
+    *ancestor* of `~/.pearl` (e.g. Pearl pointed at `~` itself) puts
+    the live external store inside the very tree being checkpointed,
+    and its own git internals get swept into checkpoints and then
+    "restored" as workspace files. Fixed by excluding the store's
+    actual resolved location, by its real path relative to the
+    workspace, whenever it is nested inside the workspace at all.
+- Tests never touch a real developer's home directory: a new
+  session-wide `tests/conftest.py` fixture redirects `$HOME` (which
+  also correctly propagates into the real-subprocess e2e tests, unlike
+  a `Path.home` monkeypatch) — added after a full suite run left real
+  checkpoint stores under a real `~/.pearl/workspaces/` during this
+  sprint's own development.
+- 694 Python tests (up from 644 at the end of Sprint 0), 239
+  TypeScript (up from 210), lint/format/pyflakes clean, real MCP
+  server verified live end to end (create/list/restore/rename/delete,
+  and manual + automatic checkpoints sharing one store).
+
 ### Sprint 0 — Engineering Cleanup
 
 Cleanup pass ahead of feature work, per Pearl's frozen architecture

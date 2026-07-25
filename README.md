@@ -264,6 +264,7 @@ VS Code extension is one client among many possible ones.
 | `pearl/approvePatches` / `pearl/rejectPatches` | Resumes a paused autonomous run after a human decision on staged patches. |
 | `pearl/chat` | Sends a message straight to the LLM (no planning/tools). |
 | `pearl/memory` | Returns the server's current `WorkspaceMemory` contents. Read-only. |
+| `pearl/checkpointCreate` / `pearl/checkpoints` / `pearl/checkpointRestorePreview` / `pearl/checkpointRestore` / `pearl/checkpointDelete` / `pearl/checkpointRename` | Checkpoint system — see [`docs/checkpoints.md`](docs/checkpoints.md). |
 | `shutdown` / `exit` | Graceful shutdown handshake / stops the stdio read loop. |
 
 While `pearl/runAutonomous`/`pearl/approvePatches`/`pearl/rejectPatches`
@@ -346,6 +347,22 @@ VS Code diff-approval UI) is the patch applied to disk; `reject()` discards
 it and execution resumes without the change. This is the mechanism that
 guarantees no autonomous run modifies your working tree without a human
 in the loop.
+
+---
+
+## Checkpoints
+
+Undo for anything Pearl writes. A checkpoint is a snapshot of the
+whole workspace, taken automatically right before an approved patch
+batch reaches disk, or on demand (CLI `:checkpoint`, the VS Code
+"Checkpoints" panel, or `pearl/checkpointCreate` over MCP). Snapshots
+live in a shadow git repository kept **outside** the workspace
+(`~/.pearl/workspaces/<key>/`, never inside your project or your
+`.gitignore`) — your own git history, branches, and staging area are
+never touched. Restore, rename, and delete are all supported; see
+[`docs/checkpoints.md`](docs/checkpoints.md) for the full guide,
+including why deletion never rewrites git history and how retention
+(auto cleanup) works.
 
 ---
 
