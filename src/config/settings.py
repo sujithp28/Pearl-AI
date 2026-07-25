@@ -115,5 +115,20 @@ class Settings:
     # behavior, not recommended).
     SHELL_ALLOWED_COMMANDS = os.getenv("PEARL_SHELL_ALLOWED_COMMANDS", "")
 
+    # ==================================================
+    # Personality (src/personality/)
+    # ==================================================
+
+    # One of: professional, friendly, cheeky, savage. Only affects the
+    # wording of Pearl's own status/progress messages — never LLM
+    # prompts, model output, planning, or tool selection. An
+    # unrecognized value falls back to "professional" (see
+    # PersonalityManager), not to this default.
+    PERSONALITY = os.getenv("PERSONALITY", "cheeky")
+
+    # One of: none, minimal, normal, fun. An unrecognized value falls
+    # back to "minimal".
+    EMOJI_MODE = os.getenv("EMOJI_MODE", "minimal")
+
 
 settings = Settings()

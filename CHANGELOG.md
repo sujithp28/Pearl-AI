@@ -18,6 +18,17 @@ work landed in this repository.
   parameter. The VS Code extension renders these live — a spinner,
   step counter, and current action — in the chat panel while an
   autonomous run is executing.
+- **Personality engine.** `src/personality/` gives Pearl's own status/
+  progress messages a configurable voice (`PERSONALITY=professional|
+  friendly|cheeky|savage`, default `cheeky`) and emoji density
+  (`EMOJI_MODE=none|minimal|normal|fun`, default `minimal`), with an
+  automatic "serious mode" override for security-related messages.
+  Wired into `AutonomousExecutor`'s progress narration
+  (`ProgressEvent.current_action`) only — a static test asserts the
+  package never imports `src.llm`/`src.agent`, and an integration
+  test asserts an identical run under two different personalities
+  produces identical steps/results/stop-reasons, differing only in
+  progress-message wording. See [`docs/personality.md`](docs/personality.md).
 
 ## [1.2.0-beta] — 2026-07-24
 

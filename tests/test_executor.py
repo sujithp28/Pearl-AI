@@ -5,6 +5,7 @@ import pytest
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.executor import AutonomousExecutor, ProgressEvent
 from src.agent.planner import Planner
+from src.personality import EventKind, PersonalityManager
 from src.tools.command_approval import CommandApprovalManager
 from src.tools.edit_tools import (
     create_file,
@@ -80,6 +81,19 @@ def _plan_of(*steps):
     """
 
     return lambda prompt: {"steps": list(steps)}
+
+
+def _default_progress_text(event_kind: EventKind) -> str:
+    """
+    The exact `current_action` text a default-configured (`Settings`-
+    driven) `AutonomousExecutor` produces for `event_kind` — asserted
+    against the real `PersonalityManager` rather than a hardcoded
+    string, so these tests verify "the executor actually goes through
+    the personality system" rather than pinning one specific phrasing
+    that's expected to be tunable.
+    """
+
+    return PersonalityManager().format(event_kind)
 
 
 def _plan_sequence(*plans):
@@ -463,18 +477,18 @@ def test_events_include_current_step_total_steps_action_and_status(
     executing = next(e for e in report.events if e.status == "executing_step")
     assert executing.current_step == 1
     assert executing.total_steps == 1
-    assert executing.current_action == "🛠️ Hammering out some code..."
+    assert executing.current_action == _default_progress_text(EventKind.EXECUTING)
 
     completed = next(e for e in report.events if e.status == "step_completed")
     assert completed.current_step == 1
     assert completed.total_steps == 1
-    assert completed.current_action == "✨ Looking much better now."
+    assert completed.current_action == _default_progress_text(EventKind.SUCCESS)
 
     task_completed = report.events[-1]
     assert task_completed.status == "task_completed"
     assert task_completed.current_step == 1
     assert task_completed.total_steps == 1
-    assert task_completed.current_action == "🎉 Done! No bugs were intentionally added."
+    assert task_completed.current_action == _default_progress_text(EventKind.COMPLETED)
 
 
 def test_run_emits_step_failed_and_replanning_events(monkeypatch):
@@ -503,11 +517,11 @@ def test_run_emits_step_failed_and_replanning_events(monkeypatch):
     ]
 
     failed_event = report.events[2]
-    assert failed_event.current_action == "😅 Well... that didn't work."
+    assert failed_event.current_action == _default_progress_text(EventKind.WARNING)
 
     replanning_event = report.events[3]
-    assert (
-        replanning_event.current_action == "🔄 Plot twist! Trying another approach..."
+    assert replanning_event.current_action == _default_progress_text(
+        EventKind.REPLANNING
     )
 
 
@@ -526,10 +540,7 @@ def test_run_emits_task_completed_on_max_iterations(monkeypatch):
     report = executor.run("add twice")
 
     assert report.events[-1].status == "task_completed"
-    assert (
-        report.events[-1].current_action
-        == "💀 I fought bravely... but this one needs a human."
-    )
+    assert report.events[-1].current_action == _default_progress_text(EventKind.FAILURE)
 
 
 def test_run_emits_task_completed_on_fatal_error(monkeypatch):
@@ -550,10 +561,7 @@ def test_run_emits_task_completed_on_fatal_error(monkeypatch):
         "step_failed",
         "task_completed",
     ]
-    assert (
-        report.events[-1].current_action
-        == "💀 I fought bravely... but this one needs a human."
-    )
+    assert report.events[-1].current_action == _default_progress_text(EventKind.FAILURE)
 
 
 def test_on_progress_callback_receives_events_in_real_time(monkeypatch):

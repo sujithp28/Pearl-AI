@@ -36,6 +36,7 @@ from typing import Any, Callable, Literal
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
 from src.llm.parser import ToolCall
+from src.personality import EventKind, PersonalityManager
 from src.tools.command_approval import CommandApprovalManager
 from src.tools.edit_tools import set_active_patch_manager
 from src.tools.patch_manager import PatchManager
@@ -69,20 +70,6 @@ ProgressStatus = Literal[
 ]
 
 _SUMMARY_TRUNCATE = 200
-
-# User-facing progress messages (fun, friendly tone). Purely cosmetic
-# text passed as `ProgressEvent.current_action` — they carry no
-# information used by the execution loop itself.
-_MSG_PLANNING = "🗺️ Plotting world domination... I mean, your solution."
-_MSG_EXECUTING_STEP = "🛠️ Hammering out some code..."
-_MSG_STEP_COMPLETED = "✨ Looking much better now."
-_MSG_STEP_FAILED = "😅 Well... that didn't work."
-_MSG_REPLANNING = "🔄 Plot twist! Trying another approach..."
-_MSG_TASK_COMPLETED_SUCCESS = "🎉 Done! No bugs were intentionally added."
-_MSG_TASK_COMPLETED_FAILURE = "💀 I fought bravely... but this one needs a human."
-_MSG_CANCELLED = "🛑 Cancelled — stopping right where we are."
-_MSG_AWAITING_APPROVAL = "📄 Patch ready — take a look and let me know."
-_MSG_REJECTED = "🗑️ No worries, discarding that patch."
 
 
 @dataclass(slots=True)
@@ -219,6 +206,7 @@ class AutonomousExecutor:
         on_progress: Callable[[ProgressEvent], None] | None = None,
         patch_manager: PatchManager | None = None,
         command_approver: CommandApprovalManager | None = None,
+        personality: PersonalityManager | None = None,
     ) -> None:
         self.planner = planner
         self.dispatcher = dispatcher
@@ -229,6 +217,10 @@ class AutonomousExecutor:
         self.command_approver = command_approver or CommandApprovalManager(
             runner=_run_shell_command
         )
+        # Only ever shapes the wording of ProgressEvent.current_action
+        # below — never anything the planner, dispatcher, or any tool
+        # sees or acts on.
+        self._personality = personality or PersonalityManager()
         self._cancel_event = threading.Event()
         self._paused: _PausedState | None = None
 
@@ -286,7 +278,7 @@ class AutonomousExecutor:
             "cancelled",
             current_step=len(steps),
             total_steps=len(steps),
-            current_action=_MSG_CANCELLED,
+            current_action=self._personality.format(EventKind.CANCELLED),
         )
 
         return True
@@ -342,7 +334,7 @@ class AutonomousExecutor:
             "awaiting_approval",
             current_step=len(steps),
             total_steps=len(steps) + len(pending),
-            current_action=_MSG_AWAITING_APPROVAL,
+            current_action=self._personality.format(EventKind.APPROVAL),
         )
 
         return ExecutionReport(
@@ -380,7 +372,7 @@ class AutonomousExecutor:
             "cancelled",
             current_step=len(state.steps),
             total_steps=len(state.steps),
-            current_action=_MSG_CANCELLED,
+            current_action=self._personality.format(EventKind.CANCELLED),
         )
 
         return ExecutionReport(
@@ -454,7 +446,7 @@ class AutonomousExecutor:
             "planning",
             current_step=0,
             total_steps=0,
-            current_action=_MSG_PLANNING,
+            current_action=self._personality.format(EventKind.PLANNING),
         )
 
         pending: list[ToolCall] = list(self.planner.plan(prompt))
@@ -549,7 +541,7 @@ class AutonomousExecutor:
             "rejected",
             current_step=len(state.steps),
             total_steps=len(state.steps),
-            current_action=_MSG_REJECTED,
+            current_action=self._personality.format(EventKind.REJECTED),
         )
 
         return ExecutionReport(
@@ -615,7 +607,7 @@ class AutonomousExecutor:
                     "task_completed",
                     current_step=len(steps),
                     total_steps=len(steps),
-                    current_action=_MSG_TASK_COMPLETED_FAILURE,
+                    current_action=self._personality.format(EventKind.FAILURE),
                 )
 
                 return ExecutionReport(
@@ -664,7 +656,7 @@ class AutonomousExecutor:
                 "executing_step",
                 current_step=iteration,
                 total_steps=iteration + len(pending),
-                current_action=_MSG_EXECUTING_STEP,
+                current_action=self._personality.format(EventKind.EXECUTING),
             )
 
             try:
@@ -694,7 +686,7 @@ class AutonomousExecutor:
                     "step_failed",
                     current_step=iteration,
                     total_steps=iteration + len(pending),
-                    current_action=_MSG_STEP_FAILED,
+                    current_action=self._personality.format(EventKind.WARNING),
                 )
 
                 if replans_used >= self.max_replans:
@@ -722,7 +714,7 @@ class AutonomousExecutor:
                         "task_completed",
                         current_step=len(steps),
                         total_steps=len(steps),
-                        current_action=_MSG_TASK_COMPLETED_FAILURE,
+                        current_action=self._personality.format(EventKind.FAILURE),
                     )
 
                     return ExecutionReport(
@@ -752,7 +744,7 @@ class AutonomousExecutor:
                     "replanning",
                     current_step=iteration,
                     total_steps=iteration + len(pending),
-                    current_action=_MSG_REPLANNING,
+                    current_action=self._personality.format(EventKind.REPLANNING),
                 )
 
                 try:
@@ -790,7 +782,7 @@ class AutonomousExecutor:
                         "task_completed",
                         current_step=len(steps),
                         total_steps=len(steps),
-                        current_action=_MSG_TASK_COMPLETED_FAILURE,
+                        current_action=self._personality.format(EventKind.FAILURE),
                     )
 
                     return ExecutionReport(
@@ -838,7 +830,7 @@ class AutonomousExecutor:
                 "step_completed",
                 current_step=iteration,
                 total_steps=iteration + len(pending),
-                current_action=_MSG_STEP_COMPLETED,
+                current_action=self._personality.format(EventKind.SUCCESS),
             )
 
         logger.info(
@@ -864,7 +856,7 @@ class AutonomousExecutor:
             "task_completed",
             current_step=len(steps),
             total_steps=len(steps),
-            current_action=_MSG_TASK_COMPLETED_SUCCESS,
+            current_action=self._personality.format(EventKind.COMPLETED),
         )
 
         return ExecutionReport(

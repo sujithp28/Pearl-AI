@@ -317,6 +317,25 @@ approval (see below) before continuing.
 
 ---
 
+## Personality
+
+Pearl's own status/progress messages ("Planning...", "Tests passed.",
+"Patch ready.") have a configurable voice:
+
+```bash
+PERSONALITY=cheeky      # professional | friendly | cheeky | savage (default)
+EMOJI_MODE=minimal      # none | minimal | normal | fun
+```
+
+This only changes wording — it never touches planning, tool
+selection, tool execution, code generation, or any LLM prompt/output;
+that boundary is enforced by a static test, not just a convention. See
+[`docs/personality.md`](docs/personality.md) for the full personality
+table, the automatic "serious mode" override for security-related
+messages, and how to add a new personality.
+
+---
+
 ## Patch Approval
 
 File-writing tools (`create_file`, `edit_lines`, `patch_file`,
