@@ -37,6 +37,7 @@ from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
 from src.llm.parser import ToolCall
 from src.personality import EventKind, PersonalityManager
+from src.tools.checkpoints import CheckpointManager
 from src.tools.command_approval import CommandApprovalManager
 from src.tools.edit_tools import set_active_patch_manager
 from src.tools.patch_manager import PatchManager
@@ -207,6 +208,7 @@ class AutonomousExecutor:
         patch_manager: PatchManager | None = None,
         command_approver: CommandApprovalManager | None = None,
         personality: PersonalityManager | None = None,
+        checkpoints: CheckpointManager | None = None,
     ) -> None:
         self.planner = planner
         self.dispatcher = dispatcher
@@ -221,6 +223,12 @@ class AutonomousExecutor:
         # below — never anything the planner, dispatcher, or any tool
         # sees or acts on.
         self._personality = personality or PersonalityManager()
+        # Snapshots the workspace before an approved batch is written,
+        # so the change can be undone. Pass `checkpoints=None`
+        # explicitly to opt out.
+        self.checkpoints = (
+            checkpoints if checkpoints is not None else CheckpointManager()
+        )
         self._cancel_event = threading.Event()
         self._paused: _PausedState | None = None
 
@@ -476,6 +484,13 @@ class AutonomousExecutor:
         if self.is_cancelled():
             return self._finalize_cancelled_while_paused(state)
 
+        # Snapshot *before* anything reaches disk, so this approval is
+        # undoable. Best-effort: a workspace where checkpointing can't
+        # work (no git binary, unwritable directory) must still be able
+        # to approve changes — losing undo is a degradation, refusing
+        # the write would be a regression.
+        self._checkpoint_before_writing(state)
+
         applied = self.patch_manager.apply_all()
 
         logger.info("Approved %d file(s): %s", len(applied), applied)
@@ -550,6 +565,28 @@ class AutonomousExecutor:
             replans_used=state.replans_used,
             events=state.events,
         )
+
+    def _checkpoint_before_writing(self, state: _PausedState) -> None:
+        """
+        Record a restore point covering everything about to be written.
+
+        Deliberately swallows every failure: checkpointing is a safety
+        net, and a net that refuses to let you proceed when it can't
+        be strung up is worse than no net. The user is told via the
+        log, and the write goes ahead.
+        """
+
+        if self.checkpoints is None:
+            return
+
+        try:
+            self.checkpoints.create(f"Before: {state.prompt[:72]}")
+        except Exception:
+            logger.warning(
+                "Could not create a checkpoint; proceeding without undo "
+                "for this change.",
+                exc_info=True,
+            )
 
     def _finish_or_pause(self, report: ExecutionReport) -> ExecutionReport:
         """

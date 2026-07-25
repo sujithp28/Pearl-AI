@@ -22,3 +22,5 @@ test_workspace/
 
 # OS
 .DS_Store
+# Pearl checkpoint store (shadow git repo)
+.pearl/
