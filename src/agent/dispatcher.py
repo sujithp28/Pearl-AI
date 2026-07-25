@@ -61,17 +61,14 @@ class ToolDispatcher:
 
         return result
 
-    def has_tool(self, tool_name: str) -> bool:
-        """
-        Check whether a tool exists.
-        """
-        return self._registry.get_tool(tool_name) is not None
-
-    def list_tools(self) -> list[str]:
-        """
-        List all available tools.
-        """
-        return self._registry.list()
+    # `has_tool()` and `list_tools()` used to live here and were both
+    # broken — `has_tool` raised instead of returning False (the
+    # registry raises on a miss, so its `is not None` check was
+    # unreachable) and `list_tools` called a registry method that does
+    # not exist. Neither had a caller or a test, which is why they
+    # rotted unnoticed. Removed rather than fixed: dispatching is not
+    # registry inspection, and `ToolRegistry.has_tool()` /
+    # `.list_tools()` already answer these questions correctly.
 
     def describe_tool(self, tool_name: str) -> Tool:
         """

@@ -83,6 +83,31 @@ def enforce_emoji_limit(text: str, max_emoji: int = MAX_EMOJI_PER_MESSAGE) -> st
     return re.sub(r" {2,}", " ", result).strip()
 
 
+#: Events worth marking even when the user wants emoji kept to a
+#: minimum — the ones that report an outcome rather than narrate
+#: work in progress.
+_SIGNIFICANT_EVENTS = frozenset(
+    {
+        EventKind.SUCCESS,
+        EventKind.COMPLETED,
+        EventKind.WARNING,
+        EventKind.FAILURE,
+        EventKind.APPROVAL,
+        EventKind.CANCELLED,
+        EventKind.REJECTED,
+        EventKind.SECURITY,
+    }
+)
+
+#: Trailing accent added only in `fun` mode, only for events that are
+#: genuinely worth celebrating. Kept to the two-emoji ceiling by
+#: `enforce_emoji_limit`.
+_FUN_ACCENTS: dict[EventKind, str] = {
+    EventKind.COMPLETED: "🙌",
+    EventKind.SUCCESS: "👍",
+}
+
+
 def format_event(
     event_kind: EventKind,
     personality: Personality,
@@ -91,7 +116,17 @@ def format_event(
 ) -> str:
     """
     Render the configured personality's line for `event_kind`, with
-    the leading category emoji applied per `emoji_mode`.
+    emoji applied per `emoji_mode`.
+
+    The four modes are genuinely distinct — previously `minimal`,
+    `normal` and `fun` all produced byte-identical output, which made
+    three of the four documented settings dead configuration surface:
+
+    - `none`    no emoji at all
+    - `minimal` a leading emoji only on outcome-reporting events
+    - `normal`  a leading emoji on every event
+    - `fun`     as `normal`, plus a trailing accent on the events
+                actually worth celebrating
     """
 
     template = PERSONALITY_TEMPLATES[personality][event_kind]
@@ -100,8 +135,13 @@ def format_event(
     if emoji_mode is EmojiMode.NONE:
         return enforce_emoji_limit(text)
 
-    emoji = EMOJI_MAP[event_kind]
-    decorated = f"{emoji} {text}"
+    if emoji_mode is EmojiMode.MINIMAL and event_kind not in _SIGNIFICANT_EVENTS:
+        return enforce_emoji_limit(text)
+
+    decorated = f"{EMOJI_MAP[event_kind]} {text}"
+
+    if emoji_mode is EmojiMode.FUN and event_kind in _FUN_ACCENTS:
+        decorated = f"{decorated} {_FUN_ACCENTS[event_kind]}"
 
     return enforce_emoji_limit(decorated)
 

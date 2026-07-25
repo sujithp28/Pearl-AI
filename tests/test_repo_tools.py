@@ -450,3 +450,43 @@ def test_refresh_indexed_file_is_a_noop_when_root_is_not_cached(tmp_path):
     # for this root, so _INDEX_CACHE has no entry to update — must
     # not raise.
     refresh_indexed_file(str(tmp_path / "pkg" / "a.py"))
+
+
+# ---------------------------------------------------------------------
+# Search result caps
+# ---------------------------------------------------------------------
+
+
+def test_search_text_caps_results_and_says_so(tmp_path):
+    # Uncapped, a broad query on a large repo returns megabytes that go
+    # straight into the next planning prompt.
+    from src.tools.repo_tools import MAX_SEARCH_RESULTS
+
+    big = "\n".join(f"needle {i}" for i in range(MAX_SEARCH_RESULTS + 50))
+    (tmp_path / "big.txt").write_text(big)
+
+    results = search_text("needle")
+
+    assert len(results) == MAX_SEARCH_RESULTS + 1  # + truncation notice
+    assert "truncated" in results[-1]["text"]
+
+
+def test_search_text_below_the_cap_has_no_truncation_notice(tmp_path):
+    (tmp_path / "small.txt").write_text("needle\nneedle\n")
+
+    results = search_text("needle")
+
+    assert len(results) == 2
+    assert all("truncated" not in r["text"] for r in results)
+
+
+def test_find_references_caps_results_and_says_so(tmp_path):
+    from src.tools.repo_tools import MAX_SEARCH_RESULTS
+
+    big = "\n".join(f"target_symbol  # {i}" for i in range(MAX_SEARCH_RESULTS + 50))
+    (tmp_path / "big.py").write_text(big)
+
+    results = find_references("target_symbol")
+
+    assert len(results) == MAX_SEARCH_RESULTS + 1
+    assert "truncated" in results[-1]["text"]

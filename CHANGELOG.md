@@ -79,6 +79,25 @@ work landed in this repository.
   since planning output is parsed as JSON and must stay unprimed.
 
 ### Fixed
+- **`ToolDispatcher.has_tool()` raised instead of returning `False`,
+  and `ToolDispatcher.list_tools()` raised `AttributeError`.** The
+  former checked `get_tool(...) is not None` against a method that
+  raises on a miss; the latter called a registry method that does not
+  exist. Both had zero callers and zero tests, which is why they
+  rotted unnoticed. **Removed rather than repaired** — dispatching is
+  not registry inspection, and `ToolRegistry.has_tool()` /
+  `.list_tools()` already answer these correctly.
+- **`search_text` and `find_references` returned unbounded results.**
+  A broad query on a large repository produced megabytes that fed
+  straight into the next planning prompt. Capped at 200 matches, with
+  an explicit truncation marker so the model is told its view is
+  partial rather than assuming it saw everything.
+- **Three of the four `EMOJI_MODE` values were identical.**
+  `minimal`, `normal` and `fun` produced byte-identical output, making
+  three documented settings dead configuration. Each now behaves
+  distinctly: `none` (no emoji), `minimal` (outcomes only), `normal`
+  (every event), `fun` (adds a celebratory accent, still within the
+  two-emoji ceiling).
 - **Pearl claimed to have performed actions it never took.** Asked to
   "write hello world and tell me where you store the file", chat mode
   printed code and said it "stores it in the /home/sujith directory";

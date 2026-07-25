@@ -147,12 +147,54 @@ def test_every_personality_defines_every_event_kind():
             )
 
 
-def test_format_includes_the_event_kinds_emoji_in_minimal_mode():
+def test_minimal_mode_marks_outcomes_but_not_progress_narration():
+    """
+    `minimal` means "emoji where it carries information" — an outcome
+    worth spotting, not every intermediate step.
+    """
+
     manager = PersonalityManager(personality="professional", emoji_mode="minimal")
 
-    text = manager.format(EventKind.TESTING)
+    outcome = manager.format(EventKind.COMPLETED)
+    narration = manager.format(EventKind.EXECUTING)
 
-    assert text.startswith(EMOJI_MAP[EventKind.TESTING])
+    assert outcome.startswith(EMOJI_MAP[EventKind.COMPLETED])
+    assert not narration.startswith(EMOJI_MAP[EventKind.EXECUTING])
+
+
+def test_normal_mode_marks_every_event():
+    manager = PersonalityManager(personality="professional", emoji_mode="normal")
+
+    for event_kind in [EventKind.EXECUTING, EventKind.TESTING, EventKind.COMPLETED]:
+        assert manager.format(event_kind).startswith(EMOJI_MAP[event_kind])
+
+
+def test_the_four_emoji_modes_are_genuinely_distinct():
+    """
+    Regression: `minimal`, `normal` and `fun` once produced
+    byte-identical output, making three of four documented settings
+    dead configuration surface.
+    """
+
+    def render(mode: str) -> tuple[str, str]:
+        manager = PersonalityManager(personality="professional", emoji_mode=mode)
+        return manager.format(EventKind.EXECUTING), manager.format(EventKind.COMPLETED)
+
+    outputs = {mode: render(mode) for mode in ["none", "minimal", "normal", "fun"]}
+
+    assert len(set(outputs.values())) == 4, (
+        f"every emoji mode must behave differently, got: {outputs}"
+    )
+
+
+def test_fun_mode_adds_a_celebratory_accent_within_the_emoji_ceiling():
+    manager = PersonalityManager(personality="professional", emoji_mode="fun")
+
+    text = manager.format(EventKind.COMPLETED)
+
+    assert text.startswith(EMOJI_MAP[EventKind.COMPLETED])
+    # Still obeys the two-emoji rule.
+    assert text == enforce_emoji_limit(text)
 
 
 def test_format_omits_emoji_entirely_in_none_mode():

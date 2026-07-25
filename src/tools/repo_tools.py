@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 
 SOURCE_EXTENSIONS = (".py",)
 
+#: Ceiling on results from `search_text` / `find_references`. Sized to
+#: stay well inside a planning prompt's context budget: these results
+#: are frequently fed straight back to the model, so an uncapped broad
+#: match is a latency and correctness problem, not just a big list.
+MAX_SEARCH_RESULTS = 200
+
 IGNORED_DIRS = {
     ".git",
     "__pycache__",
@@ -303,9 +309,18 @@ def _search(
     root: Path,
     pattern: re.Pattern[str],
     extensions: tuple[str, ...] | None,
+    limit: int = MAX_SEARCH_RESULTS,
 ) -> list[dict[str, Any]]:
     """
-    Search files under `root` for lines matching `pattern`.
+    Search files under `root` for lines matching `pattern`, returning
+    at most `limit` matches.
+
+    The cap is not a performance tweak: an uncapped broad query (say
+    `self`) on a large repository returns megabytes of matches that go
+    straight into the next planning prompt, blowing the context budget
+    and the latency with it. Truncation is reported to the caller
+    rather than silently swallowed, so the model is told its view is
+    partial instead of assuming it saw everything.
     """
 
     matches: list[dict[str, Any]] = []
@@ -318,6 +333,9 @@ def _search(
 
         for line_number, line in enumerate(lines, start=1):
             if pattern.search(line):
+                if len(matches) >= limit:
+                    return matches
+
                 matches.append(
                     {
                         "file": str(file_path.relative_to(root)),
@@ -327,6 +345,22 @@ def _search(
                 )
 
     return matches
+
+
+def _truncation_notice(matches: list[dict[str, Any]], limit: int) -> dict[str, Any]:
+    """
+    A sentinel row appended when results were capped, so the caller —
+    and the model reading the result — knows the list is incomplete
+    and the query should be narrowed.
+    """
+
+    return {
+        "file": "",
+        "line": 0,
+        "text": (
+            f"[truncated at {limit} matches — narrow the query for complete results]"
+        ),
+    }
 
 
 @tool(
@@ -413,7 +447,12 @@ def find_references(
 
     pattern = re.compile(rf"\b{re.escape(symbol)}\b")
 
-    return _search(root, pattern, SOURCE_EXTENSIONS)
+    matches = _search(root, pattern, SOURCE_EXTENSIONS)
+
+    if len(matches) >= MAX_SEARCH_RESULTS:
+        matches.append(_truncation_notice(matches, MAX_SEARCH_RESULTS))
+
+    return matches
 
 
 @tool(
@@ -439,7 +478,12 @@ def search_text(query: str, path: str = ".") -> list[dict[str, Any]]:
 
     pattern = re.compile(re.escape(query))
 
-    return _search(root, pattern, None)
+    matches = _search(root, pattern, None)
+
+    if len(matches) >= MAX_SEARCH_RESULTS:
+        matches.append(_truncation_notice(matches, MAX_SEARCH_RESULTS))
+
+    return matches
 
 
 @tool(
