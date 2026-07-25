@@ -5,6 +5,7 @@ import {
   rejectPatches,
   runAutonomous,
 } from "../mcp/patchClient";
+import { LLM_CALL_TIMEOUT_MS } from "../mcp/timeouts";
 import { RequestSender } from "../mcp/requestSender";
 
 function fakeSender(response: unknown): {
@@ -50,6 +51,7 @@ test("runAutonomous sends the prompt via pearl/runAutonomous and returns the rep
   assert.equal(calls.length, 1);
   assert.equal(calls[0].method, "pearl/runAutonomous");
   assert.deepEqual(calls[0].params, { prompt: "create a.py" });
+  assert.equal(calls[0].timeoutMs, LLM_CALL_TIMEOUT_MS);
   assert.deepEqual(report, SAMPLE_REPORT);
 });
 

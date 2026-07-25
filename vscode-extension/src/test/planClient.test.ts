@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { planOnly } from "../mcp/planClient";
+import { LLM_CALL_TIMEOUT_MS } from "../mcp/timeouts";
 import { RequestSender } from "../mcp/requestSender";
 
 function fakeSender(response: unknown): {
@@ -66,13 +67,14 @@ test("planOnly propagates the underlying sendRequest rejection", async () => {
   );
 });
 
-test("planOnly uses a timeout long enough for an LLM-backed call, not the connection default", async () => {
+test("planOnly uses the shared LLM call timeout, not the connection default", async () => {
   // Regression test: pearl/planOnly is backed by a real LLM call
   // (Planner.plan()) and was previously sent with no explicit
   // timeout, silently falling back to MCPConnection's 10s default —
-  // far too short, and since Pearl's MCP server handles one request
-  // at a time, an abandoned client-side wait here delayed whatever
-  // was sent next by however long the stuck first call actually took.
+  // far too short (measured ~114s for a real call under constrained
+  // conditions), and since Pearl's MCP server handles one request at
+  // a time, an abandoned client-side wait here delayed whatever was
+  // sent next by however long the stuck first call actually took.
   let capturedTimeout: number | undefined;
 
   const sender: RequestSender = {
@@ -84,8 +86,5 @@ test("planOnly uses a timeout long enough for an LLM-backed call, not the connec
 
   await planOnly(sender, "read a.txt");
 
-  assert.ok(
-    capturedTimeout !== undefined && capturedTimeout >= 60000,
-    `expected a timeout of at least 60000ms, got ${capturedTimeout}`
-  );
+  assert.equal(capturedTimeout, LLM_CALL_TIMEOUT_MS);
 });

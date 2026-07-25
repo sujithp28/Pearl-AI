@@ -18,6 +18,7 @@
  * these functions return.
  */
 
+import { LLM_CALL_TIMEOUT_MS } from "./timeouts";
 import { RequestSender } from "./requestSender";
 
 export type ExecutionStopReason =
@@ -75,11 +76,6 @@ function isExecutionReportResult(
   );
 }
 
-// Autonomous runs (and resumes) can involve multiple LLM calls and
-// tool executions, so they're given a much longer budget than a
-// single chat/plan round trip.
-const AUTONOMOUS_TIMEOUT_MS = 300000;
-
 async function requestReport(
   sender: RequestSender,
   method: string,
@@ -88,7 +84,7 @@ async function requestReport(
   const result = await sender.sendRequest(
     method,
     params,
-    AUTONOMOUS_TIMEOUT_MS
+    LLM_CALL_TIMEOUT_MS
   );
 
   if (!isExecutionReportResult(result)) {
