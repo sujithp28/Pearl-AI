@@ -27,11 +27,26 @@ function isPlanOnlyResult(value: unknown): value is PlanOnlyResult {
   );
 }
 
+// Backed by `Planner.plan()` — one LLM call, same order of latency as
+// `pearl/chat` (see `chatClient.ts`), so it needs the same budget:
+// the connection's default 10s timeout is tuned for cheap, non-LLM
+// round trips and was cutting this off before a real (sometimes slow,
+// especially on a local/CPU-bound provider) model response arrived —
+// and unlike a fast request, an abandoned client-side wait here left
+// the request still running server-side (Pearl's MCP server handles
+// one request at a time), silently delaying whatever the client sent
+// next by however much longer the first call actually took.
+const PLAN_TIMEOUT_MS = 60000;
+
 export async function planOnly(
   sender: RequestSender,
   prompt: string
 ): Promise<PlannedStep[]> {
-  const result = await sender.sendRequest("pearl/planOnly", { prompt });
+  const result = await sender.sendRequest(
+    "pearl/planOnly",
+    { prompt },
+    PLAN_TIMEOUT_MS
+  );
 
   if (!isPlanOnlyResult(result)) {
     throw new Error("Malformed response from Pearl MCP server.");

@@ -48,6 +48,7 @@ import { ProgressEvent, parseProgressEvent } from "../mcp/progressClient";
 import { RequestSender } from "../mcp/requestSender";
 import { ToolCallResult, callTool } from "../mcp/toolCallClient";
 import { ToolApprover } from "./approval";
+import { describeConnectionError } from "./errorReporting";
 import { ExecutionState } from "./executionState";
 import { renderMarkdownToHtml } from "./markdown";
 import { PatchApprover } from "./patchApproval";
@@ -164,7 +165,7 @@ export class ChatController {
       try {
         result = await callTool(this.connection, step.tool, step.arguments);
       } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
+        const detail = describeConnectionError(error);
         this.postTimeline(null);
         this.postLoading(false);
         this.addAndPost("error", `Failed to run "${step.tool}": ${detail}`);
@@ -196,8 +197,7 @@ export class ChatController {
       const reply = await sendChatMessage(this.connection, text);
       this.addAndPost("assistant", reply);
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      this.addAndPost("error", `Failed to reach Pearl: ${detail}`);
+      this.addAndPost("error", describeConnectionError(error));
     } finally {
       this.postLoading(false);
     }
@@ -281,8 +281,7 @@ export class ChatController {
       report = await requestAutonomousRun(this.connection, trimmed);
     } catch (error) {
       this.postLoading(false);
-      const detail = error instanceof Error ? error.message : String(error);
-      this.addAndPost("error", `Failed to reach Pearl: ${detail}`);
+      this.addAndPost("error", describeConnectionError(error));
       return;
     }
 
@@ -300,8 +299,7 @@ export class ChatController {
           report = await rejectPatches(this.connection);
         } catch (error) {
           this.postLoading(false);
-          const detail =
-            error instanceof Error ? error.message : String(error);
+          const detail = describeConnectionError(error);
           this.addAndPost("error", `Failed to reject patches: ${detail}`);
           this.postExecutionState(null);
           return;
@@ -319,7 +317,7 @@ export class ChatController {
         report = await approvePatches(this.connection);
       } catch (error) {
         this.postLoading(false);
-        const detail = error instanceof Error ? error.message : String(error);
+        const detail = describeConnectionError(error);
         this.addAndPost("error", `Failed to resume execution: ${detail}`);
         this.postExecutionState(null);
         return;

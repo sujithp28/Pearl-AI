@@ -210,6 +210,27 @@ test("falls back to pearl/chat when planning itself fails", async () => {
   });
 });
 
+test("a pearl/chat timeout is reported without exposing the raw method name", async () => {
+  const { sender } = fakeSender({
+    "pearl/planOnly": () => {
+      throw new Error("Planning is not enabled on this server.");
+    },
+    "pearl/chat": () => {
+      throw new Error("Timed out waiting for response to 'pearl/chat'.");
+    },
+  });
+  const { messages, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("hi");
+
+  assert.equal(messages[1].role, "error");
+  assert.doesNotMatch(messages[1].text, /pearl\//);
+  assert.match(messages[1].text, /taking longer than expected/i);
+});
+
 // ---------------------------------------------------------------------
 // Plan visualization / plan-level Execute vs Cancel
 // ---------------------------------------------------------------------
@@ -462,7 +483,10 @@ test("a transport-level failure calling tools/call is reported as an error", asy
   await controller.handleUserMessage("read a.txt");
 
   assert.equal(messages[1].role, "error");
-  assert.match(messages[1].text, /Not connected to Pearl MCP server\./);
+  // The raw transport message is rewritten into a friendly one — it
+  // must not leak internal wire-protocol detail into the chat UI.
+  assert.doesNotMatch(messages[1].text, /Not connected to Pearl MCP server\./);
+  assert.match(messages[1].text, /isn't connected/i);
 });
 
 // ---------------------------------------------------------------------
