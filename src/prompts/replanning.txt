@@ -27,6 +27,21 @@ If the failure means nothing further can be done, return:
   ]
 }}
 
+Workspace:
+
+{workspace_root}
+
+EVERY path you use MUST stay inside that workspace directory.
+
+Prefer plain relative paths, which resolve against the workspace
+root: "hello.py", "src/utils.py", "tests/test_main.py".
+
+NEVER use a path outside the workspace, including system locations
+like /tmp, /home, /etc, /var, or "..". Such a step is rejected before
+it runs and fails the plan. If the step that just failed was rejected
+for escaping the workspace, retry it with a relative path instead of
+abandoning the request.
+
 Available tools:
 
 {tools}

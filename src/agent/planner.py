@@ -68,6 +68,22 @@ class Planner:
         self.client = client or LLMClient()
         self.parser = ToolParser()
 
+    @staticmethod
+    def _workspace_root() -> str:
+        """
+        The directory every planned path must stay inside — the same
+        root `file_tools._ensure_within_workspace` enforces against,
+        read the same way (the process's cwd, which the MCP server is
+        launched with set to the user's project).
+
+        Resolved per call rather than cached at import: the enforcing
+        side reads `Path.cwd()` per call too, so caching here could
+        silently tell the model one boundary while a different one is
+        actually enforced.
+        """
+
+        return str(Path.cwd().resolve())
+
     def build_prompt(self, user_prompt: str, workspace_context: str = "") -> str:
         """
         Build the planning prompt from the external prompt template.
@@ -89,6 +105,7 @@ class Planner:
         prompt = prompt_template.format(
             tools=tools,
             user_prompt=user_prompt,
+            workspace_root=self._workspace_root(),
         )
 
         if workspace_context:
@@ -154,6 +171,7 @@ class Planner:
             user_prompt=user_prompt,
             completed_steps=json.dumps(completed, indent=4, default=str),
             failed_step=json.dumps(failed, indent=4, default=str),
+            workspace_root=self._workspace_root(),
         )
 
     def replan(

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from src.agent.dispatcher import ToolDispatcher
@@ -182,6 +184,78 @@ def test_build_replan_prompt_includes_context(monkeypatch):
     assert '"result": 3' in prompt
     assert '"error": "kaboom"' in prompt
     assert "boom" in prompt
+
+
+# ---------------------------------------------------------------------
+# Workspace boundary is communicated to the model, not just enforced
+# ---------------------------------------------------------------------
+
+
+def test_planning_prompt_states_the_actual_workspace_root(tmp_path, monkeypatch):
+    """
+    The planner must tell the model the same root
+    `file_tools._ensure_within_workspace` enforces against — otherwise
+    the model plans absolute paths like /tmp/x.py that are guaranteed
+    to be rejected before they run.
+    """
+
+    planner = build_planner()
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+
+    prompt = planner.build_prompt("write hello world")
+
+    assert str(tmp_path.resolve()) in prompt
+
+
+def test_planning_prompt_forbids_paths_outside_the_workspace():
+    planner = build_planner()
+
+    prompt = planner.build_prompt("write hello world")
+
+    assert "/tmp" in prompt
+    assert "relative" in prompt.lower()
+
+
+def test_replan_prompt_states_the_actual_workspace_root(tmp_path, monkeypatch):
+    planner = build_planner()
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+
+    prompt = planner.build_replan_prompt(
+        "write hello world",
+        completed=[],
+        failed={
+            "tool": "create_file",
+            "arguments": {"path": "/tmp/hello.py"},
+            "error": "Path escapes workspace: /tmp/hello.py",
+        },
+    )
+
+    assert str(tmp_path.resolve()) in prompt
+
+
+def test_workspace_root_tracks_cwd_rather_than_being_cached(tmp_path, monkeypatch):
+    """
+    The enforcing side reads `Path.cwd()` per call, so the advertised
+    boundary must too — a cached value could tell the model one root
+    while a different one is actually enforced.
+    """
+
+    planner = build_planner()
+
+    first = tmp_path / "project_a"
+    second = tmp_path / "project_b"
+    first.mkdir()
+    second.mkdir()
+
+    monkeypatch.setattr(Path, "cwd", lambda: first)
+    prompt_a = planner.build_prompt("write hello world")
+
+    monkeypatch.setattr(Path, "cwd", lambda: second)
+    prompt_b = planner.build_prompt("write hello world")
+
+    assert str(first.resolve()) in prompt_a
+    assert str(second.resolve()) in prompt_b
+    assert str(second.resolve()) not in prompt_a
 
 
 def test_run_handles_none_step_without_dispatch(monkeypatch):
