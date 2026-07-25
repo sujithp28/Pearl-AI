@@ -296,53 +296,18 @@ class MCPServer:
             "isError": False,
         }
 
-    def _plan_run(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
-        """
-        Break a request into multiple steps and execute them via the
-        Planner (a Pearl-specific extension beyond the core MCP
-        tool-call methods).
-        """
-
-        if self.planner is None:
-            raise MCPProtocolError(
-                INVALID_PARAMS, "Planning is not enabled on this server."
-            )
-
-        prompt = params.get("prompt")
-
-        if not isinstance(prompt, str) or not prompt:
-            raise MCPProtocolError(INVALID_PARAMS, "'prompt' is required.")
-
-        task = self.memory.start_task(prompt)
-
-        try:
-            results = self.planner.run(prompt)
-        except Exception:
-            self.memory.complete_task(task.id, status="failed")
-            raise
-
-        for step in results:
-            self.memory.record_execution(
-                step.tool_name,
-                step.kwargs,
-                result=_json_safe(step.result) if step.succeeded else None,
-                error=step.error,
-            )
-
-        status = "completed" if all(step.succeeded for step in results) else "failed"
-        self.memory.complete_task(task.id, status=status)
-
-        return {
-            "steps": [
-                {
-                    "tool": step.tool_name,
-                    "arguments": step.kwargs,
-                    "result": _json_safe(step.result) if step.succeeded else None,
-                    "error": step.error,
-                }
-                for step in results
-            ]
-        }
+    # `pearl/plan` used to be handled here (`_plan_run`), executing a
+    # planned sequence of tool calls directly via the dispatcher, one
+    # after another, with no replanning. Removed as a confirmed
+    # safety bug, not a style cleanup: dispatching this way runs
+    # completely outside AutonomousExecutor, so no PatchManager is
+    # ever active, and every write tool (create_file, etc.) falls
+    # through to writing straight to disk with zero approval —
+    # verified live by calling the dispatcher the same way this
+    # handler did and watching the file appear unreviewed. The VS
+    # Code extension never called this method (only Pearl's own
+    # tests did). `pearl/runAutonomous` is the only path that stages
+    # writes behind approval and is what any client should use.
 
     def _plan_only(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
         """
@@ -582,7 +547,6 @@ class MCPServer:
         "initialize": _initialize,
         "tools/list": _tools_list,
         "tools/call": _tools_call,
-        "pearl/plan": _plan_run,
         "pearl/planOnly": _plan_only,
         "pearl/chat": _chat,
         "pearl/runAutonomous": _run_autonomous,

@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from src.agent.dispatcher import ToolDispatcher
 from src.llm.client import LLMClient
@@ -26,26 +25,6 @@ logger = logging.getLogger(__name__)
 # never guaranteed to be Pearl's own repo, so these prompt templates
 # must not depend on cwd to be found.
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
-
-
-@dataclass(slots=True)
-class StepResult:
-    """
-    Outcome of executing a single plan step.
-    """
-
-    tool_name: str
-    kwargs: dict[str, Any]
-    result: Any = None
-    error: str | None = None
-
-    @property
-    def succeeded(self) -> bool:
-        """
-        Return whether the step completed without error.
-        """
-
-        return self.error is None
 
 
 class Planner:
@@ -84,6 +63,26 @@ class Planner:
 
         return str(Path.cwd().resolve())
 
+    def _generate_json(
+        self, prompt: str, cancel_check: Callable[[], bool] | None
+    ) -> dict[str, Any]:
+        """
+        Call `self.client.generate_json`, forwarding `cancel_check`
+        only when actually given.
+
+        Kept to the old `generate_json(prompt)` call shape whenever
+        cancellation isn't in use, rather than always passing
+        `cancel_check=None` — the executor is the only caller that
+        supplies a real one; everyone else (including every test
+        double that stubs `generate_json` with a plain
+        `lambda prompt: ...`) keeps working unmodified.
+        """
+
+        if cancel_check is None:
+            return self.client.generate_json(prompt)
+
+        return self.client.generate_json(prompt, cancel_check=cancel_check)
+
     def build_prompt(self, user_prompt: str, workspace_context: str = "") -> str:
         """
         Build the planning prompt from the external prompt template.
@@ -118,19 +117,25 @@ class Planner:
 
         return prompt
 
-    def plan(self, user_prompt: str, workspace_context: str = "") -> list[ToolCall]:
+    def plan(
+        self,
+        user_prompt: str,
+        workspace_context: str = "",
+        cancel_check: Callable[[], bool] | None = None,
+    ) -> list[ToolCall]:
         """
         Ask the LLM to break `user_prompt` into an ordered list of
         tool calls.
 
-        `workspace_context`: see `build_prompt`.
+        `workspace_context`: see `build_prompt`. `cancel_check`: see
+        `LLMClient.generate`.
         """
 
         logger.info("Planning steps for request: %s", user_prompt)
 
         prompt = self.build_prompt(user_prompt, workspace_context)
 
-        payload = self.client.generate_json(prompt)
+        payload = self._generate_json(prompt, cancel_check)
 
         response = json.dumps(payload)
 
@@ -179,13 +184,15 @@ class Planner:
         user_prompt: str,
         completed: list[dict[str, Any]],
         failed: dict[str, Any],
+        cancel_check: Callable[[], bool] | None = None,
     ) -> list[ToolCall]:
         """
         Ask the LLM for a revised remaining plan after `failed`
         failed, given the steps already completed successfully.
 
         Reuses the same LLM client, parser, and validation as
-        `plan()` — only the prompt differs.
+        `plan()` — only the prompt differs. `cancel_check`: see
+        `LLMClient.generate`.
         """
 
         logger.info(
@@ -196,7 +203,7 @@ class Planner:
 
         prompt = self.build_replan_prompt(user_prompt, completed, failed)
 
-        payload = self.client.generate_json(prompt)
+        payload = self._generate_json(prompt, cancel_check)
 
         response = json.dumps(payload)
 
@@ -213,57 +220,17 @@ class Planner:
 
         return steps
 
-    def run(self, user_prompt: str) -> list[StepResult]:
-        """
-        Plan and sequentially execute every step for `user_prompt`.
-
-        Execution stops at the first step that raises an error;
-        results for steps executed so far (including the failed
-        one) are returned.
-        """
-
-        steps = self.plan(user_prompt)
-
-        results: list[StepResult] = []
-
-        for step in steps:
-            if step.tool_name == "none":
-                results.append(
-                    StepResult(
-                        tool_name=step.tool_name,
-                        kwargs=step.kwargs,
-                    )
-                )
-                continue
-
-            logger.info("Executing step: %s", step.tool_name)
-
-            try:
-                result = self.dispatcher.execute(
-                    step.tool_name,
-                    *step.args,
-                    **step.kwargs,
-                )
-
-            except Exception as exc:
-                logger.error("Step '%s' failed: %s", step.tool_name, exc)
-
-                results.append(
-                    StepResult(
-                        tool_name=step.tool_name,
-                        kwargs=step.kwargs,
-                        error=str(exc),
-                    )
-                )
-
-                break
-
-            results.append(
-                StepResult(
-                    tool_name=step.tool_name,
-                    kwargs=step.kwargs,
-                    result=result,
-                )
-            )
-
-        return results
+    # `run()` used to live here: it dispatched each planned step
+    # directly, sequentially, with no replanning. Removed rather than
+    # kept — dispatching this way happens completely outside
+    # AutonomousExecutor, so no PatchManager is ever active and
+    # every write tool falls through to writing straight to disk,
+    # bypassing the approval gate entirely. That's not a style
+    # preference; it's confirmed live: calling
+    # `dispatcher.execute("create_file", ...)` outside an executor run
+    # writes the file immediately with zero review. Its only callers —
+    # `PearlAgent.plan_and_run()` and the `pearl/plan` MCP method —
+    # are removed for the same reason. Use `AutonomousExecutor.run()`
+    # (via `PearlAgent.run_autonomous()` or the MCP server's
+    # `pearl/runAutonomous`), which is the only path that stages
+    # writes behind approval.

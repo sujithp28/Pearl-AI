@@ -5,6 +5,54 @@ work landed in this repository.
 
 ## [Unreleased]
 
+### Sprint 0 — Engineering Cleanup
+
+Cleanup pass ahead of feature work, per Pearl's frozen architecture
+(the ADR series recorded in this project's design discussion, not
+yet a committed document). Highlights:
+
+- **Removed a confirmed safety bug: three live code paths wrote files
+  with zero approval.** `PearlAgent.run()`, `PearlAgent.plan_and_run()`,
+  and the MCP method `pearl/plan` all dispatched planned tool calls
+  directly via `Planner.run()`/`ToolDispatcher.execute()`, completely
+  outside `AutonomousExecutor` — so no `PatchManager` was ever active,
+  and every write tool (`create_file`, etc.) fell through to writing
+  straight to disk. Verified live: calling the dispatcher the same way
+  these paths did wrote a file with no review at all. This directly
+  contradicted Pearl's core "approval is the one chokepoint" principle.
+  All three, plus `Planner.run()` and `LLMToolSelector` (only used by
+  `PearlAgent.run()`), are removed. `pearl/plan` was never called by
+  the VS Code extension — only Pearl's own tests used it.
+- **`PearlAgent` gained `approve()`/`reject()`**, making
+  `run_autonomous()` a complete, usable session on its own (previously
+  only `MCPServer` could resolve a paused run). Steps are recorded into
+  `Memory` exactly once across a pause/resume, and a task paused for
+  approval is no longer incorrectly marked `failed` in the meantime
+  (a real, if minor, pre-existing bug fixed as a side effect of this
+  work).
+- **The CLI (`src/main.py`) now uses `run_autonomous()`** with an
+  approve/reject prompt when a run pauses, instead of the removed
+  single-tool `run()`. Verified live end to end, including the
+  approve path actually writing a file to disk.
+- **Cancellation now reaches the LLM call, not just the gaps between
+  steps.** `AutonomousExecutor` already checked cancellation before
+  replanning, but had no check before the *initial* plan call, and
+  once any LLM call started (including retry backoff, up to ~7s) it
+  could not be interrupted. `LLMClient.generate()` gained an optional
+  `cancel_check`, and the retry-backoff wait now polls it instead of
+  blocking a fixed `time.sleep`. Honestly scoped: this does not abort
+  a request already in flight to the provider (only before it's sent,
+  and during backoff) — full interruption would need an async/threaded
+  rewrite, out of scope for a cleanup pass.
+- Removed dead files: `hello.java`, `hello_world.py` (debug artifacts
+  from earlier chat-grounding testing).
+- Marked `benchmarks/REPORT.md` as superseded rather than deleted or
+  silently left stale — it predates the GPU/dependency/prompt changes
+  that materially affect its numbers.
+- 644 Python tests (net: removed the deprecated-API tests, added
+  cancellation/approve/reject/search-cap/emoji-mode coverage),
+  lint/format/pyflakes clean.
+
 ### Added
 - **Live execution progress streaming (Phase 27, M1).** The MCP server
   now pushes `pearl/progress` JSON-RPC notifications (planning,

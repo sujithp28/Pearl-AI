@@ -13,7 +13,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from src.config.settings import Settings
 from src.llm.providers.base import LLMProvider
@@ -23,6 +23,52 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 1.0
+
+#: Granularity of the interruptible retry-backoff wait — see
+#: `_interruptible_sleep`.
+_CANCEL_POLL_INTERVAL = 0.1
+
+
+class LLMCancelled(Exception):
+    """
+    Raised when `cancel_check` reports cancellation before a request
+    is sent, or during the retry backoff wait between attempts.
+
+    Deliberately does NOT interrupt a request already in flight to the
+    provider — a synchronous HTTP call has no interruption point once
+    sent short of closing the socket out from under it, which is a
+    materially bigger change than this cleanup pass covers. Cancelling
+    before a request starts, and during backoff between retries, is
+    the honest scope of what cooperative cancellation can offer here.
+    """
+
+
+def _interruptible_sleep(
+    seconds: float, cancel_check: Callable[[], bool] | None
+) -> None:
+    """
+    Sleep for `seconds`, but return early — by raising `LLMCancelled`
+    — the moment `cancel_check` reports cancellation.
+
+    Polls in small increments rather than one blocking `time.sleep`,
+    so a cancellation during retry backoff (the one waiting period
+    `LLMClient` actually controls) takes effect within
+    `_CANCEL_POLL_INTERVAL`, not after the full delay.
+    """
+
+    if cancel_check is None:
+        time.sleep(seconds)
+        return
+
+    remaining = seconds
+
+    while remaining > 0:
+        if cancel_check():
+            raise LLMCancelled("Cancelled during retry backoff.")
+
+        step = min(_CANCEL_POLL_INTERVAL, remaining)
+        time.sleep(step)
+        remaining -= step
 
 
 class LLMClient:
@@ -57,6 +103,7 @@ class LLMClient:
         max_new_tokens: int | None = None,
         history: list[dict[str, str]] | None = None,
         system: str | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> str:
         """
         Send prompt to the active provider and return its response.
@@ -76,8 +123,16 @@ class LLMClient:
         stay stateless and unprimed, or a plan would start depending
         on unrelated chat history or on prose written for a human.
 
+        `cancel_check`, if given, is polled before the first attempt
+        and during the wait between retries, raising `LLMCancelled`
+        the moment it returns True — see `LLMCancelled` for the honest
+        scope of what this can and can't interrupt.
+
         Retries transient API/network failures with exponential backoff.
         """
+
+        if cancel_check is not None and cancel_check():
+            raise LLMCancelled("Cancelled before the request was sent.")
 
         if temperature is None:
             temperature = Settings.TEMPERATURE
@@ -130,7 +185,7 @@ class LLMClient:
                     delay,
                 )
 
-                time.sleep(delay)
+                _interruptible_sleep(delay, cancel_check)
 
             except Exception:
                 logger.exception("Provider request failed.")
@@ -210,12 +265,13 @@ class LLMClient:
     def generate_json(
         self,
         prompt: str,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> dict[str, Any]:
         """
         Generate JSON from the LLM.
         """
 
-        response = self.generate(prompt)
+        response = self.generate(prompt, cancel_check=cancel_check)
 
         logger.debug("Raw model response: %s", response)
 

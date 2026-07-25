@@ -78,9 +78,13 @@ def _plan_of(*steps):
     """
     A `generate_json` stub that always returns the same plan,
     regardless of which prompt (initial plan or replan) asked for it.
+
+    Accepts and ignores `cancel_check`: the executor always passes it
+    (bound to its own `is_cancelled`), so a stub taking only `prompt`
+    would break on every call.
     """
 
-    return lambda prompt: {"steps": list(steps)}
+    return lambda prompt, cancel_check=None: {"steps": list(steps)}
 
 
 def _default_progress_text(event_kind: EventKind) -> str:
@@ -105,7 +109,7 @@ def _plan_sequence(*plans):
 
     calls = {"n": 0}
 
-    def _fn(prompt):
+    def _fn(prompt, cancel_check=None):
         index = min(calls["n"], len(plans) - 1)
         calls["n"] += 1
         return {"steps": plans[index]}
@@ -324,7 +328,7 @@ def test_run_stops_immediately_when_replanning_disabled(monkeypatch):
 def test_run_stops_fatal_if_replanning_itself_fails(monkeypatch):
     executor, planner = build_executor()
 
-    def _first_call_fails(prompt):
+    def _first_call_fails(prompt, cancel_check=None):
         return {"steps": [{"tool": "boom", "arguments": {}}]}
 
     monkeypatch.setattr(planner.client, "generate_json", _first_call_fails)
@@ -1191,7 +1195,7 @@ def test_resume_after_approval_continues_without_replanning(monkeypatch, workspa
 
     plan_calls = {"n": 0}
 
-    def _plan(prompt):
+    def _plan(prompt, cancel_check=None):
         plan_calls["n"] += 1
         return {
             "steps": [
@@ -1529,3 +1533,126 @@ def test_shared_patch_manager_can_be_passed_in(monkeypatch, workspace):
 
     assert executor.patch_manager is shared
     assert shared.has_pending()
+
+
+# ---------------------------------------------------------------------
+# Cancellation reaches the LLM call itself, not just between steps
+# ---------------------------------------------------------------------
+
+
+def test_cancel_check_is_threaded_into_the_initial_plan_call(monkeypatch):
+    """
+    Regression: `run()` had no cancellation check around the initial
+    `planner.plan()` call at all — a cancel() that arrived while the
+    very first plan was in flight (the longest single blocking
+    operation in a run) was completely ignored, and would silently
+    execute the plan anyway.
+    """
+
+    executor, planner = build_executor()
+
+    received_cancel_check = {}
+
+    def _plan(prompt, cancel_check=None):
+        received_cancel_check["fn"] = cancel_check
+        return {"steps": [{"tool": "add", "arguments": {"a": 1, "b": 1}}]}
+
+    monkeypatch.setattr(planner.client, "generate_json", _plan)
+
+    executor.run("add")
+
+    assert received_cancel_check["fn"] == executor.is_cancelled
+
+
+def test_cancel_check_is_threaded_into_replan_calls(monkeypatch):
+    executor, planner = build_executor()
+
+    received_cancel_check = {}
+
+    def _initial_plan(prompt, cancel_check=None):
+        return {"steps": [{"tool": "boom", "arguments": {}}]}
+
+    def _replan(prompt, cancel_check=None):
+        received_cancel_check["fn"] = cancel_check
+        return {"steps": [{"tool": "add", "arguments": {"a": 1, "b": 1}}]}
+
+    calls = {"n": 0}
+
+    def _dispatch(prompt, cancel_check=None):
+        calls["n"] += 1
+        return (
+            _initial_plan(prompt) if calls["n"] == 1 else _replan(prompt, cancel_check)
+        )
+
+    monkeypatch.setattr(planner.client, "generate_json", _dispatch)
+
+    executor.run("do something that fails then recovers")
+
+    assert received_cancel_check["fn"] == executor.is_cancelled
+
+
+def test_cancellation_during_the_initial_plan_call_stops_the_run(monkeypatch):
+    """
+    End-to-end proof, not just a wiring check: if the LLM call raises
+    LLMCancelled (because cancel_check reported True mid-call), the
+    executor must finalize as cancelled — not propagate the exception
+    or treat it as a fatal planning error.
+    """
+
+    from src.llm.client import LLMCancelled
+
+    executor, planner = build_executor()
+
+    def _plan_raises_cancelled(prompt, cancel_check=None):
+        raise LLMCancelled("cancelled mid-request")
+
+    monkeypatch.setattr(planner.client, "generate_json", _plan_raises_cancelled)
+
+    report = executor.run("add 1 and 2")
+
+    assert report.stop_reason == "cancelled"
+    assert report.steps == []
+
+
+def test_cancellation_during_a_replan_call_stops_the_run(monkeypatch):
+    from src.llm.client import LLMCancelled
+
+    executor, planner = build_executor()
+
+    calls = {"n": 0}
+
+    def _generate_json(prompt, cancel_check=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"steps": [{"tool": "boom", "arguments": {}}]}
+        raise LLMCancelled("cancelled mid-replan")
+
+    monkeypatch.setattr(planner.client, "generate_json", _generate_json)
+
+    report = executor.run("do something that fails")
+
+    assert report.stop_reason == "cancelled"
+
+
+def test_cancel_before_run_starts_is_observed_before_any_plan_call(monkeypatch):
+    """
+    cancel() called before run() is even invoked (e.g. the user closes
+    the panel while the request is still queued) must stop execution
+    before the first LLM call is made at all.
+    """
+
+    executor, planner = build_executor()
+
+    call_count = {"n": 0}
+
+    def _plan(prompt, cancel_check=None):
+        call_count["n"] += 1
+        return {"steps": [{"tool": "add", "arguments": {"a": 1, "b": 1}}]}
+
+    monkeypatch.setattr(planner.client, "generate_json", _plan)
+
+    executor.cancel()
+    report = executor.run("add")
+
+    assert report.stop_reason == "cancelled"
+    assert call_count["n"] == 0

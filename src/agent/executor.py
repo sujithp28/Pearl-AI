@@ -35,6 +35,7 @@ from typing import Any, Callable, Literal
 
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
+from src.llm.client import LLMCancelled
 from src.llm.parser import ToolCall
 from src.personality import EventKind, PersonalityManager
 from src.tools.checkpoints import CheckpointManager
@@ -457,7 +458,24 @@ class AutonomousExecutor:
             current_action=self._personality.format(EventKind.PLANNING),
         )
 
-        pending: list[ToolCall] = list(self.planner.plan(prompt))
+        # Checked immediately before the call, not just after: a
+        # cancel() that arrives while this is the *only* work
+        # outstanding (nothing has executed yet, so there is no later
+        # checkpoint to catch it) must not be silently ignored.
+        if self._check_cancelled(events, steps):
+            return ExecutionReport(
+                steps=steps, stop_reason="cancelled", replans_used=0, events=events
+            )
+
+        try:
+            pending: list[ToolCall] = list(
+                self.planner.plan(prompt, cancel_check=self.is_cancelled)
+            )
+        except LLMCancelled:
+            self._check_cancelled(events, steps)
+            return ExecutionReport(
+                steps=steps, stop_reason="cancelled", replans_used=0, events=events
+            )
 
         return self._finish_or_pause(
             self._execute(prompt, pending, steps, events, completed_for_replan, 0, 0)
@@ -793,6 +811,15 @@ class AutonomousExecutor:
                             "arguments": tool_call.kwargs,
                             "error": error,
                         },
+                        cancel_check=self.is_cancelled,
+                    )
+                except LLMCancelled:
+                    self._check_cancelled(events, steps)
+                    return ExecutionReport(
+                        steps=steps,
+                        stop_reason="cancelled",
+                        replans_used=replans_used,
+                        events=events,
                     )
                 except Exception as replan_exc:
                     logger.error(

@@ -119,7 +119,9 @@ def test_autonomous_run_outcome_is_identical_across_personalities(monkeypatch):
     monkeypatch.setattr(
         planner.client,
         "generate_json",
-        lambda prompt: {"steps": [{"tool": "add", "arguments": {"a": 1, "b": 2}}]},
+        lambda prompt, cancel_check=None: {
+            "steps": [{"tool": "add", "arguments": {"a": 1, "b": 2}}]
+        },
     )
 
     professional_executor = AutonomousExecutor(

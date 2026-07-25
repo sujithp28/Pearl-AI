@@ -259,7 +259,6 @@ VS Code extension is one client among many possible ones.
 | `initialize` | Handshake — protocol version, server info, capabilities. |
 | `tools/list` | Lists every registered tool as an MCP tool descriptor (name, description, JSON Schema `inputSchema`). |
 | `tools/call` | Executes a tool by name. Tool failures come back as a result with `isError: true`, not a JSON-RPC error. |
-| `pearl/plan` | Runs a natural-language request through the `Planner` and executes the resulting steps. |
 | `pearl/planOnly` | Returns the steps `Planner.plan()` would take, without executing — lets a client gate each step behind approval. |
 | `pearl/runAutonomous` | Runs the full autonomous loop (plan → execute → reflect/replan on failure → pause for patch approval) for a request. |
 | `pearl/approvePatches` / `pearl/rejectPatches` | Resumes a paused autonomous run after a human decision on staged patches. |

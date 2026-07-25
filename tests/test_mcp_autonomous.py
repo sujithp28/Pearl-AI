@@ -64,13 +64,15 @@ def build_server() -> MCPServer:
 
 
 def _plan_of(*steps):
-    return lambda prompt: {"steps": list(steps)}
+    # Accepts (and ignores) cancel_check: the executor always passes
+    # it, bound to its own is_cancelled.
+    return lambda prompt, cancel_check=None: {"steps": list(steps)}
 
 
 def _plan_sequence(*plans):
     calls = {"n": 0}
 
-    def _fn(prompt):
+    def _fn(prompt, cancel_check=None):
         index = min(calls["n"], len(plans) - 1)
         calls["n"] += 1
         return {"steps": plans[index]}

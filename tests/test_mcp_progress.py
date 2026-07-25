@@ -56,7 +56,7 @@ def build_server() -> MCPServer:
 
 
 def _plan_of(*steps):
-    return lambda prompt: {"steps": list(steps)}
+    return lambda prompt, cancel_check=None: {"steps": list(steps)}
 
 
 @pytest.fixture

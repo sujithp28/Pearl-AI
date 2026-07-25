@@ -257,71 +257,13 @@ def test_internal_error_is_reported_without_crashing():
     assert response.error.code == INTERNAL_ERROR
 
 
-# ---------------------------------------------------------------------
-# pearl/plan -- reuses the existing Planner
-# ---------------------------------------------------------------------
-
-
-def test_plan_run_without_planner_is_a_protocol_error():
-    server = build_server(with_planner=False)
-
-    response = server.handle_request(
-        JsonRpcRequest(method="pearl/plan", id=1, params={"prompt": "do something"})
-    )
-
-    assert response.error.code == INVALID_PARAMS
-
-
-def test_plan_run_executes_steps_and_updates_memory(monkeypatch):
-    server = build_server(with_planner=True)
-
-    monkeypatch.setattr(
-        server.planner.client,
-        "generate_json",
-        lambda prompt: {
-            "steps": [
-                {"tool": "add", "arguments": {"a": 1, "b": 2}},
-                {"tool": "add", "arguments": {"a": 3, "b": 4}},
-            ]
-        },
-    )
-
-    response = server.handle_request(
-        JsonRpcRequest(method="pearl/plan", id=1, params={"prompt": "add twice"})
-    )
-
-    steps = response.result["steps"]
-    assert [s["result"] for s in steps] == [3, 7]
-
-    assert len(server.memory.tasks) == 1
-    assert server.memory.tasks[0].status == "completed"
-
-
-def test_plan_run_marks_task_failed_on_step_error(monkeypatch):
-    server = build_server(with_planner=True)
-
-    monkeypatch.setattr(
-        server.planner.client,
-        "generate_json",
-        lambda prompt: {"steps": [{"tool": "boom", "arguments": {}}]},
-    )
-
-    response = server.handle_request(
-        JsonRpcRequest(method="pearl/plan", id=1, params={"prompt": "do something bad"})
-    )
-
-    assert response.result["steps"][0]["error"] is not None
-    assert server.memory.tasks[0].status == "failed"
-
-
-def test_plan_run_missing_prompt_is_a_protocol_error():
-    server = build_server(with_planner=True)
-
-    response = server.handle_request(
-        JsonRpcRequest(method="pearl/plan", id=1, params={})
-    )
-
-    assert response.error.code == INVALID_PARAMS
+# `pearl/plan` used to be tested here. Removed as a confirmed safety
+# bug: it dispatched planned steps directly via `Planner.run()`,
+# completely outside AutonomousExecutor, so no PatchManager was ever
+# active and every write tool wrote straight to disk with zero
+# approval. The VS Code extension never called it. `pearl/runAutonomous`
+# is the only path that stages writes behind approval; see
+# tests/test_mcp_autonomous.py.
 
 
 # ---------------------------------------------------------------------
@@ -611,23 +553,13 @@ def test_memory_reflects_tool_execution_history():
     assert response.result["execution_history"][0]["result"] == 3
 
 
-def test_memory_reflects_planned_task_history(monkeypatch):
-    server = build_server(with_planner=True)
-
-    monkeypatch.setattr(
-        server.planner.client,
-        "generate_json",
-        lambda prompt: {"steps": [{"tool": "add", "arguments": {"a": 1, "b": 2}}]},
-    )
-
-    server.handle_request(
-        JsonRpcRequest(method="pearl/plan", id=1, params={"prompt": "add"})
-    )
-
-    response = server.handle_request(JsonRpcRequest(method="pearl/memory", id=2))
-
-    assert len(response.result["tasks"]) == 1
-    assert response.result["tasks"][0]["status"] == "completed"
+# This used to drive `memory.tasks` via `pearl/plan`, now removed.
+# Worth noting: no MCP method currently calls `memory.start_task()` —
+# `_run_autonomous`/`_approve_patches`/`_reject_patches` never did
+# either, so `pearl/memory`'s `tasks` field has been empty for
+# MCP-driven autonomous runs even before this removal. Task-history
+# wiring for `pearl/runAutonomous` is a real gap, but it's new
+# functionality, not dead-code cleanup, so it's out of scope here.
 
 
 def test_memory_call_is_read_only():

@@ -326,7 +326,7 @@ def test_approving_a_patch_creates_a_restorable_checkpoint(workspace, monkeypatc
     monkeypatch.setattr(
         planner.client,
         "generate_json",
-        lambda prompt: {
+        lambda prompt, cancel_check=None: {
             "steps": [
                 {
                     "tool": "create_file",
@@ -385,7 +385,7 @@ def test_approval_still_succeeds_when_checkpointing_fails(workspace, monkeypatch
     monkeypatch.setattr(
         planner.client,
         "generate_json",
-        lambda prompt: {
+        lambda prompt, cancel_check=None: {
             "steps": [
                 {
                     "tool": "create_file",

@@ -129,6 +129,44 @@ def build_registry() -> ToolRegistry:
     return registry
 
 
+def _print_report(report) -> None:
+    """
+    Summarize an `ExecutionReport` for the terminal.
+    """
+
+    for step in report.steps:
+        marker = "OK" if step.succeeded else "FAIL"
+        print(f"  [{marker}] {step.tool_name}: {step.summary}")
+
+    print(f"\nStop reason: {report.stop_reason}")
+
+
+def _run_and_resolve(agent: PearlAgent, prompt: str) -> None:
+    """
+    Run `prompt` autonomously, then — if it pauses for a staged patch
+    or command — prompt the user to approve or reject before
+    returning, so the CLI never leaves a run stuck awaiting approval
+    with no way to resolve it.
+    """
+
+    report = agent.run_autonomous(prompt)
+
+    while report.stop_reason == "awaiting_approval":
+        _print_report(report)
+        print("\nChanges are staged and awaiting approval.")
+
+        answer = input("Apply these changes? [y/N] ").strip().lower()
+
+        if answer in {"y", "yes"}:
+            report = agent.approve()
+        else:
+            report = agent.reject()
+
+    print()
+    _print_report(report)
+    print()
+
+
 def main() -> None:
     """
     Start Pearl.
@@ -159,11 +197,7 @@ def main() -> None:
                 print("Goodbye.")
                 break
 
-            result = agent.run(prompt)
-
-            print()
-            print(result)
-            print()
+            _run_and_resolve(agent, prompt)
 
         except KeyboardInterrupt:
             print("\nGoodbye.")
