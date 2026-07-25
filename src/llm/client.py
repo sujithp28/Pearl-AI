@@ -56,6 +56,7 @@ class LLMClient:
         temperature: float | None = None,
         max_new_tokens: int | None = None,
         history: list[dict[str, str]] | None = None,
+        system: str | None = None,
     ) -> str:
         """
         Send prompt to the active provider and return its response.
@@ -63,11 +64,17 @@ class LLMClient:
         `history` is prior conversation turns (oldest first, in the
         standard `[{"role": ..., "content": ...}]` shape — see
         `Memory.recent_messages`) to send ahead of `prompt`, so the
-        model can actually see what was already said. Omitted (the
-        default) sends `prompt` alone, exactly as before — which is
-        what every non-conversational caller wants: `generate_json`,
-        and through it all planning/replanning, must stay stateless,
-        or a plan would start depending on unrelated chat history.
+        model can actually see what was already said.
+
+        `system` is a system-role message sent ahead of everything
+        else — used by the chat path to tell the model what Pearl is
+        and what it can't do (see `src/prompts/system.py`).
+
+        Both omitted (the default) sends `prompt` alone, exactly as
+        before — which is what every non-conversational caller wants:
+        `generate_json`, and through it all planning/replanning, must
+        stay stateless and unprimed, or a plan would start depending
+        on unrelated chat history or on prose written for a human.
 
         Retries transient API/network failures with exponential backoff.
         """
@@ -79,6 +86,7 @@ class LLMClient:
             max_new_tokens = Settings.MAX_NEW_TOKENS
 
         messages = [
+            *([{"role": "system", "content": system}] if system else []),
             *(history or []),
             {
                 "role": "user",

@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from pathlib import Path
 from typing import IO, Any, Callable
 
 from src.agent.dispatcher import ToolDispatcher, ToolExecutionError, ToolNotFoundError
@@ -41,6 +42,7 @@ from src.mcp.protocol import (
 )
 from src.memory import Memory
 from src.personality import EventKind, PersonalityManager
+from src.prompts.system import build_chat_system_prompt
 from src.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -397,7 +399,11 @@ class MCPServer:
 
         self.memory.record_turn("user", message)
 
-        response = self.llm.generate(message, history=history)
+        response = self.llm.generate(
+            message,
+            history=history,
+            system=build_chat_system_prompt(str(Path.cwd().resolve())),
+        )
 
         self.memory.record_turn("agent", response)
 

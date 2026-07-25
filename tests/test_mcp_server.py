@@ -39,23 +39,27 @@ def build_registry() -> ToolRegistry:
 class StubLLM:
     """
     Minimal stand-in for LLMClient: MCPServer only ever calls
-    `.generate(prompt, history=...)`, so a real LLMClient isn't needed
-    in tests. Records each call's `history` as well as its prompt, so
-    tests can assert on what conversation context was actually sent.
+    `.generate(prompt, history=..., system=...)`, so a real LLMClient
+    isn't needed in tests. Records each call's `history` and `system`
+    as well as its prompt, so tests can assert on exactly what context
+    was sent.
     """
 
     def __init__(self, response: str = "stubbed reply") -> None:
         self.response = response
         self.prompts: list[str] = []
         self.histories: list[list[dict[str, str]]] = []
+        self.systems: list[str | None] = []
 
     def generate(
         self,
         prompt: str,
         history: list[dict[str, str]] | None = None,
+        system: str | None = None,
     ) -> str:
         self.prompts.append(prompt)
         self.histories.append(list(history or []))
+        self.systems.append(system)
         return self.response
 
 

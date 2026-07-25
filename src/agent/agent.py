@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from pathlib import Path
 from typing import Any, Callable
 
 from src.agent.dispatcher import ToolDispatcher
@@ -23,6 +24,7 @@ from src.config.settings import Settings
 from src.llm.client import LLMClient
 from src.llm.tool_selector import LLMToolSelector
 from src.memory import Memory
+from src.prompts.system import build_chat_system_prompt
 from src.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -187,7 +189,11 @@ class PearlAgent:
 
         self.memory.record_turn("user", prompt)
 
-        response = self.llm.generate(prompt, history=history)
+        response = self.llm.generate(
+            prompt,
+            history=history,
+            system=build_chat_system_prompt(str(Path.cwd().resolve())),
+        )
 
         self.memory.record_turn("agent", response)
 
