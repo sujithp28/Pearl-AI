@@ -25,6 +25,7 @@ from src.agent.executor import (
     ProgressEvent,
 )
 from src.agent.planner import Planner
+from src.config.settings import Settings
 from src.llm.client import LLMClient
 from src.mcp.protocol import (
     INTERNAL_ERROR,
@@ -388,9 +389,15 @@ class MCPServer:
         if self.llm is None:
             self.llm = LLMClient()
 
+        # Captured before recording this turn: `record_turn` would
+        # otherwise put `message` into the history too, and it's
+        # already being sent as the prompt — the model would see the
+        # same message twice.
+        history = self.memory.recent_messages(limit=Settings.CHAT_HISTORY_TURNS)
+
         self.memory.record_turn("user", message)
 
-        response = self.llm.generate(message)
+        response = self.llm.generate(message, history=history)
 
         self.memory.record_turn("agent", response)
 

@@ -90,3 +90,74 @@ def test_extract_json_avoids_greedy_match_across_trailing_prose():
         "tool": "read_file",
         "arguments": {"path": "a.txt"},
     }
+
+
+# ---------------------------------------------------------------------
+# Conversation history
+# ---------------------------------------------------------------------
+
+
+def _capture_messages(monkeypatch, client: LLMClient) -> list[list[dict]]:
+    """
+    Record the `messages` array sent to the provider on each call.
+    """
+
+    captured: list[list[dict]] = []
+
+    def fake_create(**kwargs):
+        captured.append(kwargs["messages"])
+        return _make_response("ok")
+
+    monkeypatch.setattr(client.provider.client.chat.completions, "create", fake_create)
+
+    return captured
+
+
+def test_generate_sends_only_the_prompt_when_no_history_is_given(monkeypatch):
+    client = LLMClient()
+    captured = _capture_messages(monkeypatch, client)
+
+    client.generate("hi")
+
+    assert captured[0] == [{"role": "user", "content": "hi"}]
+
+
+def test_generate_sends_history_before_the_prompt(monkeypatch):
+    client = LLMClient()
+    captured = _capture_messages(monkeypatch, client)
+
+    client.generate(
+        "and now?",
+        history=[
+            {"role": "user", "content": "first"},
+            {"role": "assistant", "content": "reply"},
+        ],
+    )
+
+    assert captured[0] == [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "reply"},
+        {"role": "user", "content": "and now?"},
+    ]
+
+
+def test_generate_json_never_sends_history(monkeypatch):
+    """
+    Planning and replanning go through `generate_json`, and must stay
+    stateless — a plan that silently depended on unrelated chat
+    history would be neither reproducible nor debuggable.
+    """
+
+    client = LLMClient()
+
+    captured: list[list[dict]] = []
+
+    def fake_create(**kwargs):
+        captured.append(kwargs["messages"])
+        return _make_response('{"steps": []}')
+
+    monkeypatch.setattr(client.provider.client.chat.completions, "create", fake_create)
+
+    client.generate_json("plan something")
+
+    assert captured[0] == [{"role": "user", "content": "plan something"}]

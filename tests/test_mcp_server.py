@@ -39,15 +39,23 @@ def build_registry() -> ToolRegistry:
 class StubLLM:
     """
     Minimal stand-in for LLMClient: MCPServer only ever calls
-    `.generate(prompt)`, so a real LLMClient isn't needed in tests.
+    `.generate(prompt, history=...)`, so a real LLMClient isn't needed
+    in tests. Records each call's `history` as well as its prompt, so
+    tests can assert on what conversation context was actually sent.
     """
 
     def __init__(self, response: str = "stubbed reply") -> None:
         self.response = response
         self.prompts: list[str] = []
+        self.histories: list[list[dict[str, str]]] = []
 
-    def generate(self, prompt: str) -> str:
+    def generate(
+        self,
+        prompt: str,
+        history: list[dict[str, str]] | None = None,
+    ) -> str:
         self.prompts.append(prompt)
+        self.histories.append(list(history or []))
         return self.response
 
 
@@ -404,6 +412,113 @@ def test_chat_returns_assistant_message_and_records_memory():
     assert [t.role for t in turns] == ["user", "agent"]
     assert turns[0].content == "hi"
     assert turns[1].content == "Hello, I am Pearl."
+
+
+# ---------------------------------------------------------------------
+# Conversation history: chat replies must be able to see prior turns
+# ---------------------------------------------------------------------
+
+
+def test_chat_sends_no_history_on_the_very_first_message():
+    stub_llm = StubLLM()
+    server = build_server(llm=stub_llm)
+
+    server.handle_request(
+        JsonRpcRequest(method="pearl/chat", id=1, params={"message": "hi"})
+    )
+
+    assert stub_llm.histories == [[]]
+
+
+def test_chat_sends_prior_turns_as_history_on_later_messages():
+    """
+    Regression test for chat having no memory: `_chat` recorded turns
+    into Memory but never sent them back, so every reply was generated
+    as if it were the first message of the conversation.
+    """
+
+    stub_llm = StubLLM(response="reply")
+    server = build_server(llm=stub_llm)
+
+    server.handle_request(
+        JsonRpcRequest(method="pearl/chat", id=1, params={"message": "first"})
+    )
+    server.handle_request(
+        JsonRpcRequest(method="pearl/chat", id=2, params={"message": "second"})
+    )
+
+    assert stub_llm.histories[1] == [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "reply"},
+    ]
+
+
+def test_chat_history_never_duplicates_the_current_message():
+    # The current message is sent as the prompt; including it in the
+    # history too would show the model the same text twice.
+    stub_llm = StubLLM()
+    server = build_server(llm=stub_llm)
+
+    server.handle_request(
+        JsonRpcRequest(method="pearl/chat", id=1, params={"message": "only once"})
+    )
+
+    assert stub_llm.prompts == ["only once"]
+    assert all(turn["content"] != "only once" for turn in stub_llm.histories[0])
+
+
+def test_chat_history_maps_agent_turns_to_the_assistant_role():
+    # Pearl records its own side as "agent"; the wire format every
+    # chat-completions API expects is "assistant".
+    stub_llm = StubLLM(response="my reply")
+    server = build_server(llm=stub_llm)
+
+    server.handle_request(
+        JsonRpcRequest(method="pearl/chat", id=1, params={"message": "a"})
+    )
+    server.handle_request(
+        JsonRpcRequest(method="pearl/chat", id=2, params={"message": "b"})
+    )
+
+    roles = [turn["role"] for turn in stub_llm.histories[1]]
+    assert roles == ["user", "assistant"]
+    assert "agent" not in roles
+
+
+def test_chat_history_is_capped_by_the_configured_limit(monkeypatch):
+    from src.config.settings import Settings
+
+    monkeypatch.setattr(Settings, "CHAT_HISTORY_TURNS", 2)
+
+    stub_llm = StubLLM()
+    server = build_server(llm=stub_llm)
+
+    for index in range(4):
+        server.handle_request(
+            JsonRpcRequest(
+                method="pearl/chat", id=index, params={"message": f"msg{index}"}
+            )
+        )
+
+    assert all(len(history) <= 2 for history in stub_llm.histories)
+
+
+def test_chat_history_can_be_disabled_entirely(monkeypatch):
+    from src.config.settings import Settings
+
+    monkeypatch.setattr(Settings, "CHAT_HISTORY_TURNS", 0)
+
+    stub_llm = StubLLM()
+    server = build_server(llm=stub_llm)
+
+    server.handle_request(
+        JsonRpcRequest(method="pearl/chat", id=1, params={"message": "a"})
+    )
+    server.handle_request(
+        JsonRpcRequest(method="pearl/chat", id=2, params={"message": "b"})
+    )
+
+    assert stub_llm.histories == [[], []]
 
 
 def test_chat_missing_message_is_a_protocol_error():

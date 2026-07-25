@@ -29,6 +29,33 @@ work landed in this repository.
   test asserts an identical run under two different personalities
   produces identical steps/results/stop-reasons, differing only in
   progress-message wording. See [`docs/personality.md`](docs/personality.md).
+- **Conversation history in chat.** `pearl/chat` and
+  `PearlAgent.chat()` now send the session's recent turns
+  (`PEARL_CHAT_HISTORY_TURNS`, default 10; `0` disables) so replies
+  can follow the thread. `LLMClient.generate()` gained an optional
+  `history` parameter; omitting it is the previous stateless
+  behavior, which is what `generate_json` — and through it all
+  planning/replanning — deliberately keeps doing.
+
+### Fixed
+- **Chat had no memory.** `_chat` recorded both turns into `Memory`
+  but never sent them back to the model, so every reply was generated
+  as if it were the first message of the conversation — "ok" would be
+  answered with "Hello! How can I assist you today?", and a follow-up
+  question about what was just said got a generic non-answer. Memory
+  was being written and never read.
+- **`Memory.recent_conversation(limit=0)` returned the entire
+  history** instead of nothing, because `self.conversation[-0:]` is
+  `[0:]` in Python. Latent until something passed `0`; now the
+  documented "no turns" behavior, with a regression test.
+- **The planner was never told the workspace boundary.** It was
+  enforced in `file_tools._ensure_within_workspace` but absent from
+  `planning.txt`/`replanning.txt`, so the model would plan absolute
+  paths like `/tmp/hello.py` that are rejected before they run. Both
+  prompts now state the actual workspace root (resolved per call from
+  the same `Path.cwd()` the enforcing side reads, so the advertised
+  boundary can't drift from the enforced one) and require relative
+  paths.
 
 ## [1.2.0-beta] — 2026-07-24
 

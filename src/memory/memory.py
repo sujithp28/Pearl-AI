@@ -114,13 +114,44 @@ class Memory:
     ) -> list[ConversationTurn]:
         """
         Return conversation turns, oldest first, optionally limited
-        to the most recent `limit`.
+        to the most recent `limit`. `limit=0` returns nothing;
+        `limit=None` (the default) returns everything.
         """
 
         if limit is None:
             return list(self.conversation)
 
+        # Not `self.conversation[-limit:]`: for limit=0 that's
+        # `[0:]`, which returns the *entire* history — the exact
+        # opposite of "no turns".
+        if limit <= 0:
+            return []
+
         return self.conversation[-limit:]
+
+    def recent_messages(
+        self,
+        limit: int | None = None,
+    ) -> list[dict[str, str]]:
+        """
+        Return recent conversation turns as chat messages, oldest
+        first — the `[{"role": ..., "content": ...}]` shape every
+        chat-completions API takes.
+
+        Pearl records the assistant's side as `"agent"` internally;
+        that's translated to the wire-standard `"assistant"` here, so
+        callers never have to remember to do it (forgetting silently
+        produces a role the provider ignores or rejects, rather than
+        an obvious error).
+        """
+
+        return [
+            {
+                "role": "assistant" if turn.role == "agent" else turn.role,
+                "content": turn.content,
+            }
+            for turn in self.recent_conversation(limit)
+        ]
 
     # -- Task memory ------------------------------------------------------
 

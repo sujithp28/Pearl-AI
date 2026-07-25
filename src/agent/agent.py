@@ -19,6 +19,7 @@ from src.agent.executor import (
     ProgressEvent,
 )
 from src.agent.planner import Planner, StepResult
+from src.config.settings import Settings
 from src.llm.client import LLMClient
 from src.llm.tool_selector import LLMToolSelector
 from src.memory import Memory
@@ -170,21 +171,23 @@ class PearlAgent:
         prompt: str,
     ) -> str:
         """
-        Chat directly with the language model.
+        Chat directly with the language model, with the session's
+        recent conversation history included so replies can follow
+        the thread rather than treating every message as the first.
 
         This bypasses tool execution and is intended for
         conversational use.
-
-        Future versions will integrate reasoning,
-        memory, planning, and tool execution into
-        a unified conversation pipeline.
         """
 
         logger.info("Chat request received.")
 
+        # Captured before recording this turn — see the same note in
+        # `MCPServer._chat`: recording first would send `prompt` twice.
+        history = self.memory.recent_messages(limit=Settings.CHAT_HISTORY_TURNS)
+
         self.memory.record_turn("user", prompt)
 
-        response = self.llm.generate(prompt)
+        response = self.llm.generate(prompt, history=history)
 
         self.memory.record_turn("agent", response)
 

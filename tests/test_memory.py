@@ -38,6 +38,64 @@ def test_recent_conversation_without_limit_returns_all():
     assert len(memory.recent_conversation()) == 2
 
 
+def test_recent_conversation_with_zero_limit_returns_nothing():
+    # Regression test: a naive `self.conversation[-limit:]` makes
+    # limit=0 mean `[0:]` — the entire history, the exact opposite of
+    # "no turns".
+    memory = Memory()
+
+    memory.record_turn("user", "a")
+    memory.record_turn("agent", "b")
+
+    assert memory.recent_conversation(limit=0) == []
+
+
+# ---------------------------------------------------------------------
+# recent_messages: chat-API-shaped view of the conversation
+# ---------------------------------------------------------------------
+
+
+def test_recent_messages_returns_chat_message_dicts_oldest_first():
+    memory = Memory()
+
+    memory.record_turn("user", "hello")
+    memory.record_turn("agent", "hi there")
+
+    assert memory.recent_messages() == [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi there"},
+    ]
+
+
+def test_recent_messages_maps_agent_to_assistant():
+    memory = Memory()
+
+    memory.record_turn("agent", "reply")
+
+    assert memory.recent_messages()[0]["role"] == "assistant"
+
+
+def test_recent_messages_respects_the_limit():
+    memory = Memory()
+
+    for index in range(6):
+        memory.record_turn("user", f"m{index}")
+
+    assert len(memory.recent_messages(limit=3)) == 3
+
+
+def test_recent_messages_with_zero_limit_returns_nothing():
+    memory = Memory()
+
+    memory.record_turn("user", "a")
+
+    assert memory.recent_messages(limit=0) == []
+
+
+def test_recent_messages_is_empty_for_a_fresh_memory():
+    assert Memory().recent_messages() == []
+
+
 # ---------------------------------------------------------------------
 # Task memory
 # ---------------------------------------------------------------------

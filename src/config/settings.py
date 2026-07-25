@@ -90,6 +90,14 @@ class Settings:
 
     TEMPERATURE = 0.2
 
+    # How many prior conversation turns `pearl/chat` sends back to the
+    # model so it can follow the thread. Capped rather than unbounded:
+    # every turn is re-sent on every message, so a long session would
+    # otherwise grow the prompt (and the latency, which is already the
+    # dominant cost on local models) without limit. 0 disables history
+    # entirely, restoring the previous stateless behavior.
+    CHAT_HISTORY_TURNS = int(os.getenv("PEARL_CHAT_HISTORY_TURNS", "10"))
+
     # ==================================================
     # Shell execution (src/tools/shell_tools.py)
     # ==================================================
