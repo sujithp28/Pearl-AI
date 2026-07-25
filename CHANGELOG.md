@@ -3,6 +3,22 @@
 All notable changes to Pearl are documented here. Dates are the date the
 work landed in this repository.
 
+## [Unreleased]
+
+### Added
+- **Live execution progress streaming (Phase 27, M1).** The MCP server
+  now pushes `pearl/progress` JSON-RPC notifications (planning,
+  executing a step, replanning, awaiting approval, cancelled, ...)
+  while `pearl/runAutonomous`/`pearl/approvePatches`/`pearl/rejectPatches`
+  are in flight, instead of the client seeing nothing until the whole
+  call resolves. Fully additive and backward compatible: the
+  request/response contract is unchanged, and every existing
+  `handle_request()` call (used throughout the test suite) behaves
+  exactly as before by simply omitting the new optional `notify`
+  parameter. The VS Code extension renders these live — a spinner,
+  step counter, and current action — in the chat panel while an
+  autonomous run is executing.
+
 ## [1.2.0-beta] — 2026-07-24
 
 Beta hardening pass: no new features — stabilization, performance,

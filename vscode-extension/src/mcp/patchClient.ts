@@ -9,11 +9,13 @@
  * API one-to-one (`ExecutionReportResult` mirrors `ExecutionReport`,
  * `PatchFileSummary` mirrors `PendingEdit`).
  *
- * These methods are not yet registered in `src/mcp/server.py` —
- * adding them is server-side MCP surface work, deliberately out of
- * scope here (this feature must not modify the MCP protocol). This
- * module defines the wire contract the chat UI is built and tested
- * against, ready to use as soon as the server side exposes it.
+ * These methods are registered server-side in `src/mcp/server.py`
+ * (`_run_autonomous`/`_approve_patches`/`_reject_patches`). While a
+ * call to any of them is in flight, the server also streams live
+ * `pearl/progress` notifications — see `../mcp/progressClient.ts`
+ * and `MCPConnection.onNotification`, not this module, since those
+ * arrive as JSON-RPC notifications rather than part of the response
+ * these functions return.
  */
 
 import { RequestSender } from "./requestSender";

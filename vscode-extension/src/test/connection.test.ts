@@ -30,6 +30,14 @@ class FakeChildProcess extends EventEmitter {
       JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n"
     );
   }
+
+  /** Simulate the server pushing a notification (no id). */
+  notify(method: string, params: Record<string, unknown>): void {
+    this.stdout.emit(
+      "data",
+      JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n"
+    );
+  }
 }
 
 function waitForStatus(
@@ -254,6 +262,113 @@ test("sendRequest times out if no response arrives", async () => {
   await waitForStatus(connection, "error");
 
   assert.ok(child.written.length >= 1);
+
+  connection.stop();
+});
+
+// ---------------------------------------------------------------------
+// onNotification: server-pushed pearl/progress-style messages
+// ---------------------------------------------------------------------
+
+async function connectedConnection(): Promise<{
+  connection: MCPConnection;
+  child: FakeChildProcess;
+}> {
+  let child!: FakeChildProcess;
+
+  const connection = new MCPConnection({
+    command: "python3",
+    args: ["-m", "src.mcp"],
+    spawnFn: () => {
+      child = new FakeChildProcess();
+      return child;
+    },
+  });
+
+  connection.start();
+
+  const initLine = JSON.parse(child.written[0]);
+  child.respond(initLine.id, {});
+  await waitForStatus(connection, "connected");
+
+  return { connection, child };
+}
+
+test("onNotification receives a matching server-pushed notification", async () => {
+  const { connection, child } = await connectedConnection();
+
+  const received: Record<string, unknown>[] = [];
+  connection.onNotification("pearl/progress", (params) => {
+    received.push(params);
+  });
+
+  child.notify("pearl/progress", { status: "planning", currentStep: 0 });
+
+  assert.deepEqual(received, [{ status: "planning", currentStep: 0 }]);
+
+  connection.stop();
+});
+
+test("onNotification does not fire for a different method", async () => {
+  const { connection, child } = await connectedConnection();
+
+  const received: Record<string, unknown>[] = [];
+  connection.onNotification("pearl/progress", (params) => {
+    received.push(params);
+  });
+
+  child.notify("pearl/somethingElse", { foo: "bar" });
+
+  assert.deepEqual(received, []);
+
+  connection.stop();
+});
+
+test("the unsubscribe function returned by onNotification stops delivery", async () => {
+  const { connection, child } = await connectedConnection();
+
+  const received: Record<string, unknown>[] = [];
+  const unsubscribe = connection.onNotification("pearl/progress", (params) => {
+    received.push(params);
+  });
+
+  child.notify("pearl/progress", { status: "planning" });
+  unsubscribe();
+  child.notify("pearl/progress", { status: "executing_step" });
+
+  assert.deepEqual(received, [{ status: "planning" }]);
+
+  connection.stop();
+});
+
+test("onNotification supports multiple independent subscribers", async () => {
+  const { connection, child } = await connectedConnection();
+
+  const first: Record<string, unknown>[] = [];
+  const second: Record<string, unknown>[] = [];
+  connection.onNotification("pearl/progress", (params) => first.push(params));
+  connection.onNotification("pearl/progress", (params) => second.push(params));
+
+  child.notify("pearl/progress", { status: "planning" });
+
+  assert.deepEqual(first, [{ status: "planning" }]);
+  assert.deepEqual(second, [{ status: "planning" }]);
+
+  connection.stop();
+});
+
+test("a response line is never mistaken for a notification", async () => {
+  const { connection, child } = await connectedConnection();
+
+  const received: Record<string, unknown>[] = [];
+  connection.onNotification("pearl/progress", (params) => received.push(params));
+
+  const pending = connection.sendRequest("tools/list");
+  const toolsListLine = JSON.parse(child.written[1]);
+  child.respond(toolsListLine.id, { tools: [] });
+
+  assert.deepEqual(await pending, { tools: [] });
+  assert.deepEqual(received, []);
 
   connection.stop();
 });

@@ -267,6 +267,15 @@ VS Code extension is one client among many possible ones.
 | `pearl/memory` | Returns the server's current `WorkspaceMemory` contents. Read-only. |
 | `shutdown` / `exit` | Graceful shutdown handshake / stops the stdio read loop. |
 
+While `pearl/runAutonomous`/`pearl/approvePatches`/`pearl/rejectPatches`
+are in flight, the server also pushes `pearl/progress` **notifications**
+(no `id`, no response expected) — one per `AutonomousExecutor` step
+transition (planning, executing a step, replanning, awaiting approval,
+...) — interleaved with, and ahead of, that call's eventual response.
+A client that doesn't care about live progress can simply ignore any
+line without an `id`; the request/response contract is unchanged
+either way.
+
 Try it manually:
 
 ```bash

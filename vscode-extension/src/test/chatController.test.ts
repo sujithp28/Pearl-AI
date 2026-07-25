@@ -8,14 +8,64 @@ import {
   WebviewMessage,
 } from "../chat/chatController";
 import { PlanApprover, PlanDecision } from "../chat/planApproval";
+import { PatchApprover, PatchDecision } from "../chat/patchApproval";
 import { RequestSender } from "../mcp/requestSender";
 import { PlannedStep } from "../mcp/planClient";
+import { PatchFileSummary } from "../mcp/patchClient";
 
 type Handler = (
   params?: Record<string, unknown>
 ) => unknown | Promise<unknown>;
 
-function fakeSender(handlers: Record<string, Handler>): {
+type NotificationHandler = (params: Record<string, unknown>) => void;
+
+/**
+ * A minimal server-side notification bus for tests: `emit` simulates
+ * the server pushing a notification while a `sendRequest` handler is
+ * still "in flight" (called from inside that handler, before it
+ * returns), and `onNotification` is wired into `fakeSender`'s
+ * `RequestSender` the same way `MCPConnection.onNotification` really
+ * behaves (multiple subscribers, returns an unsubscribe function).
+ */
+function notificationBus(): {
+  onNotification: (method: string, handler: NotificationHandler) => () => void;
+  emit: (method: string, params: Record<string, unknown>) => void;
+} {
+  const handlers = new Map<string, Set<NotificationHandler>>();
+
+  return {
+    onNotification: (method, handler) => {
+      let set = handlers.get(method);
+
+      if (!set) {
+        set = new Set();
+        handlers.set(method, set);
+      }
+
+      set.add(handler);
+
+      return () => {
+        set?.delete(handler);
+      };
+    },
+    emit: (method, params) => {
+      const set = handlers.get(method);
+
+      if (!set) {
+        return;
+      }
+
+      for (const handler of set) {
+        handler(params);
+      }
+    },
+  };
+}
+
+function fakeSender(
+  handlers: Record<string, Handler>,
+  notifications?: ReturnType<typeof notificationBus>
+): {
   sender: RequestSender;
   calls: Array<{ method: string; params?: Record<string, unknown> }>;
 } {
@@ -36,6 +86,7 @@ function fakeSender(handlers: Record<string, Handler>): {
 
         return handler(params);
       },
+      onNotification: notifications?.onNotification,
     },
   };
 }
@@ -90,6 +141,21 @@ function fixedPlanApprover(decision: PlanDecision): {
     calls,
     approvePlan: async (steps) => {
       calls.push(steps);
+      return decision;
+    },
+  };
+}
+
+function fixedPatchApprover(decision: PatchDecision): {
+  approvePatch: PatchApprover;
+  calls: PatchFileSummary[][];
+} {
+  const calls: PatchFileSummary[][] = [];
+
+  return {
+    calls,
+    approvePatch: async (files) => {
+      calls.push(files);
       return decision;
     },
   };
@@ -536,4 +602,225 @@ test("timeline reaches 'completed' after every step in an executed plan succeeds
     "running_tool",
     "completed",
   ]);
+});
+
+// ---------------------------------------------------------------------
+// runAutonomous: live pearl/progress streaming
+// ---------------------------------------------------------------------
+
+function progressEvents(events: WebviewMessage[]): unknown[] {
+  return events
+    .filter((e) => e.type === "progress")
+    .map((e) => (e as { event: unknown }).event);
+}
+
+test("runAutonomous posts each streamed progress event, in order", async () => {
+  const bus = notificationBus();
+  const { sender } = fakeSender(
+    {
+      "pearl/runAutonomous": () => {
+        bus.emit("pearl/progress", {
+          status: "planning",
+          currentStep: 0,
+          totalSteps: 0,
+          currentAction: "Plotting...",
+        });
+        bus.emit("pearl/progress", {
+          status: "executing_step",
+          currentStep: 1,
+          totalSteps: 1,
+          currentAction: "Running...",
+        });
+        bus.emit("pearl/progress", {
+          status: "task_completed",
+          currentStep: 1,
+          totalSteps: 1,
+          currentAction: "Done",
+        });
+        return { stopReason: "completed", steps: [], patches: [], replansUsed: 0 };
+      },
+    },
+    bus
+  );
+  const { events, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+  const { approvePatch } = fixedPatchApprover("approve");
+
+  const controller = new ChatController(sender, post, approve, approvePlan, approvePatch);
+  await controller.runAutonomous("do the thing");
+
+  assert.deepEqual(progressEvents(events), [
+    { status: "planning", currentStep: 0, totalSteps: 0, currentAction: "Plotting..." },
+    {
+      status: "executing_step",
+      currentStep: 1,
+      totalSteps: 1,
+      currentAction: "Running...",
+    },
+    { status: "task_completed", currentStep: 1, totalSteps: 1, currentAction: "Done" },
+    null, // cleared once the run finishes
+  ]);
+});
+
+test("runAutonomous clears progress even when the request fails", async () => {
+  const bus = notificationBus();
+  const { sender } = fakeSender(
+    {
+      "pearl/runAutonomous": () => {
+        bus.emit("pearl/progress", {
+          status: "planning",
+          currentStep: 0,
+          totalSteps: 0,
+          currentAction: "Plotting...",
+        });
+        throw new Error("connection lost");
+      },
+    },
+    bus
+  );
+  const { events, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+  const { approvePatch } = fixedPatchApprover("approve");
+
+  const controller = new ChatController(sender, post, approve, approvePlan, approvePatch);
+  await controller.runAutonomous("do the thing");
+
+  const streamed = progressEvents(events);
+  assert.equal(streamed[streamed.length - 1], null);
+  assert.ok(
+    events.some(
+      (e) => e.type === "addMessage" && e.message.role === "error"
+    )
+  );
+});
+
+test("runAutonomous keeps streaming progress across an approve() round trip", async () => {
+  const bus = notificationBus();
+  const target: PatchFileSummary = { path: "a.py", diff: "+1", isNewFile: true };
+
+  const { sender } = fakeSender(
+    {
+      "pearl/runAutonomous": () => {
+        bus.emit("pearl/progress", {
+          status: "awaiting_approval",
+          currentStep: 1,
+          totalSteps: 1,
+          currentAction: "Patch ready",
+        });
+        return {
+          stopReason: "awaiting_approval",
+          steps: [],
+          patches: [target],
+          replansUsed: 0,
+        };
+      },
+      "pearl/approvePatches": () => {
+        bus.emit("pearl/progress", {
+          status: "task_completed",
+          currentStep: 1,
+          totalSteps: 1,
+          currentAction: "Done",
+        });
+        return { stopReason: "completed", steps: [], patches: [], replansUsed: 0 };
+      },
+    },
+    bus
+  );
+  const { events, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+  const { approvePatch } = fixedPatchApprover("approve");
+
+  const controller = new ChatController(sender, post, approve, approvePlan, approvePatch);
+  await controller.runAutonomous("create a.py");
+
+  assert.deepEqual(
+    progressEvents(events).map((e) => (e as { status: string } | null)?.status ?? null),
+    ["awaiting_approval", "task_completed", null]
+  );
+});
+
+test("a run's progress subscription does not receive a later, unrelated run's events", async () => {
+  const bus = notificationBus();
+  const secondRun: { emit: (() => void) | null } = { emit: null };
+
+  const { sender } = fakeSender(
+    {
+      "pearl/runAutonomous": () => {
+        // First call: register what the *second* run will later emit,
+        // but don't emit it yet — proves a stale subscription from
+        // this first run would otherwise pick it up.
+        secondRun.emit = () =>
+          bus.emit("pearl/progress", {
+            status: "planning",
+            currentStep: 0,
+            totalSteps: 0,
+            currentAction: "second run",
+          });
+        return { stopReason: "completed", steps: [], patches: [], replansUsed: 0 };
+      },
+    },
+    bus
+  );
+  const { events, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+  const { approvePatch } = fixedPatchApprover("approve");
+
+  const controller = new ChatController(sender, post, approve, approvePlan, approvePatch);
+  await controller.runAutonomous("first run");
+
+  events.length = 0; // only care about what happens after this point
+  secondRun.emit?.();
+
+  assert.deepEqual(progressEvents(events), []);
+});
+
+test("a malformed progress payload is silently dropped, not posted", async () => {
+  const bus = notificationBus();
+  const { sender } = fakeSender(
+    {
+      "pearl/runAutonomous": () => {
+        bus.emit("pearl/progress", { status: "not-a-real-status" });
+        return { stopReason: "completed", steps: [], patches: [], replansUsed: 0 };
+      },
+    },
+    bus
+  );
+  const { events, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+  const { approvePatch } = fixedPatchApprover("approve");
+
+  const controller = new ChatController(sender, post, approve, approvePlan, approvePatch);
+  await controller.runAutonomous("do the thing");
+
+  // Only the final "clear" (null) is posted — the malformed event
+  // itself never reaches the webview.
+  assert.deepEqual(progressEvents(events), [null]);
+});
+
+test("runAutonomous works when the sender does not implement onNotification", async () => {
+  // A fake sender that only satisfies the required part of
+  // RequestSender — confirms progress streaming is fully optional
+  // and never breaks a caller that hasn't wired it up.
+  const { sender } = fakeSender({
+    "pearl/runAutonomous": () => ({
+      stopReason: "completed",
+      steps: [],
+      patches: [],
+      replansUsed: 0,
+    }),
+  });
+  const { events, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+  const { approvePatch } = fixedPatchApprover("approve");
+
+  const controller = new ChatController(sender, post, approve, approvePlan, approvePatch);
+  await controller.runAutonomous("do the thing");
+
+  assert.deepEqual(progressEvents(events), [null]);
 });

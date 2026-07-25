@@ -11,6 +11,8 @@
 import { MCPProtocolClient, JsonRpcResponseMessage, isErrorResponse } from "./protocolClient";
 import { ChildProcessLike, SpawnFn } from "./processTypes";
 
+type NotificationHandler = (params: Record<string, unknown>) => void;
+
 export type ConnectionStatus =
   | "connecting"
   | "connected"
@@ -38,6 +40,7 @@ export type StatusListener = (status: ConnectionStatus, detail?: string) => void
 export class MCPConnection {
   private readonly protocol = new MCPProtocolClient();
   private readonly pending = new Map<number, PendingRequest>();
+  private readonly notificationHandlers = new Map<string, Set<NotificationHandler>>();
 
   private child: ChildProcessLike | null = null;
   private stopped = true;
@@ -130,6 +133,30 @@ export class MCPConnection {
 
       child.stdin!.write(line);
     });
+  }
+
+  /**
+   * Subscribe to server-pushed JSON-RPC notifications for `method`
+   * (e.g. `pearl/progress`) — sent by the server interleaved with,
+   * and ahead of, whatever request's response they relate to (see
+   * `src/mcp/server.py`'s `NotifyFn`). Returns an unsubscribe
+   * function; call it once the subscriber no longer cares (e.g. when
+   * its triggering request settles), so a handler from a finished
+   * call never fires again for a later, unrelated one.
+   */
+  onNotification(method: string, handler: NotificationHandler): () => void {
+    let handlers = this.notificationHandlers.get(method);
+
+    if (!handlers) {
+      handlers = new Set();
+      this.notificationHandlers.set(method, handlers);
+    }
+
+    handlers.add(handler);
+
+    return () => {
+      handlers?.delete(handler);
+    };
   }
 
   // -- Internals -----------------------------------------------------------
@@ -259,7 +286,26 @@ export class MCPConnection {
 
       if (response) {
         this.resolveResponse(response);
+        continue;
       }
+
+      const notification = this.protocol.parseNotificationLine(line);
+
+      if (notification) {
+        this.dispatchNotification(notification.method, notification.params);
+      }
+    }
+  }
+
+  private dispatchNotification(method: string, params: Record<string, unknown>): void {
+    const handlers = this.notificationHandlers.get(method);
+
+    if (!handlers) {
+      return;
+    }
+
+    for (const handler of handlers) {
+      handler(params);
     }
   }
 

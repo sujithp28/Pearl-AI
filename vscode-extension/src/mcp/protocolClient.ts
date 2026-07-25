@@ -117,4 +117,53 @@ export class MCPProtocolClient {
 
     return parsed as JsonRpcResponseMessage;
   }
+
+  /**
+   * Parse one line of server output into a server-pushed JSON-RPC
+   * notification (e.g. `pearl/progress`) — the mirror image of
+   * `parseResponseLine`: a valid JSON-RPC 2.0 message with a
+   * `method` and no `id` at all, rather than an `id` and a
+   * `result`/`error`. Mutually exclusive with `parseResponseLine` by
+   * construction, so callers can try both in either order.
+   *
+   * Returns null for blank lines, malformed JSON, responses (which
+   * `parseResponseLine` already handles), or anything else that
+   * isn't a well-formed notification — never throws.
+   */
+  parseNotificationLine(line: string): JsonRpcNotificationMessage | null {
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      return null;
+    }
+
+    let parsed: unknown;
+
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      (parsed as { jsonrpc?: unknown }).jsonrpc !== "2.0" ||
+      "id" in parsed ||
+      typeof (parsed as { method?: unknown }).method !== "string"
+    ) {
+      return null;
+    }
+
+    const params = (parsed as { params?: unknown }).params;
+
+    return {
+      jsonrpc: "2.0",
+      method: (parsed as { method: string }).method,
+      params:
+        typeof params === "object" && params !== null
+          ? (params as Record<string, unknown>)
+          : {},
+    };
+  }
 }

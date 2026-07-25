@@ -252,6 +252,40 @@ export function getChatHtml(): string {
     color: var(--vscode-textLink-foreground);
   }
 
+  /* -- Live progress banner (pearl/progress notifications) ----------------- */
+  .progress-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    background-color: var(--vscode-editorWidget-background, transparent);
+    font-size: 0.85em;
+    color: var(--vscode-descriptionForeground);
+  }
+  .progress-status .progress-spinner {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--vscode-textLink-foreground);
+    border-top-color: transparent;
+    animation: progress-spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  .progress-status .progress-step {
+    opacity: 0.75;
+    flex-shrink: 0;
+  }
+  .progress-status .progress-action {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  @keyframes progress-spin {
+    to { transform: rotate(360deg); }
+  }
+
   /* -- Patch batch card ---------------------------------------------------- */
   .patch-batch {
     border: 1px solid var(--vscode-panel-border, #444);
@@ -409,6 +443,19 @@ export function getChatHtml(): string {
       let loadingEl = null;
       let timelineEl = null;
       let executionStateEl = null;
+      let progressEl = null;
+
+      const PROGRESS_STATUS_LABELS = {
+        planning: "Planning",
+        executing_step: "Running",
+        step_completed: "Step complete",
+        step_failed: "Step failed",
+        replanning: "Replanning",
+        task_completed: "Finishing up",
+        cancelled: "Cancelling",
+        awaiting_approval: "Awaiting approval",
+        rejected: "Rejected"
+      };
 
       const TIMELINE_STAGES = [
         ["planning", "Planning..."],
@@ -626,6 +673,48 @@ export function getChatHtml(): string {
         messagesEl.scrollTop = messagesEl.scrollHeight;
       }
 
+      function updateProgress(event) {
+        if (!event) {
+          if (progressEl) {
+            progressEl.remove();
+            progressEl = null;
+          }
+          return;
+        }
+
+        showChat();
+
+        if (!progressEl) {
+          progressEl = document.createElement("div");
+          progressEl.className = "progress-status";
+
+          const spinner = document.createElement("span");
+          spinner.className = "progress-spinner";
+          progressEl.appendChild(spinner);
+
+          const step = document.createElement("span");
+          step.className = "progress-step";
+          progressEl.appendChild(step);
+
+          const action = document.createElement("span");
+          action.className = "progress-action";
+          progressEl.appendChild(action);
+
+          messagesEl.appendChild(progressEl);
+        }
+
+        const stepEl = progressEl.querySelector(".progress-step");
+        const actionEl = progressEl.querySelector(".progress-action");
+
+        stepEl.textContent =
+          event.totalSteps > 0
+            ? "Step " + event.currentStep + " of " + event.totalSteps + " \\u2014 "
+            : (PROGRESS_STATUS_LABELS[event.status] || event.status) + " \\u2014 ";
+        actionEl.textContent = event.currentAction || "";
+
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
       function renderDiffLines(diffText) {
         // Basic diff-aware highlighting (added/removed/context
         // lines) rather than full language syntax highlighting, so
@@ -791,6 +880,8 @@ export function getChatHtml(): string {
           updateTimeline(data.stage);
         } else if (data.type === "executionState") {
           updateExecutionState(data.state);
+        } else if (data.type === "progress") {
+          updateProgress(data.event);
         }
       });
     })();

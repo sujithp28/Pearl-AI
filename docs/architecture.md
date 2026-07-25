@@ -59,7 +59,14 @@ for installation and usage; this is the "how it fits together" reference.
    `ToolCall` in turn through the `ToolDispatcher`. If a step fails, the
    executor feeds the failure back into a **replanning** prompt (bounded
    by `DEFAULT_MAX_REPLANS`) rather than aborting the whole run. Progress
-   is reported incrementally via `ProgressEvent`s.
+   is reported incrementally via `ProgressEvent`s, passed to whatever
+   `on_progress` callback the caller supplied. Over MCP, `MCPServer`
+   forwards each one as a `pearl/progress` JSON-RPC notification —
+   written to the same stdio stream, ahead of the eventual response —
+   via a `notify` callback threaded through `handle_request`
+   (`src/mcp/server.py`); omitting it (as every direct
+   `handle_request()` call in tests does) reproduces the exact prior,
+   non-streaming behavior, so this is purely additive.
 5. **`ToolDispatcher`** (`src/agent/dispatcher.py`) looks up the tool by
    name in the `ToolRegistry` and invokes it with validated arguments,
    raising `ToolNotFoundError`/`ToolExecutionError` with an actionable

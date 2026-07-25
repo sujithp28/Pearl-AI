@@ -18,16 +18,22 @@
  *      and no further steps run after a rejection.
  *
  * Along the way, this also posts loading indicators (while waiting
- * on a network round trip) and tool-execution-timeline stage
- * updates (Planning... / Plan Ready / Waiting for Approval /
- * Running Tool... / Completed) — pure UI/UX signals the webview
- * renders; they don't change any control flow above.
+ * on a network round trip), tool-execution-timeline stage updates
+ * (Planning... / Plan Ready / Waiting for Approval / Running
+ * Tool... / Completed), and — while an autonomous run (`runAutonomous`
+ * below) is actually in flight — live `pearl/progress` updates
+ * (current step / total steps / current action, streamed from the
+ * server via `RequestSender.onNotification`) — pure UI/UX signals
+ * the webview renders; they don't change any control flow above.
  *
  * Deliberately independent of the real `vscode.Webview` /
  * `MCPConnection` types (structural `RequestSender` + injectable
  * `ToolApprover`/`PlanApprover` only), so this — the actual behavior
  * worth testing — is unit testable without a webview, a real MCP
- * connection, or real approval UI.
+ * connection, or real approval UI. `RequestSender.onNotification` is
+ * itself optional on that structural interface for the same reason —
+ * a fake sender that doesn't implement it still satisfies the type,
+ * and progress simply never streams for it.
  */
 
 import { sendChatMessage } from "../mcp/chatClient";
@@ -38,6 +44,7 @@ import {
   runAutonomous as requestAutonomousRun,
 } from "../mcp/patchClient";
 import { PlannedStep, planOnly } from "../mcp/planClient";
+import { ProgressEvent, parseProgressEvent } from "../mcp/progressClient";
 import { RequestSender } from "../mcp/requestSender";
 import { ToolCallResult, callTool } from "../mcp/toolCallClient";
 import { ToolApprover } from "./approval";
@@ -60,7 +67,8 @@ export type WebviewMessage =
   | { type: "addMessage"; message: ChatMessage }
   | { type: "loading"; show: boolean }
   | { type: "timeline"; stage: TimelineStage | null }
-  | { type: "executionState"; state: ExecutionState | null };
+  | { type: "executionState"; state: ExecutionState | null }
+  | { type: "progress"; event: ProgressEvent | null };
 
 export type PostToWebview = (message: WebviewMessage) => void;
 
@@ -218,7 +226,9 @@ export class ChatController {
       return;
     }
 
-    if (!this.approvePatch) {
+    const approvePatch = this.approvePatch;
+
+    if (!approvePatch) {
       this.addAndPost(
         "error",
         "Autonomous execution with patch approval is not configured."
@@ -227,6 +237,42 @@ export class ChatController {
     }
 
     this.addAndPost("user", trimmed);
+
+    // Subscribed for the whole run (including every approve/reject
+    // round trip below, each of which can itself resume execution
+    // and emit further events) and torn down unconditionally in
+    // `finally` — a handler must never outlive the run that
+    // registered it, or a later, unrelated run's UI could receive a
+    // stale run's events.
+    const unsubscribe = this.connection.onNotification?.(
+      "pearl/progress",
+      (params) => this.handleProgressNotification(params)
+    );
+
+    try {
+      await this.runAutonomousToCompletion(trimmed, approvePatch);
+    } finally {
+      unsubscribe?.();
+      this.postProgress(null);
+    }
+  }
+
+  private handleProgressNotification(params: Record<string, unknown>): void {
+    const event = parseProgressEvent(params);
+
+    if (event) {
+      this.postProgress(event);
+    }
+  }
+
+  private postProgress(event: ProgressEvent | null): void {
+    this.post({ type: "progress", event });
+  }
+
+  private async runAutonomousToCompletion(
+    trimmed: string,
+    approvePatch: PatchApprover
+  ): Promise<void> {
     this.postLoading(true);
 
     let report: ExecutionReportResult;
@@ -245,7 +291,7 @@ export class ChatController {
     while (report.stopReason === "awaiting_approval") {
       this.postExecutionState("awaiting_approval");
 
-      const decision = await this.approvePatch(report.patches);
+      const decision = await approvePatch(report.patches);
 
       if (decision === "reject") {
         this.postLoading(true);

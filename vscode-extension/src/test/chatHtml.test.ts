@@ -274,3 +274,66 @@ test("getChatHtml clears the execution-state banner when the state is null", () 
 
   assert.match(html, /executionStateEl\.remove\(\)/);
 });
+
+// ---------------------------------------------------------------------
+// Live progress streaming (pearl/progress)
+// ---------------------------------------------------------------------
+
+test("getChatHtml handles progress messages with a live status banner", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /function updateProgress/);
+  assert.match(html, /data\.type === "progress"/);
+  assert.match(html, /updateProgress\(data\.event\)/);
+  assert.match(html, /className = "progress-status"/);
+});
+
+test("getChatHtml clears the progress banner when the event is null", () => {
+  const html = getChatHtml();
+
+  const updateProgressBody = html.slice(
+    html.indexOf("function updateProgress"),
+    html.indexOf("function renderDiffLines")
+  );
+
+  assert.match(updateProgressBody, /if \(!event\) {/);
+  assert.match(updateProgressBody, /progressEl\.remove\(\)/);
+});
+
+test("getChatHtml shows a step counter and the current action text", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /step\.className = "progress-step"/);
+  assert.match(html, /action\.className = "progress-action"/);
+  assert.match(
+    html,
+    /"Step " \+ event\.currentStep \+ " of " \+ event\.totalSteps/
+  );
+  assert.match(html, /actionEl\.textContent = event\.currentAction/);
+});
+
+test("getChatHtml maps every known progress status to a human-readable label", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /PROGRESS_STATUS_LABELS/);
+  for (const label of [
+    "Planning",
+    "Running",
+    "Step complete",
+    "Step failed",
+    "Replanning",
+    "Finishing up",
+    "Cancelling",
+    "Awaiting approval",
+    "Rejected",
+  ]) {
+    assert.match(html, new RegExp(label));
+  }
+});
+
+test("getChatHtml shows a spinner while progress is streaming", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /className = "progress-spinner"/);
+  assert.match(html, /progress-spin/);
+});

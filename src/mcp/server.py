@@ -15,10 +15,15 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from typing import IO, Any
+from typing import IO, Any, Callable
 
 from src.agent.dispatcher import ToolDispatcher, ToolExecutionError, ToolNotFoundError
-from src.agent.executor import AutonomousExecutor, ExecutionReport, ExecutionStep
+from src.agent.executor import (
+    AutonomousExecutor,
+    ExecutionReport,
+    ExecutionStep,
+    ProgressEvent,
+)
 from src.agent.planner import Planner
 from src.llm.client import LLMClient
 from src.mcp.protocol import (
@@ -40,6 +45,28 @@ logger = logging.getLogger(__name__)
 
 SERVER_NAME = "pearl-mcp"
 SERVER_VERSION = "1.2.0-beta"
+
+# A handler calls `notify(method, params)` to push a JSON-RPC
+# notification to the client immediately, interleaved with (ahead of)
+# its eventual response — the mechanism `pearl/progress` streaming
+# uses. Every handler receives one; most ignore it. `handle_request`
+# supplies a no-op when the caller doesn't pass one (e.g. every
+# existing direct `server.handle_request(request)` call in tests),
+# so this is purely additive — nothing that doesn't opt in changes.
+NotifyFn = Callable[[str, dict[str, Any]], None]
+
+
+def _noop_notify(method: str, params: dict[str, Any]) -> None:
+    return None
+
+
+def _progress_event_to_dict(event: ProgressEvent) -> dict[str, Any]:
+    return {
+        "status": event.status,
+        "currentStep": event.current_step,
+        "totalSteps": event.total_steps,
+        "currentAction": event.current_action,
+    }
 
 
 def _json_safe(value: Any) -> Any:
@@ -74,11 +101,16 @@ def _execution_report_to_dict(
 ) -> dict[str, Any]:
     """
     Convert an `ExecutionReport` (and, for a paused run, the matching
-    `PatchManager` state) into the camelCase shape the VS Code
-    extension's `patchClient.ts` expects.
+    `PatchManager`/`CommandApprovalManager` state) into the camelCase
+    shape the VS Code extension's `patchClient.ts` expects.
+
+    `commands` is additive (Phase 26): existing clients that only read
+    `patches` are unaffected; a client that also wants to surface
+    pending shell commands for approval can read this new field.
     """
 
     patches: list[dict[str, Any]] = []
+    commands: list[dict[str, Any]] = []
 
     if report.stop_reason == "awaiting_approval":
         patches = [
@@ -89,11 +121,20 @@ def _execution_report_to_dict(
             }
             for edit in executor.patch_manager.pending
         ]
+        commands = [
+            {
+                "command": pending.request.command,
+                "cwd": pending.request.cwd,
+                "timeout": pending.request.timeout,
+            }
+            for pending in executor.command_approver.pending
+        ]
 
     return {
         "stopReason": report.stop_reason,
         "steps": [_execution_step_to_dict(step) for step in report.steps],
         "patches": patches,
+        "commands": commands,
         "replansUsed": report.replans_used,
     }
 
@@ -124,11 +165,20 @@ class MCPServer:
     def handle_request(
         self,
         request: JsonRpcRequest,
+        notify: NotifyFn | None = None,
     ) -> JsonRpcResponse | None:
         """
         Dispatch one JSON-RPC request. Returns None for notifications
         (which never receive a response).
+
+        `notify`, if given, lets the handler push JSON-RPC
+        notifications (e.g. `pearl/progress`) to the client while the
+        request is still being handled — see `NotifyFn`. Omitting it
+        (the default) is exactly the prior behavior: no notifications
+        are sent, only the final response.
         """
+
+        active_notify = notify if notify is not None else _noop_notify
 
         handler = self._HANDLERS.get(request.method)
 
@@ -148,13 +198,13 @@ class MCPServer:
 
         if request.is_notification:
             try:
-                handler(self, request.params)
+                handler(self, request.params, active_notify)
             except Exception:
                 logger.exception("Error handling notification: %s", request.method)
             return None
 
         try:
-            result = handler(self, request.params)
+            result = handler(self, request.params, active_notify)
         except MCPProtocolError as exc:
             return JsonRpcResponse(
                 id=request.id,
@@ -171,7 +221,7 @@ class MCPServer:
 
     # -- Method implementations ----------------------------------------------
 
-    def _initialize(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _initialize(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
         """
         Handle the `initialize` handshake.
         """
@@ -198,14 +248,14 @@ class MCPServer:
             "capabilities": capabilities,
         }
 
-    def _tools_list(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _tools_list(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
         """
         List every tool currently in the registry.
         """
 
         return {"tools": [tool_to_mcp_schema(tool) for tool in self.registry]}
 
-    def _tools_call(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _tools_call(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
         """
         Execute a registered tool by name via the ToolDispatcher.
         """
@@ -240,7 +290,7 @@ class MCPServer:
             "isError": False,
         }
 
-    def _plan_run(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _plan_run(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
         """
         Break a request into multiple steps and execute them via the
         Planner (a Pearl-specific extension beyond the core MCP
@@ -288,7 +338,7 @@ class MCPServer:
             ]
         }
 
-    def _plan_only(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _plan_only(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
         """
         Return the steps the Planner would execute for a prompt,
         without executing them.
@@ -319,7 +369,7 @@ class MCPServer:
             ]
         }
 
-    def _chat(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _chat(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
         """
         Chat directly with the language model (a Pearl-specific
         extension beyond the core MCP methods). Reuses the same
@@ -343,7 +393,9 @@ class MCPServer:
 
         return {"message": response}
 
-    def _run_autonomous(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _run_autonomous(
+        self, params: dict[str, Any], notify: NotifyFn
+    ) -> dict[str, Any]:
         """
         Start an autonomous run for `prompt` (a Pearl-specific
         extension beyond the core MCP methods).
@@ -376,14 +428,20 @@ class MCPServer:
                 "pearl/approvePatches or pearl/rejectPatches first.",
             )
 
-        executor = AutonomousExecutor(self.planner, self.dispatcher)
+        executor = AutonomousExecutor(
+            self.planner,
+            self.dispatcher,
+            on_progress=self._make_progress_forwarder(notify),
+        )
         self._autonomous_executor = executor
 
         report = executor.run(prompt)
 
         return _execution_report_to_dict(report, executor)
 
-    def _approve_patches(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _approve_patches(
+        self, params: dict[str, Any], notify: NotifyFn
+    ) -> dict[str, Any]:
         """
         Approve the currently pending patch batch: write it to disk
         and resume execution exactly where it paused (via the same
@@ -392,22 +450,48 @@ class MCPServer:
         """
 
         executor = self._require_awaiting_approval()
+        executor.on_progress = self._make_progress_forwarder(notify)
 
         report = executor.approve()
 
         return _execution_report_to_dict(report, executor)
 
-    def _reject_patches(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _reject_patches(
+        self, params: dict[str, Any], notify: NotifyFn
+    ) -> dict[str, Any]:
         """
         Discard the currently pending patch batch and stop cleanly
         (via `AutonomousExecutor.reject()`).
         """
 
         executor = self._require_awaiting_approval()
+        executor.on_progress = self._make_progress_forwarder(notify)
 
         report = executor.reject()
 
         return _execution_report_to_dict(report, executor)
+
+    @staticmethod
+    def _make_progress_forwarder(
+        notify: NotifyFn,
+    ) -> Callable[[ProgressEvent], None]:
+        """
+        Return an `AutonomousExecutor.on_progress` callback that
+        forwards each `ProgressEvent` as a `pearl/progress`
+        notification via `notify`.
+
+        Rebuilt fresh for every `_run_autonomous`/`_approve_patches`/
+        `_reject_patches` call (reassigning `executor.on_progress`
+        each time) rather than fixed at executor construction, so a
+        resumed run's progress always streams to *this* call's
+        `notify` — the one actually attached to the current request —
+        not a stale one captured when the run first started.
+        """
+
+        def _forward(event: ProgressEvent) -> None:
+            notify("pearl/progress", _progress_event_to_dict(event))
+
+        return _forward
 
     def _require_awaiting_approval(self) -> AutonomousExecutor:
         if (
@@ -421,7 +505,7 @@ class MCPServer:
 
         return self._autonomous_executor
 
-    def _memory(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _memory(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
         """
         Return the current contents of Memory (a Pearl-specific
         extension for inspecting agent state): conversation history,
@@ -433,7 +517,7 @@ class MCPServer:
 
         return self.memory.to_dict()
 
-    def _shutdown(self, params: dict[str, Any]) -> None:
+    def _shutdown(self, params: dict[str, Any], notify: NotifyFn) -> None:
         """
         Handle the `shutdown` request.
         """
@@ -508,10 +592,38 @@ class MCPServer:
             logger.info("Received exit notification.")
             return False
 
-        response = self.handle_request(request)
+        response = self.handle_request(request, self._make_notifier(output_stream))
 
         if response is not None:
             output_stream.write(response.to_json() + "\n")
             output_stream.flush()
 
         return True
+
+    @staticmethod
+    def _make_notifier(output_stream: IO[str]) -> NotifyFn:
+        """
+        Return a `NotifyFn` that writes a JSON-RPC notification line
+        to `output_stream` and flushes immediately, so a client
+        reading line-by-line sees it as soon as it's sent rather than
+        buffered behind the eventual response.
+
+        Never raises: a failure to write a notification (e.g. a
+        broken pipe) is logged and swallowed rather than aborting
+        whatever request is in progress — the same "never let
+        progress reporting break execution" rule `AutonomousExecutor`
+        already applies to its own `on_progress` callback.
+        """
+
+        def _notify(method: str, params: dict[str, Any]) -> None:
+            message = {"jsonrpc": "2.0", "method": method, "params": params}
+
+            try:
+                output_stream.write(json.dumps(message) + "\n")
+                output_stream.flush()
+            except Exception:
+                logger.warning(
+                    "Failed to write notification '%s'.", method, exc_info=True
+                )
+
+        return _notify
