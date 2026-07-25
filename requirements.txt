@@ -1,7 +1,6 @@
 # Core dependencies. For an editable install with a `pearl` command,
 # prefer `pip install -e .` (uses pyproject.toml) instead.
 openai>=1.0
-python-dotenv>=1.0
 
 # Optional, only needed if you set PEARL_LLM_PROVIDER=claude or gemini:
 # anthropic>=0.30

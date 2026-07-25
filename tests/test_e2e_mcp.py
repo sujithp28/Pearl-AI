@@ -26,13 +26,27 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# Nothing here waits on a real model, so any read taking longer than
+# this means the server is wedged. Bounded on purpose: an unbounded
+# `readline()` on a subprocess pipe would hang a CI job for hours
+# instead of failing in seconds with a usable traceback.
+#
+# Enforced with a stdlib reader thread rather than a plugin or
+# `select`: `select` reports on the file descriptor, which can't see
+# bytes already sitting in Python's own text-mode buffer, so it can
+# block even when a full line is available. Draining into a Queue has
+# no such blind spot.
+READ_TIMEOUT_SECONDS = 30
 
 
 class MCPProcess:
@@ -62,6 +76,57 @@ class MCPProcess:
         )
         self._next_id = 0
 
+        # Drained continuously by a daemon thread so a read can be
+        # given a deadline, and so a chatty server can never fill the
+        # pipe buffer and deadlock waiting for us to consume it.
+        self._lines: queue.Queue[str | None] = queue.Queue()
+        self._reader = threading.Thread(target=self._drain_stdout, daemon=True)
+        self._reader.start()
+
+    def _drain_stdout(self) -> None:
+        assert self.process.stdout is not None
+
+        for line in self.process.stdout:
+            self._lines.put(line)
+
+        # Sentinel: stdout closed, so no further lines are coming.
+        self._lines.put(None)
+
+    def _next_line(self) -> str:
+        """
+        Return the next line from the server, or fail with context.
+        """
+
+        try:
+            line = self._lines.get(timeout=READ_TIMEOUT_SECONDS)
+        except queue.Empty:
+            raise AssertionError(
+                f"server produced no output within {READ_TIMEOUT_SECONDS}s.\n"
+                f"stderr so far:\n{self._drain_stderr()}"
+            ) from None
+
+        if line is None:
+            raise AssertionError(
+                f"server closed stdout unexpectedly.\nstderr:\n{self._drain_stderr()}"
+            )
+
+        return line
+
+    def _drain_stderr(self) -> str:
+        """
+        Best-effort stderr capture for failure messages. The server
+        logs there, so it usually explains what went wrong.
+        """
+
+        if self.process.stderr is None:
+            return "(no stderr captured)"
+
+        try:
+            self.process.kill()
+            return self.process.stderr.read() or "(empty)"
+        except Exception:
+            return "(stderr unavailable)"
+
     def request(self, method: str, params: dict | None = None) -> dict:
         """
         Send one JSON-RPC request and return its response, skipping
@@ -85,21 +150,8 @@ class MCPProcess:
         return self._read_response(request_id)
 
     def _read_response(self, request_id: int) -> dict:
-        assert self.process.stdout is not None
-
         while True:
-            line = self.process.stdout.readline()
-
-            if not line:
-                stderr = ""
-                if self.process.stderr is not None:
-                    stderr = self.process.stderr.read()
-                raise AssertionError(
-                    f"server closed stdout before answering id={request_id}.\n"
-                    f"stderr:\n{stderr}"
-                )
-
-            line = line.strip()
+            line = self._next_line().strip()
 
             if not line:
                 continue
@@ -133,16 +185,10 @@ class MCPProcess:
         )
         self.process.stdin.flush()
 
-        assert self.process.stdout is not None
         collected: list[dict] = []
 
         while True:
-            line = self.process.stdout.readline()
-
-            if not line:
-                raise AssertionError("server closed stdout mid-request")
-
-            line = line.strip()
+            line = self._next_line().strip()
 
             if not line:
                 continue
@@ -227,8 +273,7 @@ def test_malformed_line_is_answered_without_killing_the_server(workspace):
 
         # Skip the error response for the malformed line, then prove
         # the server is still alive and serving.
-        assert server.process.stdout is not None
-        server.process.stdout.readline()
+        server._next_line()
 
         response = server.request("tools/list")
         assert "result" in response

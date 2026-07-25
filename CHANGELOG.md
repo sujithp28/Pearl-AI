@@ -54,9 +54,24 @@ work landed in this repository.
   no model server running. Selectable only by explicit configuration,
   never as a fallback, so a misconfigured real provider can't quietly
   start serving canned answers.
-- **`pytest-timeout` (dev)** with a 60s per-test cap, so a subprocess
-  that starts but never answers fails in a minute with a usable
-  traceback instead of hanging a CI job for hours.
+### Removed
+- **`python-dotenv`** — replaced by a ~30-line stdlib `.env` loader
+  (`Settings.load_env_file`). `openai` is now Pearl's only runtime
+  dependency. The replacement preserves the behavior that mattered:
+  existing environment variables always win over `.env`, which CI and
+  the end-to-end tests rely on to point Pearl at the scripted
+  provider without a developer's local `.env` overriding them.
+  Verified by uninstalling the package and confirming a clean
+  `pip install -e .` still completes a full autonomous run.
+- **`pytest-timeout`** — briefly added, then removed. The protection
+  it gave (bounding a blocked read on the subprocess pipe) is now a
+  stdlib reader thread draining stdout into a `queue.Queue`, which is
+  strictly more reliable: `select`-based waiting can't see bytes
+  already buffered in Python's text-mode wrapper, and a plugin-level
+  timeout can't distinguish a wedged server from a slow one. Verified
+  by pointing the harness at a process that starts and never speaks —
+  it now fails in exactly the configured window with the server's
+  stderr attached.
 - **Chat-mode capability grounding** (`src/prompts/system.py`, until
   now an empty and unimported file). `LLMClient.generate()` gained an
   optional `system` parameter; omitting it is the previous behavior,

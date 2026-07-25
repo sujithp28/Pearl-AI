@@ -25,7 +25,6 @@ classifiers = [
 
 dependencies = [
     "openai>=1.0",
-    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -33,7 +32,6 @@ claude = ["anthropic>=0.30"]
 gemini = ["google-generativeai>=0.5"]
 dev = [
     "pytest>=7.0",
-    "pytest-timeout>=2.0",
     "pyflakes>=3.0",
     "ruff>=0.16",
 ]
@@ -55,13 +53,6 @@ include = ["src*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-# No single test should ever take a minute. Matters most for the
-# end-to-end tests in `tests/test_e2e_mcp.py`, which read from a real
-# subprocess's pipe: without a bound, a server that starts but never
-# answers would hang the whole CI job until the runner's own (hours-
-# long) limit, instead of failing in a minute with a useful traceback.
-timeout = 60
 
 [tool.ruff]
 line-length = 88

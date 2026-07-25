@@ -115,7 +115,7 @@ source .venv/bin/activate        # Linux / macOS / WSL
 ```
 
 Install Pearl in editable mode (this registers the `pearl` command and
-installs `openai` + `python-dotenv`):
+installs `openai`, Pearl's only runtime dependency):
 
 ```bash
 pip install -e .

@@ -5,7 +5,61 @@ Global configuration for Pearl.
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
+
+def load_env_file(path: Path) -> None:
+    """
+    Load `KEY=value` pairs from a `.env` file into the environment.
+
+    A small stdlib replacement for `python-dotenv`, which was Pearl's
+    only runtime dependency besides the LLM client. The file format
+    Pearl actually uses is a handful of `KEY=value` lines; supporting
+    that (plus comments, blank lines, `export ` prefixes and quoted
+    values) is a few lines, and not worth a package.
+
+    Existing environment variables always win, matching
+    `python-dotenv`'s default. That is load-bearing, not cosmetic:
+    CI and the end-to-end tests launch Pearl with an explicit
+    `PEARL_LLM_PROVIDER` in the environment and rely on a developer's
+    local `.env` not silently overriding it.
+
+    Never raises: a missing or unreadable `.env` leaves every setting
+    on its documented default rather than preventing startup.
+    """
+
+    try:
+        if not path.is_file():
+            return
+
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+
+        if not line or line.startswith("#"):
+            continue
+
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+
+        key, separator, value = line.partition("=")
+
+        if not separator:
+            continue
+
+        key = key.strip()
+
+        if not key:
+            continue
+
+        value = value.strip()
+
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+
+        os.environ.setdefault(key, value)
+
 
 # Resolved relative to this file, not the process's cwd: Pearl's
 # workspace root is wherever the *target* project lives (never
@@ -13,7 +67,7 @@ from dotenv import load_dotenv
 # cwd to be found — otherwise every provider setting silently falls
 # back to its hardcoded default (e.g. the wrong Ollama model) when
 # Pearl is pointed at an external project.
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+load_env_file(Path(__file__).resolve().parents[2] / ".env")
 
 
 def _int_or_none(value: str | None) -> int | None:
