@@ -10,13 +10,15 @@ infinite replan loops), and execution continues with that plan.
 While a run is in progress, every editing tool (`create_file`,
 `replace_in_file`, `edit_lines`, `patch_file`) stages its changes in
 a `PatchManager` instead of writing to disk ("preview mode" — the
-default here). Once the current plan runs out of steps (or would
-otherwise stop) with edits still staged, execution pauses and
-`run()`/`approve()` returns an `ExecutionReport` with
-`stop_reason="awaiting_approval"` instead of finishing. Calling
-`approve()` writes the staged edits and resumes exactly where
-execution paused (no re-planning, no re-running completed steps);
-calling `reject()` discards them and stops cleanly.
+default here), and `execute_shell` likewise stages its command in a
+`CommandApprovalManager` instead of running it. Once the current plan
+runs out of steps (or would otherwise stop) with edits and/or
+commands still staged, execution pauses and `run()`/`approve()`
+returns an `ExecutionReport` with `stop_reason="awaiting_approval"`
+instead of finishing. Calling `approve()` writes the staged edits and
+runs the staged commands, then resumes exactly where execution paused
+(no re-planning, no re-running completed steps); calling `reject()`
+discards them (writing and running nothing) and stops cleanly.
 
 Reuses `Planner` (for both the initial plan and any replans) and
 `ToolDispatcher` (for execution) as-is; this module only adds the
@@ -34,8 +36,11 @@ from typing import Any, Callable, Literal
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
 from src.llm.parser import ToolCall
+from src.tools.command_approval import CommandApprovalManager
 from src.tools.edit_tools import set_active_patch_manager
 from src.tools.patch_manager import PatchManager
+from src.tools.repo_tools import refresh_indexed_file
+from src.tools.shell_tools import _run_shell_command, set_active_command_approver
 
 logger = logging.getLogger(__name__)
 
@@ -195,12 +200,14 @@ class AutonomousExecutor:
     before every replan — an in-flight tool call itself is never
     interrupted, but the loop stops at the next checkpoint.
 
-    Also supports patch-preview approval: while running, editing
-    tools stage their changes in `self.patch_manager` instead of
-    writing to disk. Whenever the loop would otherwise stop with
-    edits still staged, it pauses instead (`stop_reason=
-    "awaiting_approval"`); `approve()` writes them and resumes,
-    `reject()` discards them and stops cleanly.
+    Also supports patch-preview and command approval: while running,
+    editing tools stage their changes in `self.patch_manager`, and
+    `execute_shell` stages its command in `self.command_approver`,
+    instead of writing to disk / running. Whenever the loop would
+    otherwise stop with edits and/or commands still staged, it pauses
+    instead (`stop_reason="awaiting_approval"`); `approve()` writes
+    the edits, runs the commands, and resumes; `reject()` discards
+    both and stops cleanly.
     """
 
     def __init__(
@@ -211,6 +218,7 @@ class AutonomousExecutor:
         max_replans: int = DEFAULT_MAX_REPLANS,
         on_progress: Callable[[ProgressEvent], None] | None = None,
         patch_manager: PatchManager | None = None,
+        command_approver: CommandApprovalManager | None = None,
     ) -> None:
         self.planner = planner
         self.dispatcher = dispatcher
@@ -218,6 +226,9 @@ class AutonomousExecutor:
         self.max_replans = max_replans
         self.on_progress = on_progress
         self.patch_manager = patch_manager or PatchManager()
+        self.command_approver = command_approver or CommandApprovalManager(
+            runner=_run_shell_command
+        )
         self._cancel_event = threading.Event()
         self._paused: _PausedState | None = None
 
@@ -291,21 +302,29 @@ class AutonomousExecutor:
         iteration: int,
     ) -> ExecutionReport | None:
         """
-        If there are patches staged and not yet approved, pause: save
-        everything needed to resume later, emit the final
-        `awaiting_approval` progress event, and return the paused
-        `ExecutionReport`. Otherwise return None (nothing pending).
+        If there are patches and/or commands staged and not yet
+        approved, pause: save everything needed to resume later, emit
+        the final `awaiting_approval` progress event, and return the
+        paused `ExecutionReport`. Otherwise return None (nothing
+        pending).
         """
 
-        if not self.patch_manager.has_pending():
+        patches_pending = self.patch_manager.has_pending()
+        commands_pending = self.command_approver.has_pending()
+
+        if not patches_pending and not commands_pending:
             return None
 
         affected = self.patch_manager.affected_files()
+        affected_commands = self.command_approver.affected_commands()
 
         logger.info(
-            "Autonomous execution paused: %d file(s) awaiting approval: %s",
+            "Autonomous execution paused: %d file(s) and %d command(s) "
+            "awaiting approval: %s | %s",
             len(affected),
+            len(affected_commands),
             affected,
+            affected_commands,
         )
 
         self._paused = _PausedState(
@@ -336,20 +355,25 @@ class AutonomousExecutor:
     def _finalize_cancelled_while_paused(self, state: _PausedState) -> ExecutionReport:
         """
         Resolve a cancel() that arrived while execution was paused
-        awaiting approval: discard the pending patches and finalize
-        as cancelled, preserving the execution history collected so
-        far.
+        awaiting approval: discard the pending patches and commands
+        and finalize as cancelled, preserving the execution history
+        collected so far.
         """
 
         discarded = self.patch_manager.discard_all()
+        discarded_commands = self.command_approver.discard_all()
 
         logger.info(
-            "Cancelled while awaiting approval; discarded %d pending file(s): %s",
+            "Cancelled while awaiting approval; discarded %d pending "
+            "file(s) and %d command(s): %s | %s",
             len(discarded),
+            len(discarded_commands),
             discarded,
+            discarded_commands,
         )
 
         set_active_patch_manager(None)
+        set_active_command_approver(None)
 
         self._emit(
             state.events,
@@ -423,6 +447,7 @@ class AutonomousExecutor:
         completed_for_replan: list[dict[str, Any]] = []
 
         set_active_patch_manager(self.patch_manager)
+        set_active_command_approver(self.command_approver)
 
         self._emit(
             events,
@@ -440,13 +465,14 @@ class AutonomousExecutor:
 
     def approve(self) -> ExecutionReport:
         """
-        Approve every currently staged patch: write it to disk, then
-        resume execution exactly where it paused — no re-planning,
-        no re-running already-completed steps.
+        Approve every currently staged patch and command: write the
+        patches to disk, run the commands, then resume execution
+        exactly where it paused — no re-planning, no re-running
+        already-completed steps.
 
         If cancellation was requested while paused, finalizes as
-        cancelled (discarding the staged patches) instead of
-        resuming.
+        cancelled (discarding the staged patches and commands)
+        instead of resuming.
         """
 
         if self._paused is None:
@@ -462,7 +488,16 @@ class AutonomousExecutor:
 
         logger.info("Approved %d file(s): %s", len(applied), applied)
 
+        for applied_path in applied:
+            refresh_indexed_file(applied_path)
+
+        command_count = len(self.command_approver.pending)
+        self.command_approver.approve_all()
+
+        logger.info("Approved and ran %d command(s).", command_count)
+
         set_active_patch_manager(self.patch_manager)
+        set_active_command_approver(self.command_approver)
 
         return self._finish_or_pause(
             self._execute(
@@ -478,12 +513,12 @@ class AutonomousExecutor:
 
     def reject(self) -> ExecutionReport:
         """
-        Discard every currently staged patch and stop cleanly,
-        preserving the execution history collected so far.
+        Discard every currently staged patch and command and stop
+        cleanly, preserving the execution history collected so far.
 
         If cancellation was requested while paused, finalizes as
         cancelled instead (the practical effect is the same: nothing
-        is written).
+        is written or run).
         """
 
         if self._paused is None:
@@ -496,10 +531,18 @@ class AutonomousExecutor:
             return self._finalize_cancelled_while_paused(state)
 
         discarded = self.patch_manager.discard_all()
+        discarded_commands = self.command_approver.discard_all()
 
-        logger.info("Rejected %d file(s): %s", len(discarded), discarded)
+        logger.info(
+            "Rejected %d file(s) and %d command(s): %s | %s",
+            len(discarded),
+            len(discarded_commands),
+            discarded,
+            discarded_commands,
+        )
 
         set_active_patch_manager(None)
+        set_active_command_approver(None)
 
         self._emit(
             state.events,
@@ -518,12 +561,13 @@ class AutonomousExecutor:
 
     def _finish_or_pause(self, report: ExecutionReport) -> ExecutionReport:
         """
-        Deactivate preview mode unless the report represents a pause
-        (in which case a later `approve()` reactivates it).
+        Deactivate preview/approval mode unless the report represents
+        a pause (in which case a later `approve()` reactivates it).
         """
 
         if report.stop_reason != "awaiting_approval":
             set_active_patch_manager(None)
+            set_active_command_approver(None)
 
         return report
 

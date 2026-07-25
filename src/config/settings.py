@@ -16,6 +16,10 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 
+def _int_or_none(value: str | None) -> int | None:
+    return int(value) if value else None
+
+
 class Settings:
     # ==================================================
     # Project
@@ -85,6 +89,31 @@ class Settings:
     MAX_NEW_TOKENS = 1024
 
     TEMPERATURE = 0.2
+
+    # ==================================================
+    # Shell execution (src/tools/shell_tools.py)
+    # ==================================================
+
+    SHELL_DEFAULT_TIMEOUT = int(os.getenv("PEARL_SHELL_TIMEOUT", "30"))
+
+    SHELL_MAX_TIMEOUT = int(os.getenv("PEARL_SHELL_MAX_TIMEOUT", "300"))
+
+    # CPU-time (seconds) and memory (MB) ceilings applied to every
+    # `execute_shell`/`run_python` call that doesn't specify its own.
+    # Unset (the default) means no limit — matches pre-Phase-26
+    # behavior. Only enforced on POSIX (see shell_tools._resource_
+    # limiter); silently not applied on platforms without the
+    # `resource` module (e.g. Windows).
+    SHELL_DEFAULT_CPU_SECONDS = _int_or_none(os.getenv("PEARL_SHELL_CPU_SECONDS"))
+
+    SHELL_DEFAULT_MEMORY_MB = _int_or_none(os.getenv("PEARL_SHELL_MEMORY_MB"))
+
+    # Comma-separated list of base commands `execute_shell` may run
+    # (e.g. "git,ls,cat,python3"). Empty/unset (the default) uses
+    # shell_tools' built-in practical allowlist; set to "*" to
+    # disable allowlisting entirely (denylist-only — pre-Phase-26
+    # behavior, not recommended).
+    SHELL_ALLOWED_COMMANDS = os.getenv("PEARL_SHELL_ALLOWED_COMMANDS", "")
 
 
 settings = Settings()

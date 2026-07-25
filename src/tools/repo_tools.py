@@ -220,6 +220,85 @@ def get_repository_index(path: str = ".") -> RepositoryIndex:
     return _get_index(root)
 
 
+def refresh_indexed_file(path: str) -> None:
+    """
+    Update every cached `RepositoryIndex` that covers `path` after it
+    was created, modified, or deleted on disk, so `find_symbol`/
+    `find_references`/`ContextBuilder` stay correct for the rest of
+    the session instead of reading a pre-edit snapshot.
+
+    Re-parses only this one file (or, if it no longer exists, drops
+    its entries) and patches the affected index's `files`/`symbols`/
+    `imports` in place — cost is proportional to one file, not the
+    repository, and no directory walk happens. If `path` isn't
+    Python, or isn't covered by any currently-cached index (nothing
+    has indexed that workspace root yet), this is a no-op.
+
+    Best-effort: never raises. Editing tools call this right after a
+    write that has already succeeded on disk — a refresh failure
+    should leave the cache stale, not undo or fail that write.
+    """
+
+    try:
+        file_path = Path(path).resolve()
+    except OSError:
+        return
+
+    for root, index in _INDEX_CACHE.items():
+        try:
+            rel = str(file_path.relative_to(root))
+        except ValueError:
+            continue
+
+        try:
+            _refresh_index_entry(index, rel, file_path)
+        except Exception:
+            logger.warning(
+                "Failed to refresh repository index entry for %s; it "
+                "may be stale until this process reindexes.",
+                rel,
+                exc_info=True,
+            )
+
+
+def _refresh_index_entry(index: RepositoryIndex, rel: str, file_path: Path) -> None:
+    """
+    Drop `rel`'s previous entry from `index`, then re-add it from a
+    fresh parse if the file still exists and is still Python source.
+    """
+
+    index.symbols = {
+        name: kept
+        for name, locations in index.symbols.items()
+        if (kept := [loc for loc in locations if loc["file"] != rel])
+    }
+    index.imports.pop(rel, None)
+
+    if rel in index.files:
+        index.files.remove(rel)
+
+    if not file_path.exists() or file_path.suffix not in SOURCE_EXTENSIONS:
+        return
+
+    tree = _parse_python(file_path)
+
+    if tree is None:
+        return
+
+    index.files.append(rel)
+    index.files.sort()
+
+    definitions, file_imports = _extract_definitions_and_imports(tree)
+
+    for name, line, kind in definitions:
+        index.symbols.setdefault(name, []).append(
+            {"file": rel, "line": line, "type": kind}
+        )
+
+    if file_imports:
+        index.imports[rel] = file_imports
+
+
 def _search(
     root: Path,
     pattern: re.Pattern[str],

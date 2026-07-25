@@ -339,3 +339,37 @@ def test_deactivating_preview_mode_restores_direct_writes(tmp_path):
 
     assert file.read_text() == "print('hi')\n"
     assert not manager.has_pending()
+
+
+# ---------------------------------------------------------------------
+# Direct writes refresh the repository index (no stale find_symbol
+# results after create_file/edit_lines/replace_in_file/patch_file).
+# ---------------------------------------------------------------------
+
+
+def test_create_file_refreshes_repository_index(tmp_path):
+    from src.tools.repo_tools import find_symbol
+
+    # Prime the cache for this root before the file exists.
+    find_symbol("brand_new")
+
+    create_file(str(tmp_path / "new.py"), "def brand_new():\n    return 1\n")
+
+    assert find_symbol("brand_new") == [
+        {"file": "new.py", "line": 1, "type": "function"}
+    ]
+
+
+def test_edit_lines_refreshes_repository_index(tmp_path):
+    from src.tools.repo_tools import find_symbol
+
+    file = tmp_path / "module.py"
+    file.write_text("def old_name():\n    return 1\n")
+    find_symbol("old_name")
+
+    edit_lines(str(file), 1, 1, "def new_name():")
+
+    assert find_symbol("new_name") == [
+        {"file": "module.py", "line": 1, "type": "function"}
+    ]
+    assert find_symbol("old_name") == []

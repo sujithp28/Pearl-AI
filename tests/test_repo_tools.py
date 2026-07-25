@@ -5,7 +5,9 @@ from src.tools.repo_tools import (
     explain_file,
     find_references,
     find_symbol,
+    get_repository_index,
     index_repository,
+    refresh_indexed_file,
     search_text,
     summarize_project,
 )
@@ -345,3 +347,106 @@ def test_build_startup_index_primes_the_cache(tmp_path):
 
 def test_build_startup_index_does_not_raise_for_missing_path(tmp_path):
     build_startup_index("does-not-exist")
+
+
+# ---------------------------------------------------------------------
+# refresh_indexed_file: targeted per-file refresh, no full rebuild
+# ---------------------------------------------------------------------
+
+
+def test_refresh_indexed_file_picks_up_a_new_symbol(tmp_path):
+    _write_sample_project(tmp_path)
+
+    # Prime the cache (mirrors test_find_symbol_reuses_cached_index_
+    # within_a_session, which shows a raw write alone is NOT picked
+    # up without an explicit refresh).
+    find_symbol("foo")
+
+    new_file = tmp_path / "pkg" / "c.py"
+    new_file.write_text("def newly_added():\n    return 2\n")
+
+    refresh_indexed_file(str(new_file))
+
+    assert find_symbol("newly_added") == [
+        {"file": "pkg/c.py", "line": 1, "type": "function"}
+    ]
+
+
+def test_refresh_indexed_file_picks_up_a_modified_symbol(tmp_path):
+    _write_sample_project(tmp_path)
+
+    find_symbol("foo")
+
+    target = tmp_path / "pkg" / "a.py"
+    # Shift `foo`'s definition down by two lines.
+    target.write_text("\n\n" + target.read_text())
+
+    refresh_indexed_file(str(target))
+
+    assert find_symbol("foo") == [{"file": "pkg/a.py", "line": 3, "type": "function"}]
+
+
+def test_refresh_indexed_file_removes_symbols_for_a_deleted_file(tmp_path):
+    _write_sample_project(tmp_path)
+
+    find_symbol("foo")
+    assert find_symbol("foo") != []
+
+    (tmp_path / "pkg" / "a.py").unlink()
+    refresh_indexed_file(str(tmp_path / "pkg" / "a.py"))
+
+    assert find_symbol("foo") == []
+
+
+def test_refresh_indexed_file_does_not_rebuild_untouched_files(tmp_path, monkeypatch):
+    _write_sample_project(tmp_path)
+
+    index = get_repository_index()
+    baz_before = index.symbols["baz"]
+
+    new_file = tmp_path / "pkg" / "c.py"
+    new_file.write_text("def another():\n    return 3\n")
+
+    import src.tools.repo_tools as repo_tools_module
+
+    original_parse = repo_tools_module._parse_python
+    parsed_files = []
+
+    def _tracking_parse(file_path):
+        parsed_files.append(file_path)
+        return original_parse(file_path)
+
+    monkeypatch.setattr(repo_tools_module, "_parse_python", _tracking_parse)
+
+    refresh_indexed_file(str(new_file))
+
+    # Only the one changed file was re-parsed — a.py/b.py (already
+    # indexed) were not touched, proving this is a targeted refresh,
+    # not a full rebuild.
+    assert parsed_files == [new_file.resolve()]
+
+    # Everything indexed from other files is unaffected.
+    assert index.symbols["baz"] == baz_before
+    assert index.symbols["another"] == [
+        {"file": "pkg/c.py", "line": 1, "type": "function"}
+    ]
+
+
+def test_refresh_indexed_file_ignores_non_python_files(tmp_path):
+    _write_sample_project(tmp_path)
+
+    index = get_repository_index()
+    files_before = list(index.files)
+
+    text_file = tmp_path / "notes.txt"
+    text_file.write_text("hello")
+    refresh_indexed_file(str(text_file))
+
+    assert index.files == files_before
+
+
+def test_refresh_indexed_file_is_a_noop_when_root_is_not_cached(tmp_path):
+    # No get_repository_index()/find_symbol() call has been made yet
+    # for this root, so _INDEX_CACHE has no entry to update — must
+    # not raise.
+    refresh_indexed_file(str(tmp_path / "pkg" / "a.py"))

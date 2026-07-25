@@ -326,6 +326,10 @@ def _apply_or_stage(file_path: Path, updated_content: str, summary: str) -> str:
 
     file_path.write_text(updated_content, encoding="utf-8")
 
+    from src.tools.repo_tools import refresh_indexed_file
+
+    refresh_indexed_file(str(file_path))
+
     return summary
 
 

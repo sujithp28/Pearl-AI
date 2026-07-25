@@ -5,6 +5,7 @@ import pytest
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.executor import AutonomousExecutor, ProgressEvent
 from src.agent.planner import Planner
+from src.tools.command_approval import CommandApprovalManager
 from src.tools.edit_tools import (
     create_file,
     replace_in_file,
@@ -13,19 +14,21 @@ from src.tools.edit_tools import (
 from src.tools.metadata import tool
 from src.tools.patch_manager import PatchManager
 from src.tools.registry import ToolRegistry
+from src.tools.shell_tools import execute_shell, set_active_command_approver
 
 
 @pytest.fixture(autouse=True)
-def _no_leaked_patch_manager():
+def _no_leaked_approval_state():
     """
-    Guarantee preview mode is off after every test, even if a test
-    leaves a run paused (awaiting_approval) without resolving it —
-    otherwise that state could leak into unrelated tests via the
-    module-level contextvar in `edit_tools.py`.
+    Guarantee preview/approval mode is off after every test, even if
+    a test leaves a run paused (awaiting_approval) without resolving
+    it — otherwise that state could leak into unrelated tests via the
+    module-level contextvars in `edit_tools.py`/`shell_tools.py`.
     """
 
     yield
     set_active_patch_manager(None)
+    set_active_command_approver(None)
 
 
 @tool(
@@ -47,12 +50,14 @@ def build_executor(
     max_replans: int = 3,
     on_progress=None,
     patch_manager: PatchManager | None = None,
+    command_approver: CommandApprovalManager | None = None,
 ):
     registry = ToolRegistry()
     registry.register(add)
     registry.register(boom)
     registry.register(create_file)
     registry.register(replace_in_file)
+    registry.register(execute_shell)
 
     dispatcher = ToolDispatcher(registry)
     planner = Planner(registry, dispatcher)
@@ -64,6 +69,7 @@ def build_executor(
         max_replans=max_replans,
         on_progress=on_progress,
         patch_manager=patch_manager,
+        command_approver=command_approver,
     ), planner
 
 
@@ -907,6 +913,44 @@ def test_single_file_preview_pauses_for_approval(monkeypatch, workspace):
     assert report.steps[0].succeeded
 
 
+def test_approve_refreshes_repository_index_for_applied_files(monkeypatch, workspace):
+    from src.tools.repo_tools import find_symbol
+
+    executor, planner = build_executor()
+    target = workspace / "a.py"
+
+    # Prime the cache before the file exists, mirroring a planner
+    # step later in the same run expecting to look up a symbol it
+    # just asked to create.
+    find_symbol("brand_new", path=str(workspace))
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {
+                    "path": str(target),
+                    "content": "def brand_new():\n    return 1\n",
+                },
+            },
+        ),
+    )
+
+    report = executor.run("create a.py")
+    assert report.stop_reason == "awaiting_approval"
+
+    # Still paused (not yet applied): the index must not see it yet.
+    assert find_symbol("brand_new", path=str(workspace)) == []
+
+    executor.approve()
+
+    assert find_symbol("brand_new", path=str(workspace)) == [
+        {"file": "a.py", "line": 1, "type": "function"}
+    ]
+
+
 def test_multi_file_preview_groups_into_a_single_batch(monkeypatch, workspace):
     executor, planner = build_executor()
     a, b, c = (str(workspace / name) for name in ("a.py", "b.py", "c.py"))
@@ -959,6 +1003,151 @@ def test_approval_writes_files_and_completes(monkeypatch, workspace):
     assert not executor.is_awaiting_approval()
     # Execution history is preserved unchanged across the pause.
     assert final.steps == paused.steps
+
+
+# ---------------------------------------------------------------------
+# Shell-command approval (Phase 26)
+# ---------------------------------------------------------------------
+
+
+def test_execute_shell_step_pauses_for_approval(monkeypatch, workspace):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of({"tool": "execute_shell", "arguments": {"command": "echo hi"}}),
+    )
+
+    report = executor.run("say hi")
+
+    assert report.stop_reason == "awaiting_approval"
+    assert executor.is_awaiting_approval()
+    assert executor.command_approver.has_pending()
+    assert executor.command_approver.affected_commands() == ["echo hi"]
+    assert report.steps[0].succeeded
+
+
+def test_approving_runs_the_staged_command_and_completes(monkeypatch, workspace):
+    executor, planner = build_executor()
+    marker = workspace / "marker.txt"
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "execute_shell",
+                "arguments": {"command": f"touch {marker.name}"},
+            },
+        ),
+    )
+
+    paused = executor.run("touch a marker file")
+    assert paused.stop_reason == "awaiting_approval"
+    assert not marker.exists()
+
+    final = executor.approve()
+
+    assert final.stop_reason == "completed"
+    assert final.succeeded
+    assert marker.exists()
+    assert not executor.command_approver.has_pending()
+
+
+def test_rejecting_discards_the_staged_command_without_running_it(
+    monkeypatch, workspace
+):
+    executor, planner = build_executor()
+    marker = workspace / "marker.txt"
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "execute_shell",
+                "arguments": {"command": f"touch {marker.name}"},
+            },
+        ),
+    )
+
+    paused = executor.run("touch a marker file")
+    assert paused.stop_reason == "awaiting_approval"
+
+    final = executor.reject()
+
+    assert final.stop_reason == "rejected"
+    assert not marker.exists()
+    assert not executor.command_approver.has_pending()
+
+
+def test_file_edit_and_shell_command_pause_in_the_same_batch(monkeypatch, workspace):
+    executor, planner = build_executor()
+    target = str(workspace / "a.py")
+    marker = workspace / "marker.txt"
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "create_file",
+                "arguments": {"path": target, "content": "1\n"},
+            },
+            {
+                "tool": "execute_shell",
+                "arguments": {"command": f"touch {marker.name}"},
+            },
+        ),
+    )
+
+    paused = executor.run("create a file and touch a marker")
+
+    assert paused.stop_reason == "awaiting_approval"
+    assert executor.patch_manager.has_pending()
+    assert executor.command_approver.has_pending()
+
+    final = executor.approve()
+
+    assert final.stop_reason == "completed"
+    assert (workspace / "a.py").exists()
+    assert marker.exists()
+
+
+def test_cancel_while_awaiting_command_approval_discards_it(monkeypatch, workspace):
+    executor, planner = build_executor()
+    marker = workspace / "marker.txt"
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "execute_shell",
+                "arguments": {"command": f"touch {marker.name}"},
+            },
+        ),
+    )
+
+    paused = executor.run("touch a marker file")
+    assert paused.stop_reason == "awaiting_approval"
+
+    executor.cancel()
+    final = executor.approve()
+
+    assert final.stop_reason == "cancelled"
+    assert not marker.exists()
+    assert not executor.command_approver.has_pending()
+
+
+def test_execute_shell_direct_call_still_runs_immediately_outside_a_run():
+    # Sanity check that the tool function itself, called with no
+    # executor/approver involved at all, is unaffected by any of this
+    # (matches direct CLI / `tools/call` usage).
+    result = execute_shell("echo hi")
+
+    assert result.stdout.strip() == "hi"
 
 
 def test_rejection_discards_patches_and_returns_cleanly(monkeypatch, workspace):

@@ -122,3 +122,64 @@ def test_write_file_rejects_symlink_escape(tmp_path):
         assert not (outside_dir / "evil.txt").exists()
     finally:
         shutil.rmtree(outside_dir)
+
+
+# ---------------------------------------------------------------------
+# Read-side workspace confinement: read_file/file_exists/file_size/
+# list_directory must reject paths outside the workspace exactly like
+# the write-side tools already did, instead of allowing arbitrary
+# filesystem reads.
+# ---------------------------------------------------------------------
+
+
+def test_read_file_rejects_path_outside_workspace(tmp_path):
+    outside = tmp_path.parent / "secret.txt"
+    outside.write_text("top secret")
+
+    try:
+        with pytest.raises(PermissionError):
+            read_file(str(outside))
+    finally:
+        outside.unlink()
+
+
+def test_read_file_rejects_path_traversal(tmp_path):
+    with pytest.raises(PermissionError):
+        read_file("../escape.txt")
+
+
+def test_file_exists_returns_false_for_path_outside_workspace(tmp_path):
+    outside = tmp_path.parent / "secret.txt"
+    outside.write_text("top secret")
+
+    try:
+        assert file_exists(str(outside)) is False
+    finally:
+        outside.unlink()
+
+
+def test_file_exists_still_works_for_missing_file_inside_workspace(tmp_path):
+    assert file_exists(str(tmp_path / "does-not-exist.txt")) is False
+
+
+def test_file_size_rejects_path_outside_workspace(tmp_path):
+    outside = tmp_path.parent / "secret.txt"
+    outside.write_text("top secret")
+
+    try:
+        with pytest.raises(PermissionError):
+            file_size(str(outside))
+    finally:
+        outside.unlink()
+
+
+def test_list_directory_rejects_path_outside_workspace(tmp_path):
+    with pytest.raises(PermissionError):
+        list_directory(str(tmp_path.parent))
+
+
+def test_read_file_still_works_inside_workspace(tmp_path):
+    file = tmp_path / "inside.txt"
+    write_file(str(file), "hello")
+
+    assert read_file(str(file)) == "hello"

@@ -232,6 +232,51 @@ def test_run_autonomous_marks_task_failed_on_max_iterations(monkeypatch):
     assert agent.memory.tasks[0].status == "failed"
 
 
+# ---------------------------------------------------------------------
+# Legacy execution paths: deprecated, still functional
+# ---------------------------------------------------------------------
+
+
+def test_run_emits_deprecation_warning(monkeypatch):
+    agent = build_agent()
+
+    monkeypatch.setattr(
+        agent.selector,
+        "select",
+        lambda prompt: ToolCall(tool_name="add", args=(), kwargs={"a": 1, "b": 2}),
+    )
+
+    with pytest.warns(DeprecationWarning, match="run_autonomous"):
+        agent.run("add 1 and 2")
+
+
+def test_plan_and_run_emits_deprecation_warning(monkeypatch):
+    agent = build_agent()
+
+    monkeypatch.setattr(
+        agent.planner.client,
+        "generate_json",
+        lambda prompt: {"steps": [{"tool": "add", "arguments": {"a": 1, "b": 2}}]},
+    )
+
+    with pytest.warns(DeprecationWarning, match="run_autonomous"):
+        agent.plan_and_run("add 1 and 2")
+
+
+def test_run_autonomous_does_not_emit_deprecation_warning(monkeypatch, recwarn):
+    agent = build_agent()
+
+    monkeypatch.setattr(
+        agent.planner.client,
+        "generate_json",
+        lambda prompt: {"steps": [{"tool": "add", "arguments": {"a": 1, "b": 2}}]},
+    )
+
+    agent.run_autonomous("add 1 and 2")
+
+    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+
+
 def test_agent_accepts_injected_memory():
     from src.memory import Memory
 

@@ -18,6 +18,7 @@ from typing import Any
 from src.tools.file_tools import _ensure_within_workspace
 from src.tools.metadata import tool
 from src.tools.patch_manager import PatchManager
+from src.tools.repo_tools import refresh_indexed_file
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +208,7 @@ def create_file(path: str, content: str = "") -> None | str:
     logger.info("Creating file: %s", file_path)
 
     file_path.write_text(content, encoding="utf-8")
+    refresh_indexed_file(str(file_path))
 
 
 @tool(
@@ -268,6 +270,7 @@ def replace_in_file(
     )
 
     file_path.write_text(updated_text, encoding="utf-8")
+    refresh_indexed_file(str(file_path))
 
     return replaced
 
@@ -329,6 +332,7 @@ def edit_lines(
     logger.info("Editing lines %d-%d in %s", start_line, end_line, file_path)
 
     _write_lines(file_path, new_lines, trailing_newline)
+    refresh_indexed_file(str(file_path))
 
 
 @tool(
@@ -371,3 +375,4 @@ def patch_file(path: str, patch: str) -> None | str:
     logger.info("Patching file: %s", file_path)
 
     _write_lines(file_path, patched_lines, trailing_newline)
+    refresh_indexed_file(str(file_path))

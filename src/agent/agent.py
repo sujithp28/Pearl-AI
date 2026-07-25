@@ -7,6 +7,7 @@ Main entry point for the AI Coding Agent.
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import Any, Callable
 
 from src.agent.dispatcher import ToolDispatcher
@@ -30,18 +31,16 @@ class PearlAgent:
     """
     Main Pearl AI Coding Agent.
 
-    Responsibilities
-    ----------------
-    - Receive user requests.
-    - Ask the LLM which tool should be executed.
-    - Execute the selected tool.
-    - Return the tool result.
+    `run_autonomous()` is the recommended entry point for executing a
+    request end-to-end: it plans, executes each step, replans on
+    failure, and pauses for patch-preview approval before any file
+    write reaches disk. Prefer it for any new integration.
 
-    Future versions will extend this workflow with:
-    - Memory
-    - Planning
-    - Multi-tool execution
-    - Reflection
+    `run()` (single-tool selection) and `plan_and_run()` (sequential
+    execution with no replanning or patch approval) predate
+    `run_autonomous()` and are kept only for backward compatibility —
+    see their docstrings. Neither gates file edits behind approval the
+    way `run_autonomous()` does.
     """
 
     def __init__(
@@ -87,7 +86,13 @@ class PearlAgent:
         prompt: str,
     ) -> Any:
         """
-        Execute a complete user request.
+        Execute a single tool call selected for `prompt`.
+
+        .. deprecated::
+            Legacy single-step path, kept for backward compatibility.
+            Prefer `run_autonomous()`, which plans multi-step tasks,
+            replans on failure, and pauses for patch-preview approval
+            before writing any file — this method does neither.
 
         Workflow
 
@@ -108,6 +113,14 @@ class PearlAgent:
               ▼
             Result
         """
+
+        warnings.warn(
+            "PearlAgent.run() is deprecated; prefer run_autonomous(), "
+            "which plans, replans on failure, and gates file writes "
+            "behind patch-preview approval.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         logger.info("User Prompt: %s", prompt)
 
@@ -182,8 +195,15 @@ class PearlAgent:
         prompt: str,
     ) -> list[StepResult]:
         """
-        Break a complex request into multiple steps and execute
-        them sequentially.
+        Break a complex request into multiple steps and execute them
+        sequentially, stopping at the first failure.
+
+        .. deprecated::
+            Legacy multi-step path, kept for backward compatibility.
+            Prefer `run_autonomous()`, which additionally replans on
+            failure instead of just stopping, and pauses for
+            patch-preview approval before writing any file — this
+            method does neither.
 
         Workflow
 
@@ -201,6 +221,14 @@ class PearlAgent:
               ▼
           [ StepResult, ... ]
         """
+
+        warnings.warn(
+            "PearlAgent.plan_and_run() is deprecated; prefer "
+            "run_autonomous(), which additionally replans on failure "
+            "and gates file writes behind patch-preview approval.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         logger.info("Planning multi-step execution for: %s", prompt)
 
@@ -237,12 +265,12 @@ class PearlAgent:
         on_progress: Callable[[ProgressEvent], None] | None = None,
     ) -> ExecutionReport:
         """
-        Autonomously execute a multi-step task: plan once via the
-        existing `Planner`, then run each step in turn via the
-        existing `ToolDispatcher`, evaluating and summarizing the
-        result after every step. A failed step triggers a request to
-        the Planner for a revised remaining plan (up to
-        `max_replans` times) instead of stopping immediately.
+        Recommended entry point: autonomously execute a multi-step
+        task. Plans once via the existing `Planner`, then runs each
+        step in turn via the existing `ToolDispatcher`, evaluating and
+        summarizing the result after every step. A failed step
+        triggers a request to the Planner for a revised remaining plan
+        (up to `max_replans` times) instead of stopping immediately.
         Stops on completion, an unrecoverable failure, or
         `max_iterations`.
 

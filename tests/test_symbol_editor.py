@@ -462,3 +462,19 @@ def test_find_function_without_path_raises_when_symbol_unknown(tmp_path, monkeyp
 
     with pytest.raises(SymbolNotFoundError):
         find_function("totally_unknown_symbol")
+
+
+def test_replace_function_refreshes_repository_index(tmp_path, monkeypatch):
+    from src.tools.repo_tools import find_symbol
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.py").write_text(SAMPLE)
+
+    find_symbol("foo")
+
+    replace_function("foo", "def foo(a, b, c):\n    return a + b + c\n")
+
+    locations = find_symbol("foo")
+    assert len(locations) == 1
+    assert locations[0]["file"] == "a.py"
+    assert locations[0]["type"] == "function"

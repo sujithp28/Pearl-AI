@@ -31,6 +31,20 @@ def _ensure_within_workspace(path: str) -> Path:
     return resolved
 
 
+def _refresh_repo_index(file_path: Path) -> None:
+    """
+    Best-effort refresh of the repository index's cached entry for
+    this file, after a write/delete here.
+
+    Imported lazily: `repo_tools` imports this module for workspace
+    path validation, so a top-level import here would be circular.
+    """
+
+    from src.tools.repo_tools import refresh_indexed_file
+
+    refresh_indexed_file(str(file_path))
+
+
 @tool(
     description="Read the contents of a UTF-8 text file.",
     parameters={
@@ -43,7 +57,7 @@ def read_file(path: str) -> str:
     Read a UTF-8 text file.
     """
 
-    file_path = Path(path)
+    file_path = _ensure_within_workspace(path)
 
     if not file_path.exists():
         raise FileNotFoundError(path)
@@ -80,6 +94,7 @@ def write_file(path: str, content: str) -> None:
         content,
         encoding="utf-8",
     )
+    _refresh_repo_index(file_path)
 
 
 @tool(
@@ -108,6 +123,8 @@ def append_file(path: str, content: str) -> None:
     ) as file:
         file.write(content)
 
+    _refresh_repo_index(file_path)
+
 
 @tool(
     description="Return whether a file exists.",
@@ -121,7 +138,12 @@ def file_exists(path: str) -> bool:
     Check if a file exists.
     """
 
-    return Path(path).exists()
+    try:
+        file_path = _ensure_within_workspace(path)
+    except PermissionError:
+        return False
+
+    return file_path.exists()
 
 
 @tool(
@@ -136,7 +158,7 @@ def list_directory(path: str = ".") -> list[str]:
     List directory contents.
     """
 
-    directory = Path(path)
+    directory = _ensure_within_workspace(path)
 
     if not directory.exists():
         raise FileNotFoundError(path)
@@ -189,6 +211,7 @@ def delete_file(path: str) -> None:
         raise FileNotFoundError(path)
 
     file_path.unlink()
+    _refresh_repo_index(file_path)
 
     logger.info("Deleted file: %s", file_path)
 
@@ -205,7 +228,7 @@ def file_size(path: str) -> int:
     Return file size.
     """
 
-    file_path = Path(path)
+    file_path = _ensure_within_workspace(path)
 
     if not file_path.exists():
         raise FileNotFoundError(path)
