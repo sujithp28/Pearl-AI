@@ -184,9 +184,15 @@ test("falls back to pearl/chat when the plan needs no tool", async () => {
   ]);
   assert.equal(requests.length, 0, "no tool approval should be requested");
   assert.equal(planCalls.length, 0, "no plan approval should be requested");
+  // pearl/personality is fetched once up front for timeline labels
+  // (see the "personality-driven timeline labels" test group below);
+  // a fake sender without a handler for it just resolves to a
+  // gracefully-caught null, so it doesn't need one registered here —
+  // only the *order and presence* of the calls that matter to this
+  // test are asserted.
   assert.deepEqual(
     calls.map((c) => c.method),
-    ["pearl/planOnly", "pearl/chat"]
+    ["pearl/personality", "pearl/planOnly", "pearl/chat"]
   );
 });
 
@@ -626,6 +632,111 @@ test("timeline reaches 'completed' after every step in an executed plan succeeds
     "running_tool",
     "completed",
   ]);
+});
+
+// ---------------------------------------------------------------------
+// Personality-driven timeline labels (pearl/personality)
+// ---------------------------------------------------------------------
+
+const PERSONALITY_LABELS = {
+  planning: "🧠 Thinking...",
+  plan_ready: "📋 Plan ready.",
+  waiting_approval: "⏳ Awaiting approval.",
+  running_tool: "⚙️ Running...",
+  completed: "🎉 Completed!",
+};
+
+test("timeline events carry personality labels once the fetch resolves", async () => {
+  const { sender } = fakeSender({
+    "pearl/personality": () => ({ labels: PERSONALITY_LABELS }),
+    "pearl/planOnly": () => ({
+      steps: [{ tool: "read_file", arguments: { path: "a.txt" } }],
+    }),
+  });
+  const { events, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("cancel");
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("read a.txt");
+
+  const timelineEvents = events.filter((e) => e.type === "timeline") as Array<{
+    stage: string | null;
+    labels?: typeof PERSONALITY_LABELS;
+  }>;
+
+  // The personality fetch is kicked off by the first postTimeline
+  // call but not awaited there — it's a background promise that
+  // resolves on its own "tick", so it may or may not have settled by
+  // the very first ("planning") event; every event after it, within
+  // the same synchronous-ish flow, has had time to see it resolve.
+  const withLabels = timelineEvents.filter((e) => e.labels);
+  assert.ok(withLabels.length > 0, "expected at least one timeline event with labels");
+
+  for (const event of withLabels) {
+    assert.equal(event.labels?.[event.stage as keyof typeof PERSONALITY_LABELS], PERSONALITY_LABELS[event.stage as keyof typeof PERSONALITY_LABELS]);
+  }
+});
+
+test("handleUserMessage never blocks on the personality fetch", async () => {
+  // A sender whose pearl/personality handler never resolves at all —
+  // if handleUserMessage awaited it directly, this test would hang
+  // and time out. It must complete promptly regardless.
+  const { sender } = fakeSender({
+    "pearl/personality": () => new Promise(() => {}),
+    "pearl/planOnly": () => ({ steps: [{ tool: "none", arguments: {} }] }),
+    "pearl/chat": () => ({ message: "hi" }),
+  });
+  const { messages, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("hello");
+
+  assert.deepEqual(strip(messages), [
+    { role: "user", text: "hello" },
+    { role: "assistant", text: "hi" },
+  ]);
+});
+
+test("timeline falls back to no labels when the sender doesn't support pearl/personality", async () => {
+  const { sender } = fakeSender({
+    "pearl/planOnly": () => ({
+      steps: [{ tool: "read_file", arguments: { path: "a.txt" } }],
+    }),
+  });
+  const { events, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("cancel");
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("read a.txt");
+
+  const timelineEvents = events.filter((e) => e.type === "timeline") as Array<{
+    labels?: unknown;
+  }>;
+
+  assert.ok(timelineEvents.length > 0);
+  assert.ok(timelineEvents.every((e) => e.labels === undefined));
+});
+
+test("the personality fetch happens at most once across multiple messages", async () => {
+  const { sender, calls } = fakeSender({
+    "pearl/personality": () => ({ labels: PERSONALITY_LABELS }),
+    "pearl/planOnly": () => ({ steps: [{ tool: "none", arguments: {} }] }),
+    "pearl/chat": () => ({ message: "hi" }),
+  });
+  const { post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("hello");
+  await controller.handleUserMessage("hello again");
+
+  const personalityCalls = calls.filter((c) => c.method === "pearl/personality");
+  assert.equal(personalityCalls.length, 1);
 });
 
 // ---------------------------------------------------------------------

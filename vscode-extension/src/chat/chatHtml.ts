@@ -539,7 +539,7 @@ export function getChatHtml(): string {
         }
       }
 
-      function updateTimeline(stage) {
+      function updateTimeline(stage, labels) {
         if (!stage) {
           if (timelineEl) {
             timelineEl.remove();
@@ -570,7 +570,11 @@ export function getChatHtml(): string {
             className += " active";
           }
           stepEl.className = className;
-          stepEl.textContent = entry[1];
+          // Personality-flavored wording from the server
+          // (pearl/personality) when available; falls back to the
+          // static English label otherwise (e.g. the fetch failed, or
+          // an older server that doesn't support it yet).
+          stepEl.textContent = (labels && labels[entry[0]]) || entry[1];
           timelineEl.appendChild(stepEl);
 
           if (index < TIMELINE_STAGES.length - 1) {
@@ -877,7 +881,7 @@ export function getChatHtml(): string {
         } else if (data.type === "loading") {
           setLoading(!!data.show);
         } else if (data.type === "timeline") {
-          updateTimeline(data.stage);
+          updateTimeline(data.stage, data.labels);
         } else if (data.type === "executionState") {
           updateExecutionState(data.state);
         } else if (data.type === "progress") {

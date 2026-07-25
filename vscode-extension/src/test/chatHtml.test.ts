@@ -140,6 +140,17 @@ test("getChatHtml clears the timeline when the stage is null", () => {
   assert.match(html, /timelineEl\.remove\(\)/);
 });
 
+test("getChatHtml uses server-provided personality labels for timeline steps when given", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /function updateTimeline\(stage, labels\)/);
+  assert.match(
+    html,
+    /stepEl\.textContent = \(labels && labels\[entry\[0\]\]\) \|\| entry\[1\];/
+  );
+  assert.match(html, /updateTimeline\(data\.stage, data\.labels\)/);
+});
+
 // ---------------------------------------------------------------------
 // Message rendering: bubbles, timestamps, markdown content, error cards
 // ---------------------------------------------------------------------

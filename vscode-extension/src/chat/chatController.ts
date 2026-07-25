@@ -44,6 +44,7 @@ import {
   runAutonomous as requestAutonomousRun,
 } from "../mcp/patchClient";
 import { PlannedStep, planOnly } from "../mcp/planClient";
+import { TimelineLabels, fetchTimelineLabels } from "../mcp/personalityClient";
 import { ProgressEvent, parseProgressEvent } from "../mcp/progressClient";
 import { RequestSender } from "../mcp/requestSender";
 import { ToolCallResult, callTool } from "../mcp/toolCallClient";
@@ -67,7 +68,7 @@ export interface ChatMessage {
 export type WebviewMessage =
   | { type: "addMessage"; message: ChatMessage }
   | { type: "loading"; show: boolean }
-  | { type: "timeline"; stage: TimelineStage | null }
+  | { type: "timeline"; stage: TimelineStage | null; labels?: TimelineLabels }
   | { type: "executionState"; state: ExecutionState | null }
   | { type: "progress"; event: ProgressEvent | null };
 
@@ -77,6 +78,18 @@ const NO_TOOL = "none";
 
 export class ChatController {
   private readonly history: ChatMessage[] = [];
+  // Fire-and-forget, not awaited on the message-handling critical
+  // path: `postTimeline` uses whatever's in `timelineLabels` *right
+  // now* (null until the first fetch resolves) rather than blocking
+  // every message on a round trip first. Personality is a per-session
+  // server setting, not something that changes mid-conversation in
+  // normal use, so fetching once and reusing it — rather than
+  // re-fetching before every message — is the right trade: the very
+  // first timeline update of a session may render in the static
+  // English fallback for a moment, every one after that (typically
+  // within well under a second) uses the real wording.
+  private timelineLabels: TimelineLabels | null = null;
+  private timelineLabelsFetchStarted = false;
 
   constructor(
     private readonly connection: RequestSender,
@@ -88,6 +101,23 @@ export class ChatController {
 
   getHistory(): readonly ChatMessage[] {
     return this.history;
+  }
+
+  private ensureTimelineLabelsFetching(): void {
+    if (this.timelineLabelsFetchStarted) {
+      return;
+    }
+
+    this.timelineLabelsFetchStarted = true;
+
+    fetchTimelineLabels(this.connection)
+      .then((labels) => {
+        this.timelineLabels = labels;
+      })
+      .catch(() => {
+        // Leave timelineLabels as null — the webview already falls
+        // back to its own static English labels for that case.
+      });
   }
 
   async handleUserMessage(text: string): Promise<void> {
@@ -383,6 +413,14 @@ export class ChatController {
   }
 
   private postTimeline(stage: TimelineStage | null): void {
-    this.post({ type: "timeline", stage });
+    if (stage) {
+      this.ensureTimelineLabelsFetching();
+    }
+
+    this.post({
+      type: "timeline",
+      stage,
+      labels: this.timelineLabels ?? undefined,
+    });
   }
 }

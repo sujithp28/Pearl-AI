@@ -19,11 +19,14 @@ class EventKind(str, Enum):
     What Pearl is telling the user about right now.
 
     The first 20 mirror the personality spec's emoji-mapping table
-    one-to-one. The remaining four (`EXECUTING`, `REPLANNING`,
-    `CANCELLED`, `REJECTED`) exist to cover `AutonomousExecutor`'s
-    existing progress states that don't map cleanly onto any of the
-    original 20 (e.g. "a tool step is running" isn't specifically
-    "testing" or "writing code" — it could be either).
+    one-to-one. The rest exist to cover Pearl's own progress/timeline
+    states that don't map cleanly onto any of the original 20 (e.g.
+    "a tool step is running" isn't specifically "testing" or "writing
+    code" — it could be either): `EXECUTING`, `REPLANNING`,
+    `CANCELLED`, `REJECTED` (from `AutonomousExecutor`'s progress
+    events) and `PLAN_READY` (the VS Code extension's plan-preview
+    timeline — "I've made a plan, here it is for your review", distinct
+    from `PLANNING` itself, which is "still thinking").
     """
 
     PLANNING = "planning"
@@ -53,6 +56,7 @@ class EventKind(str, Enum):
     REPLANNING = "replanning"
     CANCELLED = "cancelled"
     REJECTED = "rejected"
+    PLAN_READY = "plan_ready"
 
 
 EMOJI_MAP: dict[EventKind, str] = {
@@ -80,6 +84,7 @@ EMOJI_MAP: dict[EventKind, str] = {
     EventKind.REPLANNING: "🔄",
     EventKind.CANCELLED: "🛑",
     EventKind.REJECTED: "🗑️",
+    EventKind.PLAN_READY: "📋",
 }
 
 

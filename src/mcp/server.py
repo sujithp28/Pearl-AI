@@ -39,6 +39,7 @@ from src.mcp.protocol import (
     tool_to_mcp_schema,
 )
 from src.memory import Memory
+from src.personality import EventKind, PersonalityManager
 from src.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -152,12 +153,14 @@ class MCPServer:
         planner: Planner | None = None,
         memory: Memory | None = None,
         llm: LLMClient | None = None,
+        personality: PersonalityManager | None = None,
     ) -> None:
         self.registry = registry
         self.dispatcher = dispatcher or ToolDispatcher(registry)
         self.planner = planner
         self.memory = memory or Memory()
         self.llm = llm
+        self._personality = personality or PersonalityManager()
         self._autonomous_executor: AutonomousExecutor | None = None
 
     # -- Request handling ---------------------------------------------------
@@ -227,7 +230,7 @@ class MCPServer:
         """
 
         capabilities: dict[str, Any] = {"tools": {}}
-        experimental: dict[str, Any] = {}
+        experimental: dict[str, Any] = {"pearlPersonality": {}}
 
         if self.planner is not None:
             experimental["pearlPlanning"] = {}
@@ -505,6 +508,42 @@ class MCPServer:
 
         return self._autonomous_executor
 
+    # Keyed by the exact `TimelineStage` string values the VS Code
+    # extension's `handleUserMessage` plan-preview flow already uses
+    # (`chatController.ts`/`chatHtml.ts`) — that flow has no
+    # `AutonomousExecutor` (and so no `pearl/progress` stream) behind
+    # it at all, it's driven client-side via `pearl/planOnly` +
+    # `tools/call`, so its stage labels need their own, one-shot
+    # lookup instead.
+    _TIMELINE_EVENT_KINDS: dict[str, EventKind] = {
+        "planning": EventKind.PLANNING,
+        "plan_ready": EventKind.PLAN_READY,
+        "waiting_approval": EventKind.APPROVAL,
+        "running_tool": EventKind.EXECUTING,
+        "completed": EventKind.COMPLETED,
+    }
+
+    def _personality_labels(
+        self, params: dict[str, Any], notify: NotifyFn
+    ) -> dict[str, Any]:
+        """
+        Return the configured personality's wording for each of the
+        VS Code extension's plan-preview timeline stages (a
+        Pearl-specific extension beyond the core MCP methods).
+
+        Read-only, and cheap enough to call on every
+        `handleUserMessage` round rather than needing its own cache
+        invalidation story: `PersonalityManager.format()` is just a
+        couple of dict lookups.
+        """
+
+        labels = {
+            stage: self._personality.format(event_kind)
+            for stage, event_kind in self._TIMELINE_EVENT_KINDS.items()
+        }
+
+        return {"labels": labels}
+
     def _memory(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
         """
         Return the current contents of Memory (a Pearl-specific
@@ -537,6 +576,7 @@ class MCPServer:
         "pearl/approvePatches": _approve_patches,
         "pearl/rejectPatches": _reject_patches,
         "pearl/memory": _memory,
+        "pearl/personality": _personality_labels,
         "shutdown": _shutdown,
     }
 
