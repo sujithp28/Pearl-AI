@@ -37,7 +37,44 @@ work landed in this repository.
   behavior, which is what `generate_json` — and through it all
   planning/replanning — deliberately keeps doing.
 
+- **End-to-end tests against a real subprocess.**
+  `tests/test_e2e_mcp.py` spawns a real `python -m src.mcp` process
+  and drives it over real stdio with real JSON-RPC bytes — real
+  framing, real planner, real tool dispatch, real `PatchManager`
+  approval gate, real files on disk. The only faked component is the
+  model itself, via a new deterministic `scripted` provider
+  (`PEARL_LLM_PROVIDER=scripted`), because model output is genuinely
+  non-deterministic and can't be asserted on. Runs in CI as its own
+  step with no model server needed. This closes the blind spot that
+  let a wrong timeout constant ship past ~780 passing tests: every
+  test faked the transport and kept the logic, which is the opposite
+  of what was needed.
+- **`scripted` LLM provider** for offline/deterministic runs — also
+  useful for debugging the MCP protocol or the VS Code extension with
+  no model server running. Selectable only by explicit configuration,
+  never as a fallback, so a misconfigured real provider can't quietly
+  start serving canned answers.
+- **`pytest-timeout` (dev)** with a 60s per-test cap, so a subprocess
+  that starts but never answers fails in a minute with a usable
+  traceback instead of hanging a CI job for hours.
+- **Chat-mode capability grounding** (`src/prompts/system.py`, until
+  now an empty and unimported file). `LLMClient.generate()` gained an
+  optional `system` parameter; omitting it is the previous behavior,
+  which `generate_json` — and through it all planning — keeps doing,
+  since planning output is parsed as JSON and must stay unprimed.
+
 ### Fixed
+- **Pearl claimed to have performed actions it never took.** Asked to
+  "write hello world and tell me where you store the file", chat mode
+  printed code and said it "stores it in the /home/sujith directory";
+  nothing had been created. Asked "did u create a file", it deflected.
+  The chat model had no idea it was part of a coding agent. It now
+  answers "No, I did not create or edit any files in this reply."
+  Live testing drove the design: an initial draft phrased as "never
+  describe yourself as an AI language model" caused the real 3B model
+  to reply "as an AI language model, I don't have a physical
+  workspace" — echoing the forbidden phrase and stating something
+  false about itself. Rewritten in positive framing.
 - **Chat had no memory.** `_chat` recorded both turns into `Memory`
   but never sent them back to the model, so every reply was generated
   as if it were the first message of the conversation — "ok" would be

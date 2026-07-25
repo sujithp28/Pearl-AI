@@ -30,5 +30,14 @@ jobs:
       - name: Format check (ruff format)
         run: ruff format --check src/ tests/ benchmarks/
 
-      - name: Run tests
-        run: pytest -q
+      # Split so a failure says which layer broke rather than just
+      # "tests failed".
+      - name: Unit and integration tests
+        run: pytest -q --ignore=tests/test_e2e_mcp.py
+
+      # Spawns a real `python -m src.mcp` subprocess and drives it
+      # over real stdio. No model server needed: the LLM is replaced
+      # by the deterministic `scripted` provider, so everything except
+      # the model itself runs for real. See tests/test_e2e_mcp.py.
+      - name: End-to-end tests (real subprocess, real stdio)
+        run: pytest -q tests/test_e2e_mcp.py

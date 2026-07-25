@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +10,7 @@ from src.llm.providers import (
     GeminiProvider,
     LLMProvider,
     OpenAICompatibleProvider,
+    ScriptedProvider,
     create_provider,
 )
 from src.llm.providers.factory import SUPPORTED_PROVIDERS
@@ -167,7 +169,29 @@ def test_supported_providers_lists_all_provider_names():
         "claude",
         "anthropic",
         "gemini",
+        # Deterministic/offline; see src/llm/providers/scripted.py.
+        "scripted",
     }
+
+
+def test_scripted_provider_is_never_reached_without_asking_for_it():
+    """
+    The scripted provider returns canned text. It must only ever be
+    selected by explicit configuration — if a typo or a failure in a
+    real provider could fall through to it, Pearl would silently
+    serve fake answers as if they were a real model's.
+    """
+
+    # A real provider name never yields the scripted one...
+    assert not isinstance(create_provider("ollama"), ScriptedProvider)
+
+    # ...and an unrecognized name fails loudly rather than degrading.
+    with pytest.raises(ValueError):
+        create_provider("typo-provider")
+
+
+def test_scripted_provider_is_selectable_by_name():
+    assert isinstance(create_provider("scripted"), ScriptedProvider)
 
 
 def test_custom_provider_uses_custom_settings(monkeypatch):
@@ -230,3 +254,61 @@ def test_llm_client_accepts_injected_provider_instance():
 def test_llm_client_rejects_unknown_provider_name():
     with pytest.raises(ValueError):
         LLMClient(provider_name="not-a-real-provider")
+
+
+# ---------------------------------------------------------------------
+# ScriptedProvider (deterministic/offline)
+# ---------------------------------------------------------------------
+
+
+def test_scripted_provider_returns_responses_in_order():
+    provider = ScriptedProvider(responses=["one", "two"])
+
+    assert provider.complete([], 0.2, 100) == "one"
+    assert provider.complete([], 0.2, 100) == "two"
+
+
+def test_scripted_provider_repeats_its_last_response_when_exhausted():
+    # Repeating rather than raising: a test asserting on the first two
+    # calls shouldn't break because some later code path made a third.
+    provider = ScriptedProvider(responses=["only"])
+
+    assert provider.complete([], 0.2, 100) == "only"
+    assert provider.complete([], 0.2, 100) == "only"
+
+
+def test_scripted_provider_records_the_messages_it_was_sent():
+    provider = ScriptedProvider(responses=["x"])
+    messages = [{"role": "user", "content": "hi"}]
+
+    provider.complete(messages, 0.2, 100)
+
+    assert provider.calls == [messages]
+
+
+def test_scripted_provider_reads_its_script_from_the_environment(monkeypatch):
+    monkeypatch.setenv("PEARL_SCRIPTED_RESPONSES", '["from-env"]')
+
+    assert ScriptedProvider().complete([], 0.2, 100) == "from-env"
+
+
+def test_scripted_provider_falls_back_to_a_parsable_plan_when_unconfigured(
+    monkeypatch,
+):
+    # An unconfigured scripted provider must still return something
+    # the planner can parse, rather than failing in a way that looks
+    # like a Pearl bug.
+    monkeypatch.delenv("PEARL_SCRIPTED_RESPONSES", raising=False)
+
+    response = ScriptedProvider().complete([], 0.2, 100)
+
+    assert json.loads(response)["steps"][0]["tool"] == "none"
+
+
+@pytest.mark.parametrize("bad", ["not json", '{"not": "a list"}', "[1, 2, 3]", "[]"])
+def test_scripted_provider_survives_a_malformed_script(monkeypatch, bad):
+    monkeypatch.setenv("PEARL_SCRIPTED_RESPONSES", bad)
+
+    response = ScriptedProvider().complete([], 0.2, 100)
+
+    assert json.loads(response)["steps"][0]["tool"] == "none"

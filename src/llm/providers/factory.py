@@ -12,6 +12,7 @@ from src.llm.providers.base import LLMProvider
 from src.llm.providers.claude import ClaudeProvider
 from src.llm.providers.gemini import GeminiProvider
 from src.llm.providers.openai_compatible import OpenAICompatibleProvider
+from src.llm.providers.scripted import ScriptedProvider
 
 SUPPORTED_PROVIDERS = (
     "openai",
@@ -21,6 +22,7 @@ SUPPORTED_PROVIDERS = (
     "claude",
     "anthropic",
     "gemini",
+    "scripted",
 )
 
 
@@ -70,6 +72,12 @@ def create_provider(name: str) -> LLMProvider:
             api_key=Settings.GEMINI_API_KEY,
             model=Settings.GEMINI_MODEL,
         )
+
+    # Deterministic/offline. Reachable only by asking for it by name —
+    # never a fallback, so a misconfigured real provider can't quietly
+    # start serving scripted answers.
+    if normalized == "scripted":
+        return ScriptedProvider()
 
     raise ValueError(
         f"Unknown LLM provider: {name!r}. "

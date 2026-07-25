@@ -505,9 +505,26 @@ the matching API key/model variables.
 ```bash
 pip install -e ".[dev]"
 pytest -q                                  # Python test suite
+pytest -q tests/test_e2e_mcp.py            # end-to-end only (real subprocess)
 ruff check src/ tests/ benchmarks/         # lint
 ruff format src/ tests/ benchmarks/        # format
 cd vscode-extension && npm install && npm test   # TypeScript test suite
+```
+
+`tests/test_e2e_mcp.py` starts a real `python -m src.mcp` subprocess
+and talks to it over real stdio — real framing, real planner, real
+tool dispatch, real patch approval, real files. Only the model is
+substituted, by the deterministic `scripted` provider, so it needs no
+Ollama and runs in CI. Unit tests fake the transport and keep the
+logic; these do the reverse, and that's the point: they catch the
+integration bugs no in-process test can reach.
+
+You can also run Pearl itself with no model server at all:
+
+```bash
+PEARL_LLM_PROVIDER=scripted \
+PEARL_SCRIPTED_RESPONSES='["{\"steps\": [{\"tool\": \"pwd\", \"arguments\": {}}]}"]' \
+python -m src.mcp
 ```
 
 CI (`.github/workflows/`) runs the Python suite across 3.10–3.12, `ruff
