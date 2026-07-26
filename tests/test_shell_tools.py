@@ -10,6 +10,7 @@ from src.tools.shell_tools import (
     DEFAULT_ALLOWED_COMMANDS,
     MAX_TIMEOUT,
     UnsafeCommandError,
+    _parse_pytest_summary,
     current_user,
     execute_shell,
     get_active_command_approver,
@@ -18,6 +19,7 @@ from src.tools.shell_tools import (
     operating_system,
     pwd,
     run_python,
+    run_tests,
     set_active_command_approver,
     which,
 )
@@ -453,3 +455,99 @@ def test_execute_shell_without_active_approver_runs_directly():
 
     assert isinstance(result, subprocess.CompletedProcess)
     assert result.stdout.strip() == "hi"
+
+
+# ---------------------------------------------------------------------
+# _parse_pytest_summary (unit tests, no subprocess needed)
+# ---------------------------------------------------------------------
+
+
+class TestParsePytestSummary:
+    def test_parses_all_passing(self):
+        output = "...\n5 passed in 0.12s"
+        assert _parse_pytest_summary(output) == (5, 0, 0)
+
+    def test_parses_mixed_results(self):
+        output = "..F.\n3 passed, 1 failed in 0.50s"
+        assert _parse_pytest_summary(output) == (3, 1, 0)
+
+    def test_parses_with_errors(self):
+        output = "EE\n0 passed, 2 error in 0.10s"
+        assert _parse_pytest_summary(output) == (0, 0, 2)
+
+    def test_parses_all_three_counts(self):
+        output = "..FE\n2 passed, 1 failed, 1 error in 1.00s"
+        assert _parse_pytest_summary(output) == (2, 1, 1)
+
+    def test_returns_zeros_for_no_summary_line(self):
+        assert _parse_pytest_summary("no tests found") == (0, 0, 0)
+
+    def test_uses_last_summary_line(self):
+        # Extra context lines shouldn't confuse the parser
+        output = "some output\n1 passed in 0.01s\n\n"
+        assert _parse_pytest_summary(output) == (1, 0, 0)
+
+
+# ---------------------------------------------------------------------
+# run_tests (integration — actually invokes pytest on tmp test files)
+# ---------------------------------------------------------------------
+
+
+class TestRunTests:
+    def test_returns_structured_dict(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "test_pass.py").write_text("def test_ok(): assert True\n")
+
+        result = run_tests(str(tmp_path))
+
+        assert isinstance(result, dict)
+        assert {"passed", "failed", "errors", "total", "exit_code", "output"} <= result.keys()
+
+    def test_all_passing_gives_exit_0(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "test_pass.py").write_text("def test_ok(): assert True\n")
+
+        result = run_tests(str(tmp_path))
+
+        assert result["exit_code"] == 0
+        assert result["passed"] >= 1
+        assert result["failed"] == 0
+
+    def test_failing_test_gives_exit_1(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "test_fail.py").write_text("def test_bad(): assert False\n")
+
+        result = run_tests(str(tmp_path))
+
+        assert result["exit_code"] == 1
+        assert result["failed"] >= 1
+
+    def test_total_equals_sum(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "test_mixed.py").write_text(
+            "def test_ok(): assert True\ndef test_bad(): assert False\n"
+        )
+
+        result = run_tests(str(tmp_path))
+
+        assert result["total"] == result["passed"] + result["failed"] + result["errors"]
+
+    def test_output_is_string(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "test_pass.py").write_text("def test_ok(): assert True\n")
+
+        result = run_tests(str(tmp_path))
+
+        assert isinstance(result["output"], str)
+
+    def test_bypasses_approval_staging(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "test_pass.py").write_text("def test_ok(): assert True\n")
+        manager = CommandApprovalManager(runner=_fail_if_called)
+        set_active_command_approver(manager)
+
+        result = run_tests(str(tmp_path))
+
+        # run_tests must bypass the approval gate — it's a fixed, safe tool
+        assert not manager.has_pending()
+        assert result["exit_code"] == 0

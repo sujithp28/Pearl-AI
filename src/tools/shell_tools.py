@@ -47,7 +47,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from src.config.settings import Settings
 from src.tools.command_approval import CommandApprovalManager, ShellCommandRequest
@@ -530,18 +530,40 @@ def run_python(
     timeout: int = DEFAULT_TIMEOUT,
     cpu_seconds: int | None = None,
     memory_mb: int | None = None,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess | str:
     """
     Execute a Python script, pinned to the workspace root.
+
+    In preview mode (an `AutonomousExecutor` run in progress), stages
+    the command in the active `CommandApprovalManager` and returns a
+    short status string instead of running anything — the script only
+    actually runs once explicitly approved.
 
     Raises
     ------
     subprocess.CalledProcessError
-        If the script exits with a non-zero status.
+        If the script exits with a non-zero status (direct mode only).
     """
 
     timeout = min(timeout, MAX_TIMEOUT)
     cpu_seconds, memory_mb = _resolved_limits(cpu_seconds, memory_mb)
+
+    command = f"python3 {script}"
+
+    request = ShellCommandRequest(
+        command=command,
+        cwd=_workspace_cwd(),
+        timeout=timeout,
+        cpu_seconds=cpu_seconds,
+        memory_mb=memory_mb,
+    )
+
+    approver = get_active_command_approver()
+
+    if approver is not None:
+        logger.info("Staging python script for approval: %s", script)
+        approver.propose(request)
+        return f"Command staged for approval: {command!r}"
 
     return _run_python_script(script, _workspace_cwd(), timeout, cpu_seconds, memory_mb)
 
@@ -655,3 +677,117 @@ def current_user() -> str:
     """
 
     return _run_fixed_command("whoami")
+
+
+# Maximum bytes of pytest output included in the structured result —
+# enough to show meaningful failure output without flooding the context.
+_TEST_OUTPUT_LIMIT = 4000
+
+
+def _parse_pytest_summary(output: str) -> tuple[int, int, int]:
+    """
+    Parse pytest terminal output and return (passed, failed, errors).
+
+    Scans from the end of the output for the first summary line
+    containing "passed", "failed", or "error", which is the line
+    pytest writes last. Returns zeros for any count not found.
+    """
+
+    passed = failed = errors = 0
+
+    for line in reversed(output.splitlines()):
+        if not any(kw in line for kw in ("passed", "failed", "error")):
+            continue
+
+        m = re.search(r"(\d+)\s+passed", line)
+        if m:
+            passed = int(m.group(1))
+
+        m = re.search(r"(\d+)\s+failed", line)
+        if m:
+            failed = int(m.group(1))
+
+        m = re.search(r"(\d+)\s+error", line)
+        if m:
+            errors = int(m.group(1))
+
+        break
+
+    return passed, failed, errors
+
+
+@tool(
+    description=(
+        "Run the project's test suite with pytest and return structured "
+        "results (passed/failed/errors counts, exit code, truncated output)."
+    ),
+    parameters={
+        "path": "str",
+        "timeout": "int",
+    },
+    returns="dict",
+)
+def run_tests(
+    path: str = ".",
+    timeout: int = DEFAULT_TIMEOUT,
+) -> dict[str, Any]:
+    """
+    Run pytest on `path` and return a structured result dict.
+
+    Runs directly rather than through `execute_shell` — this is a
+    fixed, hardcoded, always-safe introspection command (pytest is
+    expected to be available in the environment and is never
+    LLM-composed), so it bypasses the allowlist, denylist, and
+    approval-staging. Tests are expected to be read-only; a test
+    suite that writes side-effects to disk is itself a defect.
+
+    Returns
+    -------
+    dict with keys:
+      passed    int   — number of tests that passed
+      failed    int   — number of tests that failed
+      errors    int   — number of collection/teardown errors
+      total     int   — passed + failed + errors
+      exit_code int   — pytest exit code (0=all passed, 1=some failed,
+                        2=interrupted, 3=internal error, 4=usage error,
+                        5=no tests found)
+      output    str   — combined stdout/stderr, capped at 4 000 chars
+    """
+
+    workspace = _workspace_cwd()
+    timeout = min(timeout, MAX_TIMEOUT)
+    cpu_seconds, memory_mb = _resolved_limits(None, None)
+
+    logger.info("Running tests in: %s", path)
+
+    proc = subprocess.run(
+        ["pytest", path, "--tb=short", "-q", "--no-header"],
+        shell=False,
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+        cwd=workspace,
+        preexec_fn=_resource_limiter(cpu_seconds, memory_mb),
+    )
+
+    raw = (proc.stdout + proc.stderr).strip()
+    output = raw[:_TEST_OUTPUT_LIMIT]
+
+    passed, failed, errors = _parse_pytest_summary(raw)
+
+    logger.info(
+        "Test run complete: %d passed, %d failed, %d errors (exit %d)",
+        passed,
+        failed,
+        errors,
+        proc.returncode,
+    )
+
+    return {
+        "passed": passed,
+        "failed": failed,
+        "errors": errors,
+        "total": passed + failed + errors,
+        "exit_code": proc.returncode,
+        "output": output,
+    }
