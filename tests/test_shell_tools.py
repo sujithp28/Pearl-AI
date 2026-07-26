@@ -15,6 +15,7 @@ from src.tools.shell_tools import (
     execute_shell,
     get_active_command_approver,
     is_command_available,
+    lint_file,
     ls,
     operating_system,
     pwd,
@@ -549,5 +550,118 @@ class TestRunTests:
         result = run_tests(str(tmp_path))
 
         # run_tests must bypass the approval gate — it's a fixed, safe tool
+        assert not manager.has_pending()
+        assert result["exit_code"] == 0
+
+
+# ---------------------------------------------------------------------
+# lint_file (Task 29)
+# ---------------------------------------------------------------------
+
+# Fake ruff JSON output with one issue
+_RUFF_ONE_ISSUE = (
+    '[{"code":"E501","message":"Line too long","filename":"a.py",'
+    '"location":{"row":3,"column":1},"end_location":{"row":3,"column":95},'
+    '"url":"https://example.com","fix":null,"noqa_row":3,"cell":null}]'
+)
+_RUFF_CLEAN = "[]"
+
+
+def _make_ruff_proc(stdout: str, returncode: int) -> "subprocess.CompletedProcess":
+    p = subprocess.CompletedProcess(args=[], returncode=returncode)
+    p.stdout = stdout
+    p.stderr = ""
+    return p
+
+
+class TestLintFile:
+    def test_raises_if_ruff_not_found(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        f = tmp_path / "a.py"
+        f.write_text("x = 1\n")
+        monkeypatch.setattr("shutil.which", lambda cmd: None)
+
+        with pytest.raises(RuntimeError, match="ruff is not installed"):
+            lint_file(str(f))
+
+    def test_rejects_path_outside_workspace(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        outside = tmp_path.parent / "escape.py"
+        outside.write_text("x = 1")
+        try:
+            with pytest.raises(PermissionError):
+                lint_file(str(outside))
+        finally:
+            outside.unlink(missing_ok=True)
+
+    def test_returns_structured_dict(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        f = tmp_path / "a.py"
+        f.write_text("x = 1\n")
+        monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/ruff")
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *a, **kw: _make_ruff_proc(_RUFF_CLEAN, 0),
+        )
+
+        result = lint_file(str(f))
+
+        assert isinstance(result, dict)
+        assert {"issues", "total", "exit_code"} <= result.keys()
+
+    def test_parses_issues_from_json_output(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        f = tmp_path / "a.py"
+        f.write_text("x = 1\n")
+        monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/ruff")
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *a, **kw: _make_ruff_proc(_RUFF_ONE_ISSUE, 1),
+        )
+
+        result = lint_file(str(f))
+
+        assert result["total"] == 1
+        assert result["exit_code"] == 1
+        issue = result["issues"][0]
+        assert issue["code"] == "E501"
+        assert issue["line"] == 3
+        assert issue["column"] == 1
+        assert "Line too long" in issue["message"]
+
+    def test_clean_file_returns_no_issues(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        f = tmp_path / "a.py"
+        f.write_text("x = 1\n")
+        monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/ruff")
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *a, **kw: _make_ruff_proc(_RUFF_CLEAN, 0),
+        )
+
+        result = lint_file(str(f))
+
+        assert result["issues"] == []
+        assert result["total"] == 0
+        assert result["exit_code"] == 0
+
+    def test_bypasses_approval_staging(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        f = tmp_path / "a.py"
+        f.write_text("x = 1\n")
+        monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/ruff")
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *a, **kw: _make_ruff_proc(_RUFF_CLEAN, 0),
+        )
+        manager = CommandApprovalManager(runner=_fail_if_called)
+        set_active_command_approver(manager)
+
+        result = lint_file(str(f))
+
         assert not manager.has_pending()
         assert result["exit_code"] == 0

@@ -665,6 +665,93 @@ def operating_system() -> str:
 
 
 @tool(
+    description=(
+        "Run ruff linter on a file and return structured lint issues "
+        "(code, line, column, message) plus a total count."
+    ),
+    parameters={
+        "path": "str",
+    },
+    returns="dict",
+)
+def lint_file(path: str) -> dict[str, Any]:
+    """
+    Run `ruff check` on `path` and return structured lint results.
+
+    Runs directly rather than through `execute_shell` — this is a
+    fixed, hardcoded, always-safe command that bypasses the allowlist,
+    denylist, and approval-staging.
+
+    Returns
+    -------
+    dict with keys:
+      issues    list[dict]  — each issue has file, line, column, code, message
+      total     int         — number of issues found
+      exit_code int         — ruff exit code (0=clean, 1=issues, 2=error)
+
+    Raises
+    ------
+    RuntimeError
+        If ruff is not found on PATH.
+    PermissionError
+        If `path` escapes the workspace boundary.
+    """
+
+    file_path = _ensure_within_workspace(path)
+
+    ruff_bin = shutil.which("ruff")
+    if ruff_bin is None:
+        raise RuntimeError(
+            "ruff is not installed or not on PATH. "
+            "Install it with: pip install ruff"
+        )
+
+    workspace = _workspace_cwd()
+    cpu_seconds, memory_mb = _resolved_limits(None, None)
+
+    logger.info("Linting file: %s", file_path)
+
+    proc = subprocess.run(
+        [ruff_bin, "check", "--output-format", "json", str(file_path)],
+        shell=False,
+        text=True,
+        capture_output=True,
+        timeout=DEFAULT_TIMEOUT,
+        cwd=workspace,
+        preexec_fn=_resource_limiter(cpu_seconds, memory_mb),
+    )
+
+    issues: list[dict[str, Any]] = []
+
+    if proc.stdout.strip():
+        try:
+            import json
+
+            raw_issues = json.loads(proc.stdout)
+            for item in raw_issues:
+                loc = item.get("location", {})
+                issues.append(
+                    {
+                        "file": item.get("filename", str(file_path)),
+                        "line": loc.get("row", 0),
+                        "column": loc.get("column", 0),
+                        "code": item.get("code", ""),
+                        "message": item.get("message", ""),
+                    }
+                )
+        except (ValueError, KeyError):
+            logger.warning("Failed to parse ruff JSON output; returning raw output.")
+
+    logger.info("Lint complete: %d issue(s) found (exit %d)", len(issues), proc.returncode)
+
+    return {
+        "issues": issues,
+        "total": len(issues),
+        "exit_code": proc.returncode,
+    }
+
+
+@tool(
     description="Return the current username.",
     returns="str",
 )
