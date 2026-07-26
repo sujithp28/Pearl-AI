@@ -373,3 +373,40 @@ def test_edit_lines_refreshes_repository_index(tmp_path):
         {"file": "module.py", "line": 1, "type": "function"}
     ]
     assert find_symbol("old_name") == []
+
+
+class TestPatchManagerIsEmpty:
+    def test_is_empty_true_when_no_edits_staged(self):
+        pm = PatchManager()
+        assert pm.is_empty is True
+
+    def test_is_empty_false_after_staging_an_edit(self, tmp_path):
+        pm = PatchManager()
+        pm.propose(str(tmp_path / "f.py"), None, "content")
+        assert pm.is_empty is False
+
+    def test_is_empty_true_after_discard(self, tmp_path):
+        pm = PatchManager()
+        pm.propose(str(tmp_path / "f.py"), None, "content")
+        pm.discard_all()
+        assert pm.is_empty is True
+
+    def test_is_empty_true_after_apply(self, tmp_path):
+        pm = PatchManager()
+        pm.propose(str(tmp_path / "f.py"), None, "content")
+        pm.apply_all()
+        assert pm.is_empty is True
+
+    def test_is_empty_complements_has_pending(self, tmp_path):
+        pm = PatchManager()
+        assert pm.is_empty is not pm.has_pending()
+        pm.propose(str(tmp_path / "f.py"), None, "content")
+        assert pm.is_empty is not pm.has_pending()
+
+    def test_len_zero_does_not_make_patch_manager_falsy(self):
+        # __len__ must not affect truthiness: an empty PatchManager is still
+        # a valid object and must not be treated as falsy by callers using
+        # `pm or fallback` patterns (regression guard for executor __init__).
+        pm = PatchManager()
+        assert len(pm) == 0
+        assert bool(pm) is True  # must remain truthy despite __len__ == 0

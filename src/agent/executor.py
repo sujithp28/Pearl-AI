@@ -29,6 +29,7 @@ orchestration around them.
 from __future__ import annotations
 
 import logging
+import subprocess
 import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal
@@ -51,6 +52,12 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_ITERATIONS = 10
 DEFAULT_MAX_REPLANS = 3
 DEFAULT_MAX_RETRIES = 3
+
+# Sentinel prefix returned by execute_shell / run_python when they stage a
+# command rather than running it immediately.  Used in approve() to identify
+# which completed ExecutionSteps need their result backfilled with the real
+# command output once the approval actually runs the commands.
+_STAGED_COMMAND_PREFIX = "Command staged for approval:"
 
 StopReason = Literal[
     "completed",
@@ -161,7 +168,7 @@ def _reflect(
     )
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, repr=False)
 class ExecutionStep:
     """
     The outcome of one iteration of the autonomous execution loop.
@@ -181,6 +188,10 @@ class ExecutionStep:
         """
 
         return self.error is None
+
+    def __repr__(self) -> str:
+        status = "ok" if self.succeeded else f"err={self.error!r:.40}"
+        return f"ExecutionStep({self.tool_name}, iter={self.iteration}, {status})"
 
 
 @dataclass(slots=True)
@@ -218,6 +229,21 @@ class ExecutionReport:
         """
 
         return self.stop_reason == "completed"
+
+    @property
+    def step_count(self) -> int:
+        """Total number of steps executed (across any replans)."""
+        return len(self.steps)
+
+    @property
+    def succeeded_steps(self) -> list[ExecutionStep]:
+        """Steps that completed without error."""
+        return [s for s in self.steps if s.succeeded]
+
+    @property
+    def failed_steps(self) -> list[ExecutionStep]:
+        """Steps that raised an error."""
+        return [s for s in self.steps if not s.succeeded]
 
 
 @dataclass(slots=True)
@@ -279,9 +305,13 @@ class AutonomousExecutor:
         self.max_replans = max_replans
         self.max_retries = max_retries
         self.on_progress = on_progress
-        self.patch_manager = patch_manager or PatchManager()
-        self.command_approver = command_approver or CommandApprovalManager(
-            runner=_run_shell_command
+        self.patch_manager = (
+            patch_manager if patch_manager is not None else PatchManager()
+        )
+        self.command_approver = (
+            command_approver
+            if command_approver is not None
+            else CommandApprovalManager(runner=_run_shell_command)
         )
         # Only ever shapes the wording of ProgressEvent.current_action
         # below — never anything the planner, dispatcher, or any tool
@@ -589,9 +619,47 @@ class AutonomousExecutor:
             refresh_indexed_file(applied_path)
 
         command_count = len(self.command_approver.pending)
-        self.command_approver.approve_all()
+        try:
+            command_results = self.command_approver.approve_all()
+        except subprocess.CalledProcessError as exc:
+            logger.error("Approved command failed with non-zero exit: %s", exc)
+            command_results = []
 
         logger.info("Approved and ran %d command(s).", command_count)
+
+        # Backfill: steps that staged commands recorded the pre-approval
+        # placeholder as their result.  Now that the commands have actually
+        # run, replace those placeholders with the real stdout so that
+        # the execution report and the reflection phase see useful output.
+        result_iter = iter(command_results)
+        for step in state.steps:
+            if (
+                isinstance(step.result, str)
+                and step.result.startswith(_STAGED_COMMAND_PREFIX)
+            ):
+                cmd_result = next(result_iter, None)
+                if cmd_result is not None:
+                    real_out = (
+                        cmd_result.stdout.strip()
+                        or f"(exit {cmd_result.returncode})"
+                    )
+                    step.result = real_out
+                    step.summary = _summarize(step.tool_name, True, result=real_out)
+
+        # Keep completed_for_replan in sync so any subsequent replan sees
+        # real results rather than staging placeholders.
+        result_iter2 = iter(command_results)
+        for entry in state.completed_for_replan:
+            if (
+                isinstance(entry.get("result"), str)
+                and entry["result"].startswith(_STAGED_COMMAND_PREFIX)
+            ):
+                cmd_result = next(result_iter2, None)
+                if cmd_result is not None:
+                    entry["result"] = (
+                        cmd_result.stdout.strip()
+                        or f"(exit {cmd_result.returncode})"
+                    )
 
         set_active_patch_manager(self.patch_manager)
         set_active_command_approver(self.command_approver)
@@ -697,9 +765,17 @@ class AutonomousExecutor:
         """
         Deactivate preview/approval mode unless the report represents
         a pause (in which case a later `approve()` reactivates it).
+
+        For every terminal path (completed, cancelled, fatal_error,
+        max_iterations) any patches or commands still staged are
+        discarded here — the canonical discard point for the
+        mid-execution cancel case, where _check_cancelled() returns
+        early before _check_awaiting_approval() can run.
         """
 
         if report.stop_reason != "awaiting_approval":
+            self.patch_manager.discard_all()
+            self.command_approver.discard_all()
             set_active_patch_manager(None)
             set_active_command_approver(None)
             report.reflection = _reflect(
@@ -945,6 +1021,10 @@ class AutonomousExecutor:
                             "error": error,
                         },
                         cancel_check=self.is_cancelled,
+                        # Pass the 1-indexed replan number so the confidence
+                        # score reflects that this plan is being generated
+                        # after N prior failures.
+                        replans_used=replans_used + 1,
                     )
                 except LLMCancelled:
                     self._check_cancelled(events, steps)

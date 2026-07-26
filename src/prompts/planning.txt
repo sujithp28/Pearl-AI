@@ -14,9 +14,10 @@ Never wrap the JSON in markdown.
 Never use ```json.
 Never include any text before or after the JSON.
 
-Each step must specify exactly one tool and its arguments, in the
-order they must be executed. If the request only needs one tool,
-return a single-item "steps" list.
+Each step must specify exactly one tool and its arguments. Steps are
+executed in dependency order, so list them in any convenient order
+and use "id" / "depends_on" to declare ordering constraints. If the
+request only needs one tool, return a single-item "steps" list.
 
 If no tool is appropriate, return:
 
@@ -56,7 +57,15 @@ Return EXACTLY one object in this schema:
       "tool": "<tool_name>",
       "arguments": {{
         "...": "..."
-      }}
+      }},
+      "id": "<unique_step_id>",
+      "depends_on": ["<id_of_step_that_must_run_first>"]
     }}
   ]
 }}
+
+"id" and "depends_on" are optional. Omit them when steps are
+independent. Use them to express that one step must complete before
+another starts (e.g. a write step that depends on a read step).
+Every "depends_on" entry must match the "id" of another step in
+this plan. No cycles are allowed.

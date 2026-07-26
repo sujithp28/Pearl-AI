@@ -110,6 +110,17 @@ class PatchManager:
 
         return bool(self._pending)
 
+    @property
+    def is_empty(self) -> bool:
+        """
+        Return True when no edits are staged, False otherwise.
+
+        Complement of has_pending(); use whichever reads more naturally
+        at the call site.
+        """
+
+        return not self._pending
+
     def affected_files(self) -> list[str]:
         """
         Return the paths of every currently staged edit.
@@ -149,6 +160,17 @@ class PatchManager:
         self._pending.clear()
 
         return applied
+
+    def __len__(self) -> int:
+        """Return the number of staged edits."""
+        return len(self._pending)
+
+    def __bool__(self) -> bool:
+        # Always True — a PatchManager with zero staged edits is still a
+        # valid, usable object.  Without this, Python would derive bool()
+        # from __len__() and make an empty manager falsy, which would cause
+        # `pm or PatchManager()` to silently discard the caller's instance.
+        return True
 
     def discard_all(self) -> list[str]:
         """
