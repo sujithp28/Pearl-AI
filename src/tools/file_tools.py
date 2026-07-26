@@ -234,3 +234,54 @@ def file_size(path: str) -> int:
         raise FileNotFoundError(path)
 
     return file_path.stat().st_size
+
+
+@tool(
+    description="Rename or move a file to a new path within the workspace.",
+    parameters={
+        "source": "str",
+        "destination": "str",
+    },
+    returns="None",
+)
+def rename_file(source: str, destination: str) -> None:
+    src = _ensure_within_workspace(source)
+    dst = _ensure_within_workspace(destination)
+
+    if not src.exists():
+        raise FileNotFoundError(source)
+    if dst.exists():
+        raise FileExistsError(destination)
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src.rename(dst)
+
+    _refresh_repo_index(src)
+    _refresh_repo_index(dst)
+
+    logger.info("Renamed %s → %s", src, dst)
+
+
+@tool(
+    description="Copy a file to a new path within the workspace.",
+    parameters={
+        "source": "str",
+        "destination": "str",
+    },
+    returns="None",
+)
+def copy_file(source: str, destination: str) -> None:
+    src = _ensure_within_workspace(source)
+    dst = _ensure_within_workspace(destination)
+
+    if not src.exists():
+        raise FileNotFoundError(source)
+    if dst.exists():
+        raise FileExistsError(destination)
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_bytes(src.read_bytes())
+
+    _refresh_repo_index(dst)
+
+    logger.info("Copied %s → %s", src, dst)

@@ -4,12 +4,14 @@ import pytest
 
 from src.tools.file_tools import (
     append_file,
+    copy_file,
     delete_file,
     file_exists,
     file_size,
     list_directory,
     make_directory,
     read_file,
+    rename_file,
     write_file,
 )
 
@@ -183,3 +185,132 @@ def test_read_file_still_works_inside_workspace(tmp_path):
     write_file(str(file), "hello")
 
     assert read_file(str(file)) == "hello"
+
+
+# ---------------------------------------------------------------------
+# rename_file (Task 26)
+# ---------------------------------------------------------------------
+
+
+class TestRenameFile:
+    def test_renames_file_within_workspace(self, tmp_path):
+        src = tmp_path / "old.txt"
+        dst = tmp_path / "new.txt"
+        src.write_text("content")
+
+        rename_file(str(src), str(dst))
+
+        assert not src.exists()
+        assert dst.read_text() == "content"
+
+    def test_rename_creates_destination_parent_dirs(self, tmp_path):
+        src = tmp_path / "file.txt"
+        dst = tmp_path / "nested" / "dir" / "file.txt"
+        src.write_text("x")
+
+        rename_file(str(src), str(dst))
+
+        assert dst.exists()
+        assert not src.exists()
+
+    def test_rename_raises_if_source_missing(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            rename_file(str(tmp_path / "missing.txt"), str(tmp_path / "dst.txt"))
+
+    def test_rename_raises_if_destination_exists(self, tmp_path):
+        src = tmp_path / "src.txt"
+        dst = tmp_path / "dst.txt"
+        src.write_text("a")
+        dst.write_text("b")
+
+        with pytest.raises(FileExistsError):
+            rename_file(str(src), str(dst))
+
+        assert src.exists()  # source untouched on failure
+
+    def test_rename_rejects_source_outside_workspace(self, tmp_path):
+        outside = tmp_path.parent / "outside.txt"
+        outside.write_text("x")
+        try:
+            with pytest.raises(PermissionError):
+                rename_file(str(outside), str(tmp_path / "dst.txt"))
+        finally:
+            outside.unlink(missing_ok=True)
+
+    def test_rename_rejects_destination_outside_workspace(self, tmp_path):
+        src = tmp_path / "src.txt"
+        src.write_text("x")
+        outside = tmp_path.parent / "escape.txt"
+
+        with pytest.raises(PermissionError):
+            rename_file(str(src), str(outside))
+
+        assert src.exists()  # source not moved
+
+
+# ---------------------------------------------------------------------
+# copy_file (Task 27)
+# ---------------------------------------------------------------------
+
+
+class TestCopyFile:
+    def test_copies_file_within_workspace(self, tmp_path):
+        src = tmp_path / "src.txt"
+        dst = tmp_path / "dst.txt"
+        src.write_text("hello")
+
+        copy_file(str(src), str(dst))
+
+        assert src.exists()  # original preserved
+        assert dst.read_text() == "hello"
+
+    def test_copy_creates_destination_parent_dirs(self, tmp_path):
+        src = tmp_path / "file.txt"
+        dst = tmp_path / "nested" / "copy.txt"
+        src.write_text("data")
+
+        copy_file(str(src), str(dst))
+
+        assert dst.exists()
+        assert src.exists()
+
+    def test_copy_raises_if_source_missing(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            copy_file(str(tmp_path / "missing.txt"), str(tmp_path / "dst.txt"))
+
+    def test_copy_raises_if_destination_exists(self, tmp_path):
+        src = tmp_path / "src.txt"
+        dst = tmp_path / "dst.txt"
+        src.write_text("a")
+        dst.write_text("b")
+
+        with pytest.raises(FileExistsError):
+            copy_file(str(src), str(dst))
+
+        assert dst.read_text() == "b"  # destination untouched
+
+    def test_copy_preserves_binary_content(self, tmp_path):
+        src = tmp_path / "data.bin"
+        dst = tmp_path / "data_copy.bin"
+        src.write_bytes(bytes(range(256)))
+
+        copy_file(str(src), str(dst))
+
+        assert dst.read_bytes() == bytes(range(256))
+
+    def test_copy_rejects_source_outside_workspace(self, tmp_path):
+        outside = tmp_path.parent / "outside.txt"
+        outside.write_text("x")
+        try:
+            with pytest.raises(PermissionError):
+                copy_file(str(outside), str(tmp_path / "dst.txt"))
+        finally:
+            outside.unlink(missing_ok=True)
+
+    def test_copy_rejects_destination_outside_workspace(self, tmp_path):
+        src = tmp_path / "src.txt"
+        src.write_text("x")
+        outside = tmp_path.parent / "escape.txt"
+
+        with pytest.raises(PermissionError):
+            copy_file(str(src), str(outside))

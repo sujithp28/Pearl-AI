@@ -65,6 +65,8 @@ WRITE_TOOL_NAMES: frozenset[str] = frozenset(
         "append_file",
         "make_directory",
         "delete_file",
+        "rename_file",
+        "copy_file",
         # symbol_editor.py — semantic edits, also staged
         "replace_function",
         "replace_class",
