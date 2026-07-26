@@ -237,6 +237,41 @@ def file_size(path: str) -> int:
 
 
 @tool(
+    description=(
+        "Show a unified diff between two files in the workspace. "
+        "Returns an empty string when the files are identical."
+    ),
+    parameters={
+        "path_a": "str",
+        "path_b": "str",
+    },
+    returns="str",
+)
+def diff_files(path_a: str, path_b: str) -> str:
+    file_a = _ensure_within_workspace(path_a)
+    file_b = _ensure_within_workspace(path_b)
+
+    if not file_a.exists():
+        raise FileNotFoundError(path_a)
+    if not file_b.exists():
+        raise FileNotFoundError(path_b)
+
+    import difflib
+
+    lines_a = file_a.read_text(encoding="utf-8").splitlines(keepends=True)
+    lines_b = file_b.read_text(encoding="utf-8").splitlines(keepends=True)
+
+    diff = difflib.unified_diff(
+        lines_a,
+        lines_b,
+        fromfile=f"a/{path_a}",
+        tofile=f"b/{path_b}",
+    )
+
+    return "".join(diff)
+
+
+@tool(
     description="Rename or move a file to a new path within the workspace.",
     parameters={
         "source": "str",

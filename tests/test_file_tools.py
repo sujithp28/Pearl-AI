@@ -6,6 +6,7 @@ from src.tools.file_tools import (
     append_file,
     copy_file,
     delete_file,
+    diff_files,
     file_exists,
     file_size,
     list_directory,
@@ -314,3 +315,76 @@ class TestCopyFile:
 
         with pytest.raises(PermissionError):
             copy_file(str(src), str(outside))
+
+
+# ---------------------------------------------------------------------
+# diff_files (Task 34)
+# ---------------------------------------------------------------------
+
+
+class TestDiffFiles:
+    def test_identical_files_return_empty_string(self, tmp_path):
+        a = tmp_path / "a.txt"
+        b = tmp_path / "b.txt"
+        a.write_text("hello\nworld\n")
+        b.write_text("hello\nworld\n")
+
+        assert diff_files(str(a), str(b)) == ""
+
+    def test_diff_shows_changed_line(self, tmp_path):
+        a = tmp_path / "a.txt"
+        b = tmp_path / "b.txt"
+        a.write_text("line1\nline2\nline3\n")
+        b.write_text("line1\nchanged\nline3\n")
+
+        result = diff_files(str(a), str(b))
+
+        assert "-line2" in result
+        assert "+changed" in result
+
+    def test_diff_has_unified_format_header(self, tmp_path):
+        a = tmp_path / "a.txt"
+        b = tmp_path / "b.txt"
+        a.write_text("x\n")
+        b.write_text("y\n")
+
+        result = diff_files(str(a), str(b))
+
+        assert result.startswith("---")
+        assert "+++" in result
+
+    def test_raises_if_first_file_missing(self, tmp_path):
+        b = tmp_path / "b.txt"
+        b.write_text("x")
+
+        with pytest.raises(FileNotFoundError):
+            diff_files(str(tmp_path / "missing.txt"), str(b))
+
+    def test_raises_if_second_file_missing(self, tmp_path):
+        a = tmp_path / "a.txt"
+        a.write_text("x")
+
+        with pytest.raises(FileNotFoundError):
+            diff_files(str(a), str(tmp_path / "missing.txt"))
+
+    def test_rejects_first_path_outside_workspace(self, tmp_path):
+        outside = tmp_path.parent / "outside.txt"
+        outside.write_text("x")
+        b = tmp_path / "b.txt"
+        b.write_text("y")
+        try:
+            with pytest.raises(PermissionError):
+                diff_files(str(outside), str(b))
+        finally:
+            outside.unlink(missing_ok=True)
+
+    def test_rejects_second_path_outside_workspace(self, tmp_path):
+        a = tmp_path / "a.txt"
+        a.write_text("x")
+        outside = tmp_path.parent / "outside.txt"
+        outside.write_text("y")
+        try:
+            with pytest.raises(PermissionError):
+                diff_files(str(a), str(outside))
+        finally:
+            outside.unlink(missing_ok=True)
