@@ -59,6 +59,8 @@ StopReason = Literal[
     "rejected",
 ]
 
+ReflectionOutcome = Literal["COMPLETE", "PARTIAL", "FAILED"]
+
 ProgressStatus = Literal[
     "planning",
     "executing_step",
@@ -113,6 +115,49 @@ def _summarize(
     return f"'{tool_name}' failed: {error}"
 
 
+def _reflect(
+    steps: list[ExecutionStep],
+    stop_reason: StopReason,
+    replans_used: int,
+) -> ReflectionResult:
+    """
+    Classify the outcome of an autonomous run as COMPLETE, PARTIAL, or
+    FAILED from observable evidence — not step count alone.
+
+    COMPLETE: the plan ran all the way through (stop_reason="completed"),
+              regardless of whether replanning was needed along the way.
+    PARTIAL:  execution stopped early but at least one step succeeded,
+              meaning some real work was done.
+    FAILED:   no steps completed successfully.
+    """
+
+    if stop_reason == "completed":
+        evidence = [f"Plan ran to completion ({len(steps)} step(s))."]
+        if replans_used:
+            evidence.append(f"Recovered via {replans_used} replan(s).")
+        return ReflectionResult(outcome="COMPLETE", evidence=evidence)
+
+    succeeded = [s for s in steps if s.succeeded]
+    failed = [s for s in steps if not s.succeeded]
+
+    if succeeded:
+        evidence = [
+            f"{len(succeeded)} of {len(steps)} step(s) succeeded.",
+            f"Stopped early: {stop_reason}.",
+        ]
+        if failed:
+            evidence.append(f"Failed step(s): {[s.tool_name for s in failed]}.")
+        return ReflectionResult(outcome="PARTIAL", evidence=evidence)
+
+    return ReflectionResult(
+        outcome="FAILED",
+        evidence=[
+            "No steps completed successfully.",
+            f"Stopped: {stop_reason}.",
+        ],
+    )
+
+
 @dataclass(slots=True)
 class ExecutionStep:
     """
@@ -136,6 +181,17 @@ class ExecutionStep:
 
 
 @dataclass(slots=True)
+class ReflectionResult:
+    """
+    Post-run classification of what the autonomous run actually achieved,
+    derived from observable evidence rather than step count alone.
+    """
+
+    outcome: ReflectionOutcome
+    evidence: list[str]
+
+
+@dataclass(slots=True)
 class ExecutionReport:
     """
     The complete outcome of an autonomous run (or one leg of it, if
@@ -148,6 +204,7 @@ class ExecutionReport:
     stop_reason: StopReason = "completed"
     replans_used: int = 0
     events: list[ProgressEvent] = field(default_factory=list)
+    reflection: ReflectionResult | None = None
 
     @property
     def succeeded(self) -> bool:
@@ -390,6 +447,7 @@ class AutonomousExecutor:
             stop_reason="cancelled",
             replans_used=state.replans_used,
             events=state.events,
+            reflection=_reflect(state.steps, "cancelled", state.replans_used),
         )
 
     def _emit(
@@ -465,7 +523,11 @@ class AutonomousExecutor:
         # checkpoint to catch it) must not be silently ignored.
         if self._check_cancelled(events, steps):
             return ExecutionReport(
-                steps=steps, stop_reason="cancelled", replans_used=0, events=events
+                steps=steps,
+                stop_reason="cancelled",
+                replans_used=0,
+                events=events,
+                reflection=_reflect(steps, "cancelled", 0),
             )
 
         try:
@@ -475,7 +537,11 @@ class AutonomousExecutor:
         except LLMCancelled:
             self._check_cancelled(events, steps)
             return ExecutionReport(
-                steps=steps, stop_reason="cancelled", replans_used=0, events=events
+                steps=steps,
+                stop_reason="cancelled",
+                replans_used=0,
+                events=events,
+                reflection=_reflect(steps, "cancelled", 0),
             )
 
         return self._finish_or_pause(
@@ -631,6 +697,9 @@ class AutonomousExecutor:
         if report.stop_reason != "awaiting_approval":
             set_active_patch_manager(None)
             set_active_command_approver(None)
+            report.reflection = _reflect(
+                report.steps, report.stop_reason, report.replans_used
+            )
 
         return report
 
