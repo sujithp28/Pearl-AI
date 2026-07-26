@@ -53,3 +53,41 @@ def test_validate_tool_call_rejects_unexpected_arguments():
 
     with pytest.raises(ValueError):
         validate_tool_call(tool_call, registry)
+
+
+def test_validate_tool_call_rejects_missing_required_argument():
+    registry = build_registry()
+    # read_file requires "path" — omitting it must raise
+    tool_call = ToolCall(tool_name="read_file", args=(), kwargs={})
+
+    with pytest.raises(ValueError, match="missing required"):
+        validate_tool_call(tool_call, registry)
+
+
+def test_validate_tool_call_error_names_missing_argument():
+    registry = build_registry()
+    tool_call = ToolCall(tool_name="read_file", args=(), kwargs={})
+
+    with pytest.raises(ValueError) as exc_info:
+        validate_tool_call(tool_call, registry)
+
+    assert "path" in str(exc_info.value)
+
+
+@tool(
+    description="Add two numbers with an optional multiplier.",
+    parameters={"a": "int", "b": "int", "multiplier": "int"},
+    returns="int",
+)
+def add_with_optional(a: int, b: int, multiplier: int = 1) -> int:
+    return (a + b) * multiplier
+
+
+def test_validate_tool_call_accepts_optional_argument_omitted():
+    registry = ToolRegistry()
+    registry.register(add_with_optional)
+    # "multiplier" has a default — omitting it must not raise
+    tool_call = ToolCall(
+        tool_name="add_with_optional", args=(), kwargs={"a": 1, "b": 2}
+    )
+    validate_tool_call(tool_call, registry)  # must not raise

@@ -32,9 +32,21 @@ import sys
 import threading
 from pathlib import Path
 
+import site
+
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# Capture the real user site-packages path at import time, before any
+# test fixture can change $HOME.  conftest.py's _isolated_pearl_home
+# fixture redirects $HOME to a tmp dir so tests don't pollute the real
+# user's ~/.pearl; a side-effect is that $HOME-derived paths like
+# ~/.local/lib/python3.12/site-packages become unreachable inside the
+# MCP subprocess (which inherits the modified env).  We fix this by
+# preserving the real site-packages path here and injecting it into
+# the subprocess PYTHONPATH.
+_REAL_USER_SITE = site.getusersitepackages()
 
 # Nothing here waits on a real model, so any read taking longer than
 # this means the server is wedged. Bounded on purpose: an unbounded
@@ -56,7 +68,7 @@ class MCPProcess:
 
     def __init__(self, workspace: Path, scripted_responses: list[str]) -> None:
         env = os.environ.copy()
-        env["PYTHONPATH"] = str(REPO_ROOT)
+        env["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{_REAL_USER_SITE}"
         env["PEARL_LLM_PROVIDER"] = "scripted"
         env["PEARL_SCRIPTED_RESPONSES"] = json.dumps(scripted_responses)
         # Keep the run hermetic: no personality wording drift, and no

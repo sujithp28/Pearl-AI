@@ -17,6 +17,7 @@ time). The checks here are pre-execution fast-fails only.
 
 from __future__ import annotations
 
+from src.agent.dependency_graph import DependencyCycleError, topological_sort
 from src.llm.parser import ToolCall
 
 
@@ -42,6 +43,18 @@ FORBIDDEN_PATH_PREFIXES: tuple[str, ...] = (
     "/root/",
     "/boot/",
     "/dev/",
+)
+
+# Tools that destructively modify file content require a read_file step
+# to appear earlier in the same plan.  create_file is intentionally
+# excluded — it brings a file into existence from scratch.
+DESTRUCTIVE_WRITE_TOOLS: frozenset[str] = frozenset(
+    (
+        "write_file",
+        "replace_in_file",
+        "edit_lines",
+        "patch_file",
+    )
 )
 
 
@@ -91,5 +104,88 @@ def validate_plan(steps: list[ToolCall]) -> None:
                         f"path: {arg_val!r}"
                     )
 
+    # Read-before-write: any destructive write tool must be preceded by at
+    # least one read_file step in the plan.  This catches the common
+    # planning mistake of modifying a file Pearl has never observed in the
+    # current plan.
+    has_read = False
+    for i, step in enumerate(steps, 1):
+        if step.tool_name == "read_file":
+            has_read = True
+        elif step.tool_name in DESTRUCTIVE_WRITE_TOOLS and not has_read:
+            errors.append(
+                f"Step {i} ({step.tool_name!r}) modifies a file without a "
+                "prior read_file step in this plan."
+            )
+
     if errors:
         raise PlanValidationError("; ".join(errors))
+
+    # Dependency validation — only runs when at least one step carries
+    # annotations; plans without any annotations skip this entirely so
+    # the cost is zero for the common case.
+    if any(s.step_id is not None or s.depends_on for s in steps):
+        validate_dependencies(steps)
+
+
+def validate_dependencies(steps: list[ToolCall]) -> None:
+    """
+    Validate dependency annotations on a plan.
+
+    Checks applied, in order:
+
+    1. No duplicate step IDs — two steps with the same id would make
+       dependency references ambiguous.
+    2. No self-dependencies — a step that lists its own id in depends_on
+       would create a trivial cycle.
+    3. Every depends_on entry references a step id that actually exists
+       in this plan.
+    4. No dependency cycles — detected by running topological_sort() and
+       catching DependencyCycleError.
+
+    Phases 1–3 collect all errors before raising; phase 4 adds cycle
+    errors afterward. This ensures the caller sees every structural
+    problem in one shot rather than one per call.
+
+    Raises
+    ------
+    PlanValidationError
+        When any of the above checks fail.
+    """
+
+    errors: list[str] = []
+
+    # --- Phase 1: collect step IDs, detect duplicates -------------------
+    seen_ids: dict[str, int] = {}  # id → 1-indexed step number of first occurrence
+
+    for i, step in enumerate(steps, 1):
+        if step.step_id is None:
+            continue
+        if step.step_id in seen_ids:
+            errors.append(
+                f"Step {i} has duplicate step_id {step.step_id!r} "
+                f"(first seen at step {seen_ids[step.step_id]})."
+            )
+        else:
+            seen_ids[step.step_id] = i
+
+    # --- Phase 2 + 3: validate depends_on entries -----------------------
+    for i, step in enumerate(steps, 1):
+        for dep in step.depends_on:
+            if dep == step.step_id:
+                errors.append(
+                    f"Step {i} ({step.step_id!r}) depends on itself."
+                )
+            elif dep not in seen_ids:
+                errors.append(
+                    f"Step {i} depends on unknown step_id {dep!r}."
+                )
+
+    if errors:
+        raise PlanValidationError("; ".join(errors))
+
+    # --- Phase 4: cycle detection via topological sort ------------------
+    try:
+        topological_sort(steps)
+    except DependencyCycleError as exc:
+        raise PlanValidationError(str(exc)) from exc
