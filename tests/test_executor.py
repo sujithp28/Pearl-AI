@@ -1902,3 +1902,79 @@ class TestConfidenceScore:
         assert final.stop_reason == "rejected"
         assert final.confidence_score is not None
         assert 0.0 <= final.confidence_score <= 1.0
+
+
+# ---------------------------------------------------------------------
+# error_type on ExecutionStep (Task 31)
+# ---------------------------------------------------------------------
+
+
+class TestExecutionStepErrorType:
+    def test_error_type_is_none_for_successful_step(self, monkeypatch):
+        executor, planner = build_executor()
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
+        )
+        report = executor.run("add 1+2")
+        assert report.steps[0].error_type is None
+
+    def test_error_type_is_validation_for_value_error(self, monkeypatch):
+        # boom() raises ValueError — should classify as "validation"
+        executor, planner = build_executor(max_replans=0)
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of({"tool": "boom", "arguments": {}}),
+        )
+        report = executor.run("boom")
+        failed = report.failed_steps
+        assert len(failed) == 1
+        assert failed[0].error_type == "validation"
+
+    def test_error_type_is_transient_for_timeout_error(self, monkeypatch):
+        @tool(description="Always raises TimeoutError.")
+        def always_timeout() -> None:
+            raise TimeoutError("timeout")
+
+        registry = ToolRegistry()
+        registry.register(always_timeout)
+        dispatcher = ToolDispatcher(registry)
+        planner = Planner(registry, dispatcher)
+        executor = AutonomousExecutor(
+            planner, dispatcher, max_replans=0, max_retries=0
+        )
+
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of({"tool": "always_timeout", "arguments": {}}),
+        )
+
+        report = executor.run("timeout")
+        failed = report.failed_steps
+        assert len(failed) == 1
+        assert failed[0].error_type == "transient"
+
+    def test_error_type_is_fatal_for_file_not_found(self, monkeypatch):
+        @tool(description="Raises FileNotFoundError.", parameters={"p": "str"})
+        def bad_read(p: str) -> None:
+            raise FileNotFoundError(p)
+
+        registry = ToolRegistry()
+        registry.register(bad_read)
+        dispatcher = ToolDispatcher(registry)
+        planner = Planner(registry, dispatcher)
+        executor = AutonomousExecutor(planner, dispatcher, max_replans=0)
+
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of({"tool": "bad_read", "arguments": {"p": "missing.txt"}}),
+        )
+
+        report = executor.run("read missing")
+        failed = report.failed_steps
+        assert len(failed) == 1
+        assert failed[0].error_type == "fatal"

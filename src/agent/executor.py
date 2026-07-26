@@ -36,7 +36,7 @@ from typing import Any, Callable, Literal
 
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
-from src.agent.retry import is_transient_error
+from src.agent.retry import classify_error, is_transient_error
 from src.llm.client import LLMCancelled
 from src.llm.parser import ToolCall
 from src.personality import EventKind, PersonalityManager
@@ -180,6 +180,7 @@ class ExecutionStep:
     result: Any = None
     error: str | None = None
     summary: str = ""
+    error_type: str | None = None  # "transient" | "validation" | "fatal" | None
 
     @property
     def succeeded(self) -> bool:
@@ -938,6 +939,7 @@ class AutonomousExecutor:
 
                     continue
 
+                error_type = classify_error(exc)
                 error = str(exc)
                 summary = _summarize(tool_call.tool_name, False, error=error)
 
@@ -950,6 +952,7 @@ class AutonomousExecutor:
                         kwargs=tool_call.kwargs,
                         error=error,
                         summary=summary,
+                        error_type=error_type,
                     )
                 )
 

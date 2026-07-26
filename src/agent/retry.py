@@ -122,3 +122,43 @@ def is_transient_error(exc: BaseException) -> bool:
 
     message = str(exc).lower()
     return any(pattern in message for pattern in _TRANSIENT_PATTERNS)
+
+
+def classify_error(exc: BaseException) -> str:
+    """
+    Classify ``exc`` into one of three named categories for
+    ``ExecutionStep.error_type``.
+
+    Returns
+    -------
+    "transient"  — the error may resolve on retry (network timeout,
+                   rate limit, etc.).
+    "validation" — the arguments or their types were wrong (ValueError,
+                   TypeError); replanning with corrected arguments may help.
+    "fatal"      — any other non-transient error (missing file, permission
+                   denied, etc.); replanning may or may not help.
+
+    Implementation note: the message scan in ``is_transient_error``
+    handles wrapper exceptions (e.g., ``ToolExecutionError`` whose message
+    contains "timeout"). For type-based classification, the function also
+    inspects ``exc.original`` when present, because the dispatcher wraps
+    the tool's real exception in a ``RuntimeError`` subclass and the outer
+    type alone would otherwise cause all non-transient tool errors to fall
+    through to "fatal" regardless of the actual cause.
+    """
+
+    # Message scan works through wrappers (the wrapper message usually
+    # contains the original error text, e.g. "Tool X failed: timeout").
+    if is_transient_error(exc):
+        return "transient"
+
+    # Unwrap one level to get the original exception for type checks.
+    root = getattr(exc, "original", exc)
+
+    if is_transient_error(root):
+        return "transient"
+
+    if isinstance(root, (ValueError, TypeError)):
+        return "validation"
+
+    return "fatal"

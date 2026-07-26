@@ -24,6 +24,7 @@ from src.agent.retry import (
     _FATAL_TYPES,
     _TRANSIENT_PATTERNS,
     _TRANSIENT_TYPES,
+    classify_error,
     is_transient_error,
 )
 from src.tools.edit_tools import set_active_patch_manager
@@ -485,3 +486,49 @@ class TestRetryLimits:
 
         assert report.reflection is not None
         assert report.reflection.outcome == "COMPLETE"
+
+
+# ---------------------------------------------------------------------
+# classify_error (Task 31)
+# ---------------------------------------------------------------------
+
+
+class TestClassifyError:
+    def test_value_error_is_validation(self):
+        assert classify_error(ValueError("bad arg")) == "validation"
+
+    def test_type_error_is_validation(self):
+        assert classify_error(TypeError("wrong type")) == "validation"
+
+    def test_timeout_error_is_transient(self):
+        assert classify_error(TimeoutError("timed out")) == "transient"
+
+    def test_connection_reset_is_transient(self):
+        assert classify_error(ConnectionResetError()) == "transient"
+
+    def test_file_not_found_is_fatal(self):
+        assert classify_error(FileNotFoundError("missing")) == "fatal"
+
+    def test_permission_error_is_fatal(self):
+        assert classify_error(PermissionError("denied")) == "fatal"
+
+    def test_wrapped_value_error_is_validation(self):
+        class ToolExecutionError(RuntimeError):
+            def __init__(self, original):
+                self.original = original
+                super().__init__(f"wrapped: {original}")
+
+        exc = ToolExecutionError(ValueError("bad"))
+        assert classify_error(exc) == "validation"
+
+    def test_wrapped_timeout_error_is_transient(self):
+        class ToolExecutionError(RuntimeError):
+            def __init__(self, original):
+                self.original = original
+                super().__init__(f"Tool failed: timeout: {original}")
+
+        exc = ToolExecutionError(TimeoutError("timed out"))
+        assert classify_error(exc) == "transient"
+
+    def test_unknown_exception_is_fatal(self):
+        assert classify_error(RuntimeError("something odd")) == "fatal"
