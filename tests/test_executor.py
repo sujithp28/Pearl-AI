@@ -1836,6 +1836,83 @@ def test_no_checkpoint_created_event_when_nothing_new_to_capture(
 
 
 # ---------------------------------------------------------------------
+# Task 36: checkpoint undo restores workspace after multi-step approved plan
+# ---------------------------------------------------------------------
+
+
+def test_checkpoint_undo_restores_workspace_after_multi_step_approved_plan(
+    monkeypatch, workspace
+):
+    """
+    Verify the full undo contract for an approved multi-step plan:
+
+      run()     → awaiting_approval (files absent from disk)
+      approve() → completed (files written to disk, checkpoint taken)
+      restore() → workspace back to pre-approval state (files absent)
+
+    This pins the integration between AutonomousExecutor._checkpoint_before_writing()
+    and CheckpointManager.restore(). A regression here would mean the
+    checkpoint is not actually restoring everything the plan wrote.
+    """
+    import subprocess
+
+    from src.tools.checkpoints import CheckpointManager
+
+    if subprocess.run(["git", "--version"], capture_output=True).returncode != 0:
+        pytest.skip("git binary not available")
+
+    # Seed a baseline file so CheckpointManager.create() captures a
+    # non-empty tree on the first checkpoint.
+    (workspace / "baseline.txt").write_text("baseline\n")
+
+    ckpt_mgr = CheckpointManager(workspace)
+    executor, planner = build_executor(patch_manager=PatchManager())
+    executor.checkpoints = ckpt_mgr
+
+    target_a = str(workspace / "plan_a.py")
+    target_b = str(workspace / "plan_b.py")
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "create_file", "arguments": {"path": target_a, "content": "a=1\n"}},
+            {"tool": "create_file", "arguments": {"path": target_b, "content": "b=2\n"}},
+        ),
+    )
+
+    # --- Phase 1: run → awaiting_approval ---
+    run_report = executor.run("create two files")
+    assert run_report.stop_reason == "awaiting_approval"
+    assert not (workspace / "plan_a.py").exists()
+    assert not (workspace / "plan_b.py").exists()
+
+    # --- Phase 2: approve → files written, checkpoint taken ---
+    approve_report = executor.approve()
+    assert approve_report.stop_reason == "completed"
+    assert (workspace / "plan_a.py").exists()
+    assert (workspace / "plan_b.py").exists()
+
+    checkpoints = ckpt_mgr.list()
+    assert len(checkpoints) >= 1, "approve() must create a checkpoint"
+
+    checkpoint = checkpoints[0]  # most recent is first
+
+    # --- Phase 3: restore → workspace reverted ---
+    ckpt_mgr.restore(checkpoint.id)
+
+    assert not (workspace / "plan_a.py").exists(), (
+        "plan_a.py must be removed after restore"
+    )
+    assert not (workspace / "plan_b.py").exists(), (
+        "plan_b.py must be removed after restore"
+    )
+    assert (workspace / "baseline.txt").exists(), (
+        "baseline.txt must still be present (it was there before the plan)"
+    )
+
+
+# ---------------------------------------------------------------------
 # confidence_score on ExecutionReport (Task 25)
 # ---------------------------------------------------------------------
 
