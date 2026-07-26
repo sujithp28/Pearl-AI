@@ -10,6 +10,7 @@ from src.tools.git_tools import (
     git_log,
     git_restore,
     git_status,
+    summarize_changes,
 )
 
 
@@ -433,3 +434,89 @@ def test_git_create_branch_works_from_detached_head(tmp_path):
 
     assert "rescued" in result
     assert git_status()["branch"] == "rescued"
+
+
+# ---------------------------------------------------------------------
+# summarize_changes (Task 33)
+# ---------------------------------------------------------------------
+
+
+class TestSummarizeChanges:
+    def test_returns_structured_dict(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _git("init")
+        _git("config", "user.email", "test@example.com")
+        _git("config", "user.name", "Test")
+
+        result = summarize_changes()
+
+        assert isinstance(result, dict)
+        assert {
+            "staged_files",
+            "unstaged_files",
+            "untracked_files",
+            "insertions",
+            "deletions",
+            "total_changed",
+        } <= result.keys()
+
+    def test_clean_repo_has_zero_counts(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _git("init")
+        _git("config", "user.email", "test@example.com")
+        _git("config", "user.name", "Test")
+        (tmp_path / "a.txt").write_text("hello\n")
+        _commit_all("initial")
+
+        result = summarize_changes()
+
+        assert result["staged_files"] == []
+        assert result["unstaged_files"] == []
+        assert result["insertions"] == 0
+        assert result["total_changed"] == 0
+
+    def test_unstaged_changes_appear_in_result(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _git("init")
+        _git("config", "user.email", "test@example.com")
+        _git("config", "user.name", "Test")
+        f = tmp_path / "a.txt"
+        f.write_text("original\n")
+        _commit_all("initial")
+
+        f.write_text("modified\n")
+
+        result = summarize_changes()
+
+        assert "a.txt" in result["unstaged_files"]
+        assert result["total_changed"] >= 1
+
+    def test_staged_changes_appear_in_result(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _git("init")
+        _git("config", "user.email", "test@example.com")
+        _git("config", "user.name", "Test")
+        f = tmp_path / "b.txt"
+        f.write_text("new file\n")
+        _git("add", "b.txt")
+
+        result = summarize_changes()
+
+        assert "b.txt" in result["staged_files"]
+
+    def test_untracked_files_appear_in_result(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _git("init")
+        _git("config", "user.email", "test@example.com")
+        _git("config", "user.name", "Test")
+        (tmp_path / "untracked.py").write_text("x = 1\n")
+
+        result = summarize_changes()
+
+        assert "untracked.py" in result["untracked_files"]
+
+    def test_raises_outside_git_repo(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+
+        with pytest.raises(GitError):
+            summarize_changes()

@@ -333,3 +333,76 @@ def git_restore(files: list[str] | None = None) -> str:
         raise GitError(f"git restore failed: {result.stderr.strip()}")
 
     return f"Restored {len(targets)} file(s): {', '.join(targets)}"
+
+
+@tool(
+    description=(
+        "Summarize uncommitted workspace changes: what files changed, "
+        "how many lines added/removed, and which files are new or deleted."
+    ),
+    returns="dict",
+)
+def summarize_changes() -> dict[str, Any]:
+    """
+    Return a structured summary of the current working-tree changes.
+
+    Combines `git diff --stat` (unstaged) and `git diff --cached --stat`
+    (staged) to give a complete picture of what has changed since the
+    last commit, without reading any file content.
+
+    Returns
+    -------
+    dict with keys:
+      staged_files    list[str]  — files changed in the index (staging area)
+      unstaged_files  list[str]  — files changed in the working tree
+      untracked_files list[str]  — files not yet tracked by git
+      insertions      int        — total lines added (staged + unstaged)
+      deletions       int        — total lines removed (staged + unstaged)
+      total_changed   int        — total files with any change
+    """
+
+    _ensure_git_repo()
+
+    status = git_status()
+
+    staged_files: list[str] = status.get("staged", [])
+    unstaged_files: list[str] = status.get("unstaged", [])
+    untracked_files: list[str] = status.get("untracked", [])
+
+    insertions = 0
+    deletions = 0
+
+    for flag, args in (
+        ("staged", ["diff", "--cached", "--numstat"]),
+        ("unstaged", ["diff", "--numstat"]),
+    ):
+        result = _run_git(*args)
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                parts = line.split("\t")
+                if len(parts) >= 2:
+                    try:
+                        insertions += int(parts[0]) if parts[0] != "-" else 0
+                        deletions += int(parts[1]) if parts[1] != "-" else 0
+                    except ValueError:
+                        pass
+
+    total_changed = len(set(staged_files) | set(unstaged_files))
+
+    logger.info(
+        "Summarized changes: %d staged, %d unstaged, %d untracked, +%d -%d",
+        len(staged_files),
+        len(unstaged_files),
+        len(untracked_files),
+        insertions,
+        deletions,
+    )
+
+    return {
+        "staged_files": staged_files,
+        "unstaged_files": unstaged_files,
+        "untracked_files": untracked_files,
+        "insertions": insertions,
+        "deletions": deletions,
+        "total_changed": total_changed,
+    }

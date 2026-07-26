@@ -236,3 +236,64 @@ def test_plan_supports_none_step(monkeypatch):
     steps = planner.plan("say hello")
 
     assert [step.tool_name for step in steps] == ["none"]
+
+
+# ---------------------------------------------------------------------
+# Task 32: Planner._workspace_root() must agree with _ensure_within_workspace
+# ---------------------------------------------------------------------
+
+
+def test_planner_workspace_root_matches_ensure_within_workspace(tmp_path, monkeypatch):
+    """
+    Planner._workspace_root() and file_tools._ensure_within_workspace()
+    must derive the workspace boundary from the same source (Path.cwd().resolve()).
+
+    If they diverge, the planner could tell the LLM one root while the
+    tool enforces a different one, allowing paths that look valid to the
+    planner to fail at execution time — or worse, accepting paths the
+    planner thinks are safe but the tool would reject.
+    """
+    from src.tools.file_tools import _ensure_within_workspace
+
+    monkeypatch.chdir(tmp_path)
+
+    planner = build_planner()
+
+    planner_root = planner._workspace_root()
+
+    # A file at the workspace root boundary should be accepted by both.
+    boundary_file = tmp_path / "probe.txt"
+    boundary_file.write_text("probe")
+
+    resolved = _ensure_within_workspace(str(boundary_file))
+
+    assert str(resolved.parent) == planner_root, (
+        f"Planner reports root={planner_root!r}, but "
+        f"_ensure_within_workspace resolved parent={str(resolved.parent)!r}"
+    )
+
+
+def test_planner_workspace_root_rejects_paths_ensure_within_workspace_rejects(
+    tmp_path, monkeypatch
+):
+    """
+    The planner root and the file tool boundary reject the same paths:
+    a path outside the workspace fails _ensure_within_workspace with
+    PermissionError, which is the same boundary the planner communicates
+    to the LLM via the {workspace_root} template variable.
+    """
+    from src.tools.file_tools import _ensure_within_workspace
+
+    monkeypatch.chdir(tmp_path)
+
+    planner = build_planner()
+    planner_root = Path(planner._workspace_root())
+
+    outside = tmp_path.parent / "outside.txt"
+
+    # The outside path must not start with the planner root.
+    assert not str(outside.resolve()).startswith(str(planner_root))
+
+    # And _ensure_within_workspace must also reject it.
+    with pytest.raises(PermissionError):
+        _ensure_within_workspace(str(outside))
