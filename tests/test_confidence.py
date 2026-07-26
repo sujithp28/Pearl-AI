@@ -369,3 +369,98 @@ class TestScoringConsistency:
         assert isinstance(step_factor, ConfidenceFactor)
         plan_factor = result.plan_factors[0]
         assert isinstance(plan_factor, ConfidenceFactor)
+
+
+# ---------------------------------------------------------------------------
+# Task 37: Regression suite — pin exact computed scores for known inputs
+#
+# These tests exist to catch silent constant drift. If POSITION_PENALTY,
+# WRITE_PENALTY, SHELL_PENALTY, SHELL_COMPLEX_PENALTY, REPLAN_PENALTY,
+# or MAX_REPLAN_PENALTY change, the tests below fail immediately.
+# Adjust the expected values here whenever a constant is intentionally changed.
+# ---------------------------------------------------------------------------
+
+
+class TestConfidenceRegressionValues:
+    """Pin exact computed scores so constant changes cause a visible failure."""
+
+    # ---- Single-step plans ----
+
+    def test_single_read_step_scores_exactly_1(self):
+        result = score_plan([_call("read_file", path="f.py")])
+        assert result.score == 1.0
+
+    def test_single_write_step_scores_exactly_0_9(self):
+        # Step 0 has no position penalty.  write penalty = 0.10.
+        # 1.0 - 0.10 = 0.90
+        result = score_plan([_call("create_file", path="f.py", content="")])
+        assert result.score == 0.9
+
+    def test_single_shell_step_scores_exactly_0_8(self):
+        # shell penalty = 0.20
+        result = score_plan([_call("execute_shell", command="echo hi")])
+        assert result.score == 0.8
+
+    def test_single_complex_shell_step_scores_exactly_0_75(self):
+        # shell penalty 0.20 + complex penalty 0.05 = 0.25 → 0.75
+        result = score_plan([_call("execute_shell", command="echo hi | cat")])
+        assert result.score == 0.75
+
+    # ---- Position penalties ----
+
+    def test_second_read_step_gets_position_deduction(self):
+        # Step 1: 1.0 - 0.02*1 = 0.98
+        result = score_plan([_call("read_file"), _call("read_file")])
+        assert result.step_scores[1].score == 0.98
+
+    def test_fifth_read_step_gets_four_position_deductions(self):
+        # Step 4: 1.0 - 0.02*4 = 0.92
+        steps = _calls("read_file", "read_file", "read_file", "read_file", "read_file")
+        result = score_plan(steps)
+        assert result.step_scores[4].score == 0.92
+
+    # ---- Two-step plan with read + write ----
+
+    def test_read_then_write_mean_score(self):
+        # Step 0 (read):  1.0
+        # Step 1 (write): 1.0 - 0.02 (position) - 0.10 (write) = 0.88
+        # mean = (1.0 + 0.88) / 2 = 0.94
+        result = score_plan([_call("read_file"), _call("create_file", path="f.py", content="")])
+        assert result.score == 0.94
+
+    # ---- Replan penalties ----
+
+    def test_one_replan_deducts_0_15_from_plan_score(self):
+        # read step score = 1.0; replan deduction = 0.15 → 0.85
+        result = score_plan([_call("read_file")], replans_used=1)
+        assert result.score == 0.85
+
+    def test_two_replans_deducts_0_30(self):
+        # 1.0 - 0.15*2 = 0.70
+        result = score_plan([_call("read_file")], replans_used=2)
+        assert result.score == 0.70
+
+    def test_three_replans_capped_at_max_replan_penalty(self):
+        # 0.15*3=0.45 > MAX_REPLAN_PENALTY=0.30 → deduction is 0.30
+        result = score_plan([_call("read_file")], replans_used=3)
+        assert result.score == 0.70  # 1.0 - 0.30
+
+    # ---- Constant stability (fail if constants change) ----
+
+    def test_position_penalty_constant_is_0_02(self):
+        assert POSITION_PENALTY == 0.02
+
+    def test_write_penalty_constant_is_0_10(self):
+        assert WRITE_PENALTY == 0.10
+
+    def test_shell_penalty_constant_is_0_20(self):
+        assert SHELL_PENALTY == 0.20
+
+    def test_shell_complex_penalty_constant_is_0_05(self):
+        assert SHELL_COMPLEX_PENALTY == 0.05
+
+    def test_replan_penalty_constant_is_0_15(self):
+        assert REPLAN_PENALTY == 0.15
+
+    def test_max_replan_penalty_constant_is_0_30(self):
+        assert MAX_REPLAN_PENALTY == 0.30
