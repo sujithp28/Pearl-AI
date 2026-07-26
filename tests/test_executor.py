@@ -12,6 +12,7 @@ from src.tools.edit_tools import (
     replace_in_file,
     set_active_patch_manager,
 )
+from src.tools.file_tools import read_file
 from src.tools.metadata import tool
 from src.tools.patch_manager import PatchManager
 from src.tools.registry import ToolRegistry
@@ -56,6 +57,7 @@ def build_executor(
     registry = ToolRegistry()
     registry.register(add)
     registry.register(boom)
+    registry.register(read_file)
     registry.register(create_file)
     registry.register(replace_in_file)
     registry.register(execute_shell)
@@ -1153,6 +1155,58 @@ def test_cancel_while_awaiting_command_approval_discards_it(monkeypatch, workspa
     assert not executor.command_approver.has_pending()
 
 
+def test_approve_backfills_step_result_with_real_command_output(
+    monkeypatch, workspace
+):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {
+                "tool": "execute_shell",
+                "arguments": {"command": "echo hello"},
+            },
+        ),
+    )
+
+    paused = executor.run("say hello")
+    assert paused.stop_reason == "awaiting_approval"
+    # Before approval the step result is the staging placeholder
+    assert paused.steps[0].result == "Command staged for approval: 'echo hello'"
+
+    final = executor.approve()
+
+    assert final.stop_reason == "completed"
+    # After approval the step result is the real command output
+    assert final.steps[0].result == "hello"
+    assert "hello" in final.steps[0].summary
+
+
+def test_approve_backfills_multiple_command_steps_in_order(monkeypatch, workspace):
+    executor, planner = build_executor()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        _plan_of(
+            {"tool": "execute_shell", "arguments": {"command": "echo first"}},
+            {"tool": "execute_shell", "arguments": {"command": "echo second"}},
+        ),
+    )
+
+    paused = executor.run("echo twice")
+    assert paused.stop_reason == "awaiting_approval"
+    assert len(paused.steps) == 2
+
+    final = executor.approve()
+
+    assert final.stop_reason == "completed"
+    assert final.steps[0].result == "first"
+    assert final.steps[1].result == "second"
+
+
 def test_execute_shell_direct_call_still_runs_immediately_outside_a_run():
     # Sanity check that the tool function itself, called with no
     # executor/approver involved at all, is unaffected by any of this
@@ -1384,6 +1438,7 @@ def test_diff_is_generated_for_a_previewed_edit(monkeypatch, workspace):
         planner.client,
         "generate_json",
         _plan_of(
+            {"tool": "read_file", "arguments": {"path": str(existing)}},
             {
                 "tool": "replace_in_file",
                 "arguments": {
@@ -1415,6 +1470,7 @@ def test_empty_patch_when_nothing_to_replace_does_not_pause(monkeypatch, workspa
         planner.client,
         "generate_json",
         _plan_of(
+            {"tool": "read_file", "arguments": {"path": str(file)}},
             {
                 "tool": "replace_in_file",
                 "arguments": {
@@ -1431,7 +1487,7 @@ def test_empty_patch_when_nothing_to_replace_does_not_pause(monkeypatch, workspa
     assert report.stop_reason == "completed"
     assert report.succeeded
     assert not executor.patch_manager.has_pending()
-    assert report.steps[0].result == 0
+    assert report.steps[1].result == 0  # step 0 is the read_file pre-check
     assert file.read_text() == "hello world\n"
 
 
@@ -1777,3 +1833,72 @@ def test_no_checkpoint_created_event_when_nothing_new_to_capture(
     statuses = [event.status for event in report.events]
     assert "checkpoint_created" not in statuses
     assert len(manager.list()) == 1  # still only the pre-existing one
+
+
+# ---------------------------------------------------------------------
+# confidence_score on ExecutionReport (Task 25)
+# ---------------------------------------------------------------------
+
+
+class TestConfidenceScore:
+    def test_confidence_score_is_set_after_successful_run(self, monkeypatch):
+        executor, planner = build_executor()
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
+        )
+        report = executor.run("add 1+2")
+        assert report.confidence_score is not None
+
+    def test_confidence_score_is_float_in_0_1_range(self, monkeypatch):
+        executor, planner = build_executor()
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
+        )
+        report = executor.run("add 1+2")
+        assert isinstance(report.confidence_score, float)
+        assert 0.0 <= report.confidence_score <= 1.0
+
+    def test_confidence_score_is_none_when_cancelled_before_planning(self):
+        executor, _ = build_executor()
+        executor.cancel()
+        report = executor.run("add 1+2")
+        assert report.stop_reason == "cancelled"
+        assert report.confidence_score is None
+
+    def test_confidence_score_is_set_for_awaiting_approval_report(
+        self, monkeypatch, workspace
+    ):
+        executor, planner = build_executor()
+        target = str(workspace / "a.py")
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of(
+                {"tool": "create_file", "arguments": {"path": target, "content": "x\n"}}
+            ),
+        )
+        report = executor.run("create a.py")
+        assert report.stop_reason == "awaiting_approval"
+        assert report.confidence_score is not None
+        assert 0.0 <= report.confidence_score <= 1.0
+        executor.reject()  # cleanup
+
+    def test_confidence_score_is_set_for_rejected_report(self, monkeypatch, workspace):
+        executor, planner = build_executor()
+        target = str(workspace / "a.py")
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of(
+                {"tool": "create_file", "arguments": {"path": target, "content": "x\n"}}
+            ),
+        )
+        executor.run("create a.py")
+        final = executor.reject()
+        assert final.stop_reason == "rejected"
+        assert final.confidence_score is not None
+        assert 0.0 <= final.confidence_score <= 1.0

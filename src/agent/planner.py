@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.agent.confidence import score_plan
+from src.agent.dependency_graph import topological_sort
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.plan_validator import validate_plan
 from src.llm.client import LLMClient
@@ -48,6 +49,7 @@ class Planner:
         self.dispatcher = dispatcher
         self.client = client or LLMClient()
         self.parser = ToolParser()
+        self.last_confidence_score: float | None = None
 
     @staticmethod
     def _workspace_root() -> str:
@@ -143,12 +145,17 @@ class Planner:
 
         steps = self.parser.parse_plan(response)
 
+        # Sort before validating so that read-before-write and similar
+        # ordering checks operate on execution order, not declaration order.
+        steps = topological_sort(steps)
+
         validate_plan(steps)
 
         for step in steps:
             validate_tool_call(step, self.registry)
 
         confidence = score_plan(steps)
+        self.last_confidence_score = confidence.score
 
         logger.info(
             "Planned %d step(s): %s (confidence=%.2f)",
@@ -192,6 +199,7 @@ class Planner:
         completed: list[dict[str, Any]],
         failed: dict[str, Any],
         cancel_check: Callable[[], bool] | None = None,
+        replans_used: int = 0,
     ) -> list[ToolCall]:
         """
         Ask the LLM for a revised remaining plan after `failed`
@@ -216,18 +224,22 @@ class Planner:
 
         steps = self.parser.parse_plan(response)
 
+        steps = topological_sort(steps)
+
         validate_plan(steps)
 
         for step in steps:
             validate_tool_call(step, self.registry)
 
-        confidence = score_plan(steps)
+        confidence = score_plan(steps, replans_used=replans_used)
+        self.last_confidence_score = confidence.score
 
         logger.info(
-            "Replanned %d step(s): %s (confidence=%.2f)",
+            "Replanned %d step(s): %s (confidence=%.2f, replans_used=%d)",
             len(steps),
             [step.tool_name for step in steps],
             confidence.score,
+            replans_used,
         )
 
         return steps

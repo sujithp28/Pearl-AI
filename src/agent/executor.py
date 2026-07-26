@@ -219,6 +219,7 @@ class ExecutionReport:
     replans_used: int = 0
     events: list[ProgressEvent] = field(default_factory=list)
     reflection: ReflectionResult | None = None
+    confidence_score: float | None = None
 
     @property
     def succeeded(self) -> bool:
@@ -325,6 +326,7 @@ class AutonomousExecutor:
         )
         self._cancel_event = threading.Event()
         self._paused: _PausedState | None = None
+        self._initial_confidence_score: float | None = None
 
     def cancel(self) -> None:
         """
@@ -483,6 +485,7 @@ class AutonomousExecutor:
             replans_used=state.replans_used,
             events=state.events,
             reflection=_reflect(state.steps, "cancelled", state.replans_used),
+            confidence_score=self._initial_confidence_score,
         )
 
     def _emit(
@@ -578,6 +581,8 @@ class AutonomousExecutor:
                 events=events,
                 reflection=_reflect(steps, "cancelled", 0),
             )
+
+        self._initial_confidence_score = self.planner.last_confidence_score
 
         return self._finish_or_pause(
             self._execute(prompt, pending, steps, events, completed_for_replan, 0, 0)
@@ -722,6 +727,7 @@ class AutonomousExecutor:
             stop_reason="rejected",
             replans_used=state.replans_used,
             events=state.events,
+            confidence_score=self._initial_confidence_score,
         )
 
     def _checkpoint_before_writing(self, state: _PausedState) -> None:
@@ -772,6 +778,8 @@ class AutonomousExecutor:
         mid-execution cancel case, where _check_cancelled() returns
         early before _check_awaiting_approval() can run.
         """
+
+        report.confidence_score = self._initial_confidence_score
 
         if report.stop_reason != "awaiting_approval":
             self.patch_manager.discard_all()
