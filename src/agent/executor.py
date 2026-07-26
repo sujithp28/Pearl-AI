@@ -35,6 +35,7 @@ from typing import Any, Callable, Literal
 
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
+from src.agent.retry import is_transient_error
 from src.llm.client import LLMCancelled
 from src.llm.parser import ToolCall
 from src.personality import EventKind, PersonalityManager
@@ -49,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_ITERATIONS = 10
 DEFAULT_MAX_REPLANS = 3
+DEFAULT_MAX_RETRIES = 3
 
 StopReason = Literal[
     "completed",
@@ -66,6 +68,7 @@ ProgressStatus = Literal[
     "executing_step",
     "step_completed",
     "step_failed",
+    "step_retrying",
     "replanning",
     "task_completed",
     "cancelled",
@@ -263,6 +266,7 @@ class AutonomousExecutor:
         dispatcher: ToolDispatcher,
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
         max_replans: int = DEFAULT_MAX_REPLANS,
+        max_retries: int = DEFAULT_MAX_RETRIES,
         on_progress: Callable[[ProgressEvent], None] | None = None,
         patch_manager: PatchManager | None = None,
         command_approver: CommandApprovalManager | None = None,
@@ -273,6 +277,7 @@ class AutonomousExecutor:
         self.dispatcher = dispatcher
         self.max_iterations = max_iterations
         self.max_replans = max_replans
+        self.max_retries = max_retries
         self.on_progress = on_progress
         self.patch_manager = patch_manager or PatchManager()
         self.command_approver = command_approver or CommandApprovalManager(
@@ -719,7 +724,19 @@ class AutonomousExecutor:
         Shared by `run()` (starting fresh, iteration 0, an empty
         history) and `approve()` (resuming exactly where a prior
         `_execute()` call paused).
+
+        Retry counts are local to each `_execute()` call — they reset
+        on `approve()` resumption. This is intentional: after the user
+        approves staged changes we start fresh on retries for the
+        remaining steps, which have not yet been attempted.
         """
+
+        # Per-step transient retry counter, keyed by id() of the ToolCall
+        # object. id() is safe here because we re-insert the exact same
+        # object when retrying, so the identity is stable across attempts.
+        # After a replan the new ToolCall objects have different ids, so
+        # old retry counts for a failed step cannot pollute the new plan.
+        _retry_counts: dict[int, int] = {}
 
         while pending:
             iteration += 1
@@ -806,6 +823,37 @@ class AutonomousExecutor:
                     **tool_call.kwargs,
                 )
             except Exception as exc:
+                # Transient errors are retried before the replan path.
+                # The same ToolCall object is re-queued at the front of
+                # pending and iteration is decremented so the retry does
+                # not consume an iteration slot or a replan slot.
+                retry_count = _retry_counts.get(id(tool_call), 0)
+
+                if is_transient_error(exc) and retry_count < self.max_retries:
+                    _retry_counts[id(tool_call)] = retry_count + 1
+                    pending.insert(0, tool_call)
+                    iteration -= 1
+
+                    logger.warning(
+                        "Step %d: '%s' failed with transient error "
+                        "(attempt %d/%d); retrying: %s",
+                        iteration + 1,
+                        tool_call.tool_name,
+                        retry_count + 1,
+                        self.max_retries,
+                        exc,
+                    )
+
+                    self._emit(
+                        events,
+                        "step_retrying",
+                        current_step=iteration,
+                        total_steps=iteration + len(pending),
+                        current_action=self._personality.format(EventKind.WARNING),
+                    )
+
+                    continue
+
                 error = str(exc)
                 summary = _summarize(tool_call.tool_name, False, error=error)
 
