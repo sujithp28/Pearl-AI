@@ -1,6 +1,6 @@
 import pytest
 
-from src.llm.parser import ToolCall, ToolParser
+from src.llm.parser import ParseError, ToolCall, ToolParser
 
 
 def test_parse_valid_tool_call():
@@ -178,3 +178,57 @@ class TestExecutionReportProperties:
         r = self._make_report()
         names = [s.tool_name for s in r.failed_steps]
         assert names == ["write_file"]
+
+
+# ---------------------------------------------------------------------
+# ParseError (Task 35)
+# ---------------------------------------------------------------------
+
+
+class TestParseError:
+    def test_is_subclass_of_value_error(self):
+        assert issubclass(ParseError, ValueError)
+
+    def test_invalid_json_sets_reason(self):
+        parser = ToolParser()
+        with pytest.raises(ParseError) as exc_info:
+            parser.parse("not json")
+        assert exc_info.value.reason == "invalid_json"
+
+    def test_not_a_dict_sets_reason(self):
+        parser = ToolParser()
+        with pytest.raises(ParseError) as exc_info:
+            parser.parse("[1, 2, 3]")
+        assert exc_info.value.reason == "not_a_dict"
+
+    def test_missing_steps_sets_reason_and_field(self):
+        parser = ToolParser()
+        with pytest.raises(ParseError) as exc_info:
+            parser.parse_plan('{"tool": "read_file", "arguments": {}}')
+        err = exc_info.value
+        assert err.reason == "missing_steps"
+        assert err.field == "steps"
+
+    def test_missing_fields_sets_reason_and_field(self):
+        parser = ToolParser()
+        with pytest.raises(ParseError) as exc_info:
+            parser.parse_plan('{"steps": [{"arguments": {}}]}')
+        err = exc_info.value
+        assert err.reason == "missing_fields"
+        assert "tool" in err.field
+
+    def test_invalid_type_sets_reason(self):
+        parser = ToolParser()
+        with pytest.raises(ParseError) as exc_info:
+            parser.parse('{"tool": 42, "arguments": {}}')
+        assert exc_info.value.reason == "invalid_type"
+
+    def test_raw_response_is_capped_at_500(self):
+        long = "x" * 1000
+        err = ParseError("invalid_json", long)
+        assert len(err.raw_response) == 500
+
+    def test_existing_value_error_callers_still_catch_parse_error(self):
+        parser = ToolParser()
+        with pytest.raises(ValueError):
+            parser.parse("not json")

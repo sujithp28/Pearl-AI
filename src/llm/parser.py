@@ -63,6 +63,50 @@ class ToolCall:
         return d
 
 
+class ParseError(ValueError):
+    """
+    Structured error raised when ToolParser cannot parse an LLM response.
+
+    Subclasses ValueError so existing callers that catch ValueError
+    continue to work. The structured fields allow callers that want to
+    distinguish causes (e.g. retry on invalid JSON vs. replan on missing
+    fields) to do so without string-matching the message.
+
+    Attributes
+    ----------
+    reason : str
+        Machine-readable error category:
+          "invalid_json"    — response was not valid JSON
+          "not_a_dict"      — JSON was valid but not an object
+          "missing_steps"   — plan had no 'steps' key or an empty list
+          "missing_fields"  — a step was missing a required field
+          "invalid_type"    — a field had an unexpected type
+          "not_a_step"      — a plan step was not a JSON object
+    raw_response : str
+        The response that failed, capped at 500 chars for logging.
+    field : str | None
+        The field name involved, when the reason is field-specific.
+    """
+
+    _CAP = 500
+
+    def __init__(
+        self,
+        reason: str,
+        raw_response: str,
+        *,
+        field: str | None = None,
+    ) -> None:
+        self.reason = reason
+        self.raw_response = raw_response[: self._CAP]
+        self.field = field
+
+        detail = f" (field={field!r})" if field else ""
+        super().__init__(
+            f"ParseError[{reason}]{detail}: {raw_response[:100]!r}"
+        )
+
+
 class ToolParser:
     """
     Parse JSON produced by the language model.
@@ -90,12 +134,12 @@ class ToolParser:
             payload = json.loads(response)
 
         except json.JSONDecodeError as exc:
-            raise ValueError("LLM returned invalid JSON.") from exc
+            raise ParseError("invalid_json", response) from exc
 
         if not isinstance(payload, dict):
-            raise ValueError("LLM response must be a JSON object.")
+            raise ParseError("not_a_dict", response)
 
-        return self._parse_step(payload)
+        return self._parse_step(payload, raw=response)
 
     def parse_plan(self, response: str) -> list[ToolCall]:
         """
@@ -115,50 +159,50 @@ class ToolParser:
             payload = json.loads(response)
 
         except json.JSONDecodeError as exc:
-            raise ValueError("LLM returned invalid JSON.") from exc
+            raise ParseError("invalid_json", response) from exc
 
         if not isinstance(payload, dict):
-            raise ValueError("Plan response must be a JSON object.")
+            raise ParseError("not_a_dict", response)
 
         steps = payload.get("steps")
 
         if not isinstance(steps, list) or not steps:
-            raise ValueError("Plan must contain a non-empty 'steps' list.")
+            raise ParseError("missing_steps", response, field="steps")
 
-        return [self._parse_step(step) for step in steps]
+        return [self._parse_step(step, raw=response) for step in steps]
 
-    def _parse_step(self, step: Any) -> ToolCall:
+    def _parse_step(self, step: Any, raw: str = "") -> ToolCall:
         """
         Parse a single {"tool": ..., "arguments": ...} object.
         """
 
         if not isinstance(step, dict):
-            raise ValueError("Each step must be a JSON object.")
+            raise ParseError("not_a_step", raw)
 
         missing = self.REQUIRED_FIELDS - step.keys()
 
         if missing:
-            raise ValueError(f"Missing JSON fields: {missing}")
+            raise ParseError("missing_fields", raw, field=", ".join(sorted(missing)))
 
         tool_name = step["tool"]
         arguments = step.get("arguments", {})
 
         if not isinstance(tool_name, str):
-            raise TypeError("Tool name must be a string.")
+            raise ParseError("invalid_type", raw, field="tool")
 
         if not isinstance(arguments, dict):
-            raise TypeError("Arguments must be a dictionary.")
+            raise ParseError("invalid_type", raw, field="arguments")
 
         step_id = step.get("id")
         if step_id is not None and not isinstance(step_id, str):
-            raise TypeError("Step 'id' must be a string.")
+            raise ParseError("invalid_type", raw, field="id")
 
         depends_on_raw = step.get("depends_on", [])
         if not isinstance(depends_on_raw, list):
-            raise TypeError("'depends_on' must be a list.")
+            raise ParseError("invalid_type", raw, field="depends_on")
         for entry in depends_on_raw:
             if not isinstance(entry, str):
-                raise TypeError("Each 'depends_on' entry must be a string.")
+                raise ParseError("invalid_type", raw, field="depends_on")
 
         return ToolCall(
             tool_name=tool_name,
