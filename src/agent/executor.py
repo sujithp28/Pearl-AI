@@ -28,6 +28,7 @@ orchestration around them.
 
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 import threading
@@ -329,6 +330,18 @@ class AutonomousExecutor:
         self._paused: _PausedState | None = None
         self._initial_confidence_score: float | None = None
 
+    def _log_structured(self, event: str, **fields: Any) -> None:
+        """
+        Emit a structured JSON log record at DEBUG level.
+
+        Each record is a JSON object with at least an ``event`` key.
+        These records are parsed by log aggregators and monitoring
+        pipelines; the human-readable INFO/ERROR calls remain unchanged
+        and are not replaced by this method.
+        """
+
+        logger.debug(json.dumps({"event": event, **fields}))
+
     def cancel(self) -> None:
         """
         Request cancellation of the current (or next) `run()` call.
@@ -540,6 +553,7 @@ class AutonomousExecutor:
             )
 
         logger.info("Starting autonomous execution for: %s", prompt)
+        self._log_structured("run_start", prompt=prompt[:200])
 
         steps: list[ExecutionStep] = []
         events: list[ProgressEvent] = []
@@ -884,6 +898,11 @@ class AutonomousExecutor:
                 tool_call.tool_name,
                 tool_call.kwargs,
             )
+            self._log_structured(
+                "step_start",
+                iteration=iteration,
+                tool=tool_call.tool_name,
+            )
 
             if self._check_cancelled(events, steps):
                 return ExecutionReport(
@@ -928,6 +947,12 @@ class AutonomousExecutor:
                         self.max_retries,
                         exc,
                     )
+                    self._log_structured(
+                        "step_retry",
+                        iteration=iteration + 1,
+                        tool=tool_call.tool_name,
+                        attempt=retry_count + 1,
+                    )
 
                     self._emit(
                         events,
@@ -944,6 +969,13 @@ class AutonomousExecutor:
                 summary = _summarize(tool_call.tool_name, False, error=error)
 
                 logger.error("Step %d: %s", iteration, summary)
+                self._log_structured(
+                    "step_failure",
+                    iteration=iteration,
+                    tool=tool_call.tool_name,
+                    error_type=error_type,
+                    error=error[:200],
+                )
 
                 steps.append(
                     ExecutionStep(
@@ -1004,6 +1036,12 @@ class AutonomousExecutor:
                     iteration,
                     replans_used + 1,
                     self.max_replans,
+                )
+                self._log_structured(
+                    "replan_start",
+                    iteration=iteration,
+                    replan_number=replans_used + 1,
+                    failed_tool=tool_call.tool_name,
                 )
 
                 if self._check_cancelled(events, steps):
@@ -1094,6 +1132,11 @@ class AutonomousExecutor:
             summary = _summarize(tool_call.tool_name, True, result=result)
 
             logger.info("Step %d: %s", iteration, summary)
+            self._log_structured(
+                "step_success",
+                iteration=iteration,
+                tool=tool_call.tool_name,
+            )
 
             steps.append(
                 ExecutionStep(
@@ -1125,6 +1168,11 @@ class AutonomousExecutor:
             "Autonomous execution finished: %d step(s) run (%d replan(s)).",
             len(steps),
             replans_used,
+        )
+        self._log_structured(
+            "run_complete",
+            steps_total=len(steps),
+            replans_used=replans_used,
         )
 
         awaiting = self._check_awaiting_approval(

@@ -2055,3 +2055,133 @@ class TestExecutionStepErrorType:
         failed = report.failed_steps
         assert len(failed) == 1
         assert failed[0].error_type == "fatal"
+
+
+# ---------------------------------------------------------------------
+# Structured JSON logging (Task 40)
+# ---------------------------------------------------------------------
+
+
+import json as _json
+import logging as _logging
+
+
+def _structured_events(caplog, event_name: str | None = None) -> list[dict]:
+    """
+    Extract structured JSON records emitted via _log_structured from
+    captured log output. If event_name is given, filter to that event.
+    """
+    records = []
+    for record in caplog.records:
+        if record.levelno != _logging.DEBUG:
+            continue
+        try:
+            obj = _json.loads(record.getMessage())
+        except (ValueError, TypeError):
+            continue
+        if "event" not in obj:
+            continue
+        if event_name is None or obj["event"] == event_name:
+            records.append(obj)
+    return records
+
+
+class TestStructuredLogging:
+    def test_run_start_emitted(self, monkeypatch, caplog):
+        executor, planner = build_executor()
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
+        )
+        with caplog.at_level(_logging.DEBUG, logger="src.agent.executor"):
+            executor.run("add things")
+        events = _structured_events(caplog, "run_start")
+        assert len(events) == 1
+        assert "prompt" in events[0]
+
+    def test_run_complete_emitted(self, monkeypatch, caplog):
+        executor, planner = build_executor()
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
+        )
+        with caplog.at_level(_logging.DEBUG, logger="src.agent.executor"):
+            executor.run("add things")
+        events = _structured_events(caplog, "run_complete")
+        assert len(events) == 1
+        assert events[0]["steps_total"] == 1
+        assert events[0]["replans_used"] == 0
+
+    def test_step_start_emitted_per_step(self, monkeypatch, caplog):
+        executor, planner = build_executor()
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of(
+                {"tool": "add", "arguments": {"a": 1, "b": 2}},
+                {"tool": "add", "arguments": {"a": 3, "b": 4}},
+            ),
+        )
+        with caplog.at_level(_logging.DEBUG, logger="src.agent.executor"):
+            executor.run("add twice")
+        events = _structured_events(caplog, "step_start")
+        assert len(events) == 2
+        assert all("tool" in e and "iteration" in e for e in events)
+
+    def test_step_success_emitted(self, monkeypatch, caplog):
+        executor, planner = build_executor()
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
+        )
+        with caplog.at_level(_logging.DEBUG, logger="src.agent.executor"):
+            executor.run("add things")
+        events = _structured_events(caplog, "step_success")
+        assert len(events) == 1
+        assert events[0]["tool"] == "add"
+
+    def test_step_failure_emitted_with_error_type(self, monkeypatch, caplog):
+        executor, planner = build_executor(max_replans=0)
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of({"tool": "boom", "arguments": {}}),
+        )
+        with caplog.at_level(_logging.DEBUG, logger="src.agent.executor"):
+            executor.run("boom")
+        events = _structured_events(caplog, "step_failure")
+        assert len(events) == 1
+        assert events[0]["error_type"] == "validation"
+        assert "error" in events[0]
+
+    def test_replan_start_emitted(self, monkeypatch, caplog):
+        executor, planner = build_executor(max_replans=1)
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_sequence(
+                [{"tool": "boom", "arguments": {}}],
+                [{"tool": "add", "arguments": {"a": 1, "b": 2}}],
+            ),
+        )
+        with caplog.at_level(_logging.DEBUG, logger="src.agent.executor"):
+            executor.run("boom then replan")
+        events = _structured_events(caplog, "replan_start")
+        assert len(events) == 1
+        assert events[0]["replan_number"] == 1
+        assert events[0]["failed_tool"] == "boom"
+
+    def test_structured_records_are_valid_json(self, monkeypatch, caplog):
+        executor, planner = build_executor(max_replans=0)
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            _plan_of({"tool": "add", "arguments": {"a": 2, "b": 3}}),
+        )
+        with caplog.at_level(_logging.DEBUG, logger="src.agent.executor"):
+            executor.run("add")
+        all_structured = _structured_events(caplog)
+        assert len(all_structured) >= 3  # run_start, step_start, step_success, run_complete

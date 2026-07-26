@@ -10,6 +10,7 @@ from src.tools.shell_tools import (
     DEFAULT_ALLOWED_COMMANDS,
     MAX_TIMEOUT,
     UnsafeCommandError,
+    _parse_allowlist_setting,
     _parse_pytest_summary,
     current_user,
     execute_shell,
@@ -196,6 +197,45 @@ def _no_leaked_command_approver():
     assert get_active_command_approver() is None
     yield
     set_active_command_approver(None)
+
+
+# ---------------------------------------------------------------------
+# _parse_allowlist_setting (Task 39 — pure unit, no Settings needed)
+# ---------------------------------------------------------------------
+
+
+class TestParseAllowlistSetting:
+    def test_wildcard_returns_none(self):
+        assert _parse_allowlist_setting("*") is None
+
+    def test_wildcard_with_surrounding_whitespace_returns_none(self):
+        assert _parse_allowlist_setting("  *  ") is None
+
+    def test_empty_string_returns_default_allowlist(self):
+        assert _parse_allowlist_setting("") is DEFAULT_ALLOWED_COMMANDS
+
+    def test_whitespace_only_returns_default_allowlist(self):
+        assert _parse_allowlist_setting("   ") is DEFAULT_ALLOWED_COMMANDS
+
+    def test_single_command_parses_correctly(self):
+        result = _parse_allowlist_setting("echo")
+        assert result == frozenset({"echo"})
+
+    def test_comma_separated_list_parses_correctly(self):
+        result = _parse_allowlist_setting("echo,git,ls")
+        assert result == frozenset({"echo", "git", "ls"})
+
+    def test_whitespace_around_entries_is_stripped(self):
+        result = _parse_allowlist_setting(" echo , git , ls ")
+        assert result == frozenset({"echo", "git", "ls"})
+
+    def test_empty_entries_in_list_are_filtered(self):
+        result = _parse_allowlist_setting("echo,,git")
+        assert result == frozenset({"echo", "git"})
+
+    def test_returns_frozenset(self):
+        result = _parse_allowlist_setting("echo")
+        assert isinstance(result, frozenset)
 
 
 # ---------------------------------------------------------------------

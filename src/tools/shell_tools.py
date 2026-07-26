@@ -212,14 +212,22 @@ class UnsafeCommandError(PermissionError):
     """
 
 
-def _get_allowed_commands() -> frozenset[str] | None:
+def _parse_allowlist_setting(configured: str) -> frozenset[str] | None:
     """
-    Return the currently configured allowlist, or `None` if
-    allowlisting is disabled (`Settings.SHELL_ALLOWED_COMMANDS ==
-    "*"`).
+    Parse a raw ``SHELL_ALLOWED_COMMANDS`` string into an allowlist.
+
+    Returns
+    -------
+    None
+        If `configured` is ``"*"`` (allowlisting disabled — every base
+        command is permitted, subject to the denylist).
+    frozenset[str]
+        The set of allowed base-command names parsed from `configured`
+        (comma-separated), or `DEFAULT_ALLOWED_COMMANDS` when
+        `configured` is empty.
     """
 
-    configured = Settings.SHELL_ALLOWED_COMMANDS.strip()
+    configured = configured.strip()
 
     if configured == "*":
         return None
@@ -228,6 +236,16 @@ def _get_allowed_commands() -> frozenset[str] | None:
         return frozenset(item.strip() for item in configured.split(",") if item.strip())
 
     return DEFAULT_ALLOWED_COMMANDS
+
+
+def _get_allowed_commands() -> frozenset[str] | None:
+    """
+    Return the currently configured allowlist, or `None` if
+    allowlisting is disabled (`Settings.SHELL_ALLOWED_COMMANDS ==
+    "*"`).
+    """
+
+    return _parse_allowlist_setting(Settings.SHELL_ALLOWED_COMMANDS)
 
 
 def _base_command(segment: str) -> str:
