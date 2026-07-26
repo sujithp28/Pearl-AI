@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.agent.dispatcher import ToolDispatcher
+from src.agent.plan_validator import validate_plan
 from src.llm.client import LLMClient
 from src.llm.parser import ToolCall, ToolParser
 from src.llm.validation import validate_tool_call
@@ -141,6 +142,8 @@ class Planner:
 
         steps = self.parser.parse_plan(response)
 
+        validate_plan(steps)
+
         for step in steps:
             validate_tool_call(step, self.registry)
 
@@ -208,6 +211,8 @@ class Planner:
         response = json.dumps(payload)
 
         steps = self.parser.parse_plan(response)
+
+        validate_plan(steps)
 
         for step in steps:
             validate_tool_call(step, self.registry)
