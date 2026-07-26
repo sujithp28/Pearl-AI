@@ -12,6 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any, Callable
 
+from src.agent.confidence import score_plan
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.plan_validator import validate_plan
 from src.llm.client import LLMClient
@@ -147,10 +148,13 @@ class Planner:
         for step in steps:
             validate_tool_call(step, self.registry)
 
+        confidence = score_plan(steps)
+
         logger.info(
-            "Planned %d step(s): %s",
+            "Planned %d step(s): %s (confidence=%.2f)",
             len(steps),
             [step.tool_name for step in steps],
+            confidence.score,
         )
 
         return steps
@@ -217,10 +221,13 @@ class Planner:
         for step in steps:
             validate_tool_call(step, self.registry)
 
+        confidence = score_plan(steps)
+
         logger.info(
-            "Replanned %d step(s): %s",
+            "Replanned %d step(s): %s (confidence=%.2f)",
             len(steps),
             [step.tool_name for step in steps],
+            confidence.score,
         )
 
         return steps
