@@ -15,11 +15,15 @@ Update this document in the same PR as any change to `src/repository/`.
 2. [Subsystem Map](#2-subsystem-map)
 3. [Phase 1 — Repository Scanner](#3-phase-1--repository-scanner)
 4. [Phase 2 — Language Parser Framework](#4-phase-2--language-parser-framework)
-5. [Future Phases (roadmap)](#5-future-phases-roadmap)
-6. [Public API Reference](#6-public-api-reference)
-7. [Extension Guide](#7-extension-guide)
-8. [Performance Notes](#8-performance-notes)
-9. [Design Decisions](#9-design-decisions)
+5. [Phase 3 — Python AST Parser](#5-phase-3--python-ast-parser)
+6. [Phase 4 — Repository Index](#6-phase-4--repository-index)
+7. [SymbolDef Extended Fields (Phase 4)](#7-symboldef-extended-fields-phase-4)
+8. [Phase 5 — Reference Graph (RepositoryGraph)](#8-phase-5--reference-graph-repositorygraph)
+9. [Future Phases (roadmap)](#9-future-phases-roadmap)
+10. [Public API Reference](#10-public-api-reference)
+11. [Extension Guide](#11-extension-guide)
+12. [Performance Notes](#12-performance-notes)
+13. [Design Decisions](#13-design-decisions)
 
 ---
 
@@ -56,6 +60,9 @@ src/repository/
 │                          GitignoreRules, RepositoryScanner
 ├── index.py             Phase 4 — Repository Index
 │                          SymbolEntry, IndexStats, RepositoryIndex
+├── graph.py             Phase 5 — Reference Graph
+│                          NodeKind, EdgeKind, Node, Edge
+│                          ImpactResult, GraphStats, RepositoryGraph
 └── parsers/
     ├── __init__.py      Phase 2 — Language Parser Framework
     │                      BaseParser, ParserRegistry, ParseResult, SymbolDef
@@ -65,6 +72,8 @@ src/repository/
 Dependencies flow downward.  `scanner.py` imports only from `models.py`.
 `parsers/` imports only from `models.py` and the Python standard library.
 `index.py` imports only from `models.py` and `parsers/`.
+`graph.py` imports only from `index.py`, `parsers/`, and the Python
+standard library.
 None of the repository modules import from `src/agent/`, `src/tools/`,
 or `src/mcp/`.
 
@@ -677,11 +686,272 @@ Extraction rules for the Python parser:
 
 ---
 
-## 8. Future Phases (roadmap)
+## 8. Phase 5 — Reference Graph (RepositoryGraph)
+
+### Goal
+
+Build a directed, typed graph of all file and symbol relationships so that
+downstream phases can answer structural questions a flat index cannot:
+
+- **What would break if I change this file?** (impact analysis)
+- **What is the shortest dependency path between two files?** (BFS)
+- **Which import cycles exist?** (Tarjan's SCC on the IMPORTS subgraph)
+- **What classes inherit from this base?** (INHERITS edges)
+- **What symbols does a file define?** (DEFINES edges)
+
+The graph is built from a `RepositoryIndex` and is the data layer for Phase 6
+(Context Builder), Phase 7 (Search), and Phase 8 (Ranking).
+
+### Node design
+
+Every node has a unique `id` string.  Two node kinds exist:
+
+| Kind | ID scheme | Example |
+|---|---|---|
+| `NodeKind.FILE` | repository-relative file path | `"src/agent/agent.py"` |
+| `NodeKind.SYMBOL` | `"{relative_path}#{qualified_name}"` | `"src/agent/agent.py#PearlAgent.run"` |
+
+The `#` separator cannot appear in file paths or Python qualified names so
+it creates a collision-free composite key.
+
+### Edge design
+
+Five typed edges model every structural relationship Pearl needs:
+
+| Edge kind | Source → Target | Meaning | Phase populated |
+|---|---|---|---|
+| `IMPORTS` | FILE → FILE | file imports another file | 5 |
+| `DEFINES` | FILE → SYMBOL | file defines a symbol | 5 |
+| `CONTAINS` | SYMBOL → SYMBOL | parent symbol contains a child | 5 |
+| `INHERITS` | SYMBOL → SYMBOL | class inherits from a base class | 5 |
+| `CALLS` | SYMBOL → SYMBOL | symbol calls another | reserved Phase 7 |
+
+Edges are deduplicated — the same `(source, target, kind)` triple is never
+stored twice.
+
+### Import resolution
+
+Import strings like `"from src.agent import PearlAgent"` are resolved to file
+paths via a **module map** built from the index.
+
+**Module map construction:**
+
+| File path | Dotted module key |
+|---|---|
+| `src/repository/index.py` | `src.repository.index` |
+| `src/repository/parsers/__init__.py` | `src.repository.parsers` |
+| `src/repository/__init__.py` | `src.repository` |
+
+Rule: `__init__.py` files map to their package name (directory path with `/`→`.`);
+all others strip the extension and join directory + stem.
+
+**Resolution algorithm:**
+
+*Absolute imports* (`import X`, `from X import Y`):
+1. Extract the module name (everything before `import`).
+2. Look up in the module map.  No match → stdlib or third-party; no edge created.
+
+*Relative imports* (`from . import X`, `from ..utils import Y`):
+1. Count leading dots → `n_dots`.
+2. Compute the current package: directory parts of the importing file's path.
+3. Go up `n_dots − 1` directory levels from the current package.
+4. Append the module suffix (if any) to get the target dotted name.
+5. Look up in the module map.
+
+### Cycle detection
+
+Tarjan's SCC algorithm (iterative, no recursion limit) runs on the IMPORTS
+subgraph.  An SCC of size > 1 is a circular import group.
+
+```python
+cycles = graph.detect_cycles()
+# → [["src/a.py", "src/b.py"], ...]  — one list per cycle
+```
+
+### Impact analysis
+
+`RepositoryGraph.impact(path)` answers "what would break if this file changes?":
+
+1. Collect direct dependents — files that have an IMPORTS edge pointing to the
+   changed file.
+2. BFS over reverse IMPORTS edges to collect all transitive dependents.
+3. Count DEFINES edges from all dependent files to estimate affected symbols.
+4. Classify risk: **LOW** (≤ 2 transitive dependents), **MEDIUM** (3–10),
+   **HIGH** (> 10).
+
+### Data flow
+
+```
+RepositoryIndex
+       │
+       ▼
+RepositoryGraph.build(index)
+       │
+       ├─ _build_module_map()           dotted name → file path
+       │
+       ├─ Add FileNode per indexed file
+       │
+       ├─ Add SymbolNode per symbol
+       │   + DEFINES edge (file → symbol)
+       │   + CONTAINS edge (parent_sym → child_sym)
+       │
+       ├─ Resolve import strings → IMPORTS edges (file → file)
+       │
+       ├─ Resolve base_classes → INHERITS edges (class → base class symbol)
+       │
+       └─ Tarjan's SCC → cycle_count for GraphStats
+```
+
+### Internal storage
+
+```python
+class RepositoryGraph:
+    _nodes:    dict[str, Node]                        # id → Node
+    _adj_out:  dict[str, list[Edge]]                  # source → outgoing edges
+    _adj_in:   dict[str, list[Edge]]                  # target → incoming edges
+    _edge_set: set[tuple[str, str, EdgeKind]]          # deduplication
+    _stats:    GraphStats | None
+```
+
+Both adjacency lists are maintained simultaneously so that all traversals
+(forward dependencies, reverse dependents, BFS, SCC) run without
+constructing transposed graphs on the fly.
+
+### Key classes (graph.py)
+
+#### `NodeKind` / `EdgeKind` (graph.py)
+
+```python
+from src.repository.graph import NodeKind, EdgeKind
+
+NodeKind.FILE    # "file"
+NodeKind.SYMBOL  # "symbol"
+
+EdgeKind.IMPORTS   # "imports"
+EdgeKind.DEFINES   # "defines"
+EdgeKind.CONTAINS  # "contains"
+EdgeKind.INHERITS  # "inherits"
+EdgeKind.CALLS     # "calls"  (reserved)
+```
+
+#### `Node` / `Edge` (graph.py)
+
+```python
+from src.repository.graph import Node, Edge
+
+node: Node
+node.id          # str   — unique identifier
+node.kind        # NodeKind
+node.label       # str   — qualified_name for SYMBOL, relative_path for FILE
+node.language    # str | None — Language.value for FILE nodes
+node.size        # int   — bytes for FILE nodes
+node.symbol_kind # str | None — SymbolKind.value for SYMBOL nodes
+node.file_path   # str | None — relative_path for SYMBOL nodes
+node.line_start  # int
+node.line_end    # int
+
+edge: Edge
+edge.source          # str — source node id
+edge.target          # str — target node id
+edge.kind            # EdgeKind
+edge.imported_names  # tuple[str, ...] — names imported (IMPORTS edges)
+edge.base_name       # str — base class name (INHERITS edges)
+```
+
+#### `RepositoryGraph` (graph.py)
+
+```python
+from src.repository.graph import RepositoryGraph
+from src.repository.graph import NodeKind, EdgeKind
+
+graph = RepositoryGraph.build(index)
+
+# Node queries
+node  = graph.node("src/agent/agent.py")          # Node | None
+files = graph.nodes(kind=NodeKind.FILE)            # list[Node]
+syms  = graph.nodes(kind=NodeKind.SYMBOL)          # list[Node]
+
+# Edge queries
+all_edges   = graph.edges()                        # list[Edge]
+imp_edges   = graph.edges(kind=EdgeKind.IMPORTS)   # list[Edge]
+out_edges   = graph.edges_out("src/a.py", kind=EdgeKind.IMPORTS)
+in_edges    = graph.edges_in("src/b.py", kind=EdgeKind.IMPORTS)
+
+# Neighbour traversal
+deps        = graph.neighbors_out("src/a.py", kind=EdgeKind.IMPORTS)
+importers   = graph.neighbors_in("src/b.py", kind=EdgeKind.IMPORTS)
+
+# Algorithms
+cycles      = graph.detect_cycles()               # list[list[str]] — circular import groups
+path        = graph.shortest_path("src/a.py", "src/c.py", kind=EdgeKind.IMPORTS)
+                                                   # list[str] | None
+fwd_deps    = graph.transitive_dependencies("src/a.py")   # sorted list of file paths
+rev_deps    = graph.transitive_dependents("src/b.py")     # sorted list of file paths
+result      = graph.impact("src/b.py")            # ImpactResult
+
+# Statistics
+print(graph.stats())   # GraphStats
+print(len(graph))      # total node count
+"src/a.py" in graph    # bool
+```
+
+#### `ImpactResult` (graph.py)
+
+```python
+from src.repository.graph import ImpactResult
+
+r: ImpactResult
+r.changed_file           # str   — the file that was changed
+r.direct_dependents      # list[str] — files with a direct IMPORTS edge
+r.transitive_dependents  # list[str] — all reachable dependents
+r.affected_symbol_count  # int  — symbols in all dependent files
+r.risk_level             # "LOW" | "MEDIUM" | "HIGH"
+```
+
+#### `GraphStats` (graph.py)
+
+```python
+from src.repository.graph import GraphStats
+
+s: GraphStats
+s.node_count          # int
+s.edge_count          # int
+s.file_node_count     # int
+s.symbol_node_count   # int
+s.imports_edge_count  # int
+s.defines_edge_count  # int
+s.contains_edge_count # int
+s.inherits_edge_count # int
+s.cycle_count         # int
+s.build_duration_ms   # float
+```
+
+### `base_classes` — SymbolDef extension (Phase 5)
+
+Phase 5 adds one field to `SymbolDef`:
+
+| Field | Type | Default | Populated by |
+|---|---|---|---|
+| `base_classes` | `list[str]` | `[]` | Python parser |
+
+The Python parser extracts base class names from `ClassDef.bases`:
+
+| Source | `base_classes` value |
+|---|---|
+| `class Foo:` | `[]` |
+| `class Foo(Base):` | `["Base"]` |
+| `class Foo(Base, Mixin):` | `["Base", "Mixin"]` |
+| `class Foo(module.Base):` | `["module.Base"]` |
+
+The field defaults to `[]` so all existing parsers and tests are backward-compatible.
+
+---
+
+## 9. Future Phases (roadmap)
 
 | Phase | Module | Status | Goal |
 |---|---|---|---|
-| 5 | `graph.py` | Planned | Reference graph — import graph, call graph, inheritance |
+| 5 | `graph.py` | **Complete** | Reference graph — import graph, call graph, inheritance |
 | 6 | `context_builder.py` | Planned | Automatically select most-relevant files for a task |
 | 7 | `search.py` | Planned | Cross-repository symbol and text search |
 | 8 | `ranking.py` | Planned | Result ranking by reference count, proximity, importance |
@@ -693,7 +963,7 @@ surfaces are extended, never broken.
 
 ---
 
-## 9. Public API Reference
+## 10. Public API Reference
 
 ### Importing
 
@@ -711,6 +981,14 @@ from src.repository import (
     RepositoryIndex,
     SymbolEntry,
     IndexStats,
+    # Phase 5
+    NodeKind,
+    EdgeKind,
+    Node,
+    Edge,
+    ImpactResult,
+    GraphStats,
+    RepositoryGraph,
 )
 
 # Parser framework (Phase 2+)
@@ -727,6 +1005,12 @@ from src.repository.parsers.python_parser import PythonParser
 
 # Index (Phase 4+)
 from src.repository.index import RepositoryIndex, SymbolEntry, IndexStats
+
+# Graph (Phase 5+)
+from src.repository.graph import (
+    NodeKind, EdgeKind, Node, Edge,
+    ImpactResult, GraphStats, RepositoryGraph,
+)
 ```
 
 ### End-to-end example: scan + filter + parse
@@ -763,11 +1047,21 @@ if entry:
 managers = index.search("*Manager")
 users    = index.files_importing("asyncio")
 print(index.stats())
+
+# 5. Graph (Phase 5+)
+from src.repository.graph import RepositoryGraph
+
+graph = RepositoryGraph.build(index)
+
+cycles  = graph.detect_cycles()
+impact  = graph.impact("src/agent/agent.py")
+print(f"Risk: {impact.risk_level}, transitive dependents: {len(impact.transitive_dependents)}")
+print(graph.stats())
 ```
 
 ---
 
-## 10. Extension Guide
+## 11. Extension Guide
 
 ### Adding a new language extension
 
@@ -827,7 +1121,7 @@ registry.register(GoParser())
 
 ---
 
-## 11. Performance Notes
+## 12. Performance Notes
 
 ### Scanner
 
@@ -856,7 +1150,7 @@ registry.register(GoParser())
 
 ---
 
-## 12. Design Decisions
+## 13. Design Decisions
 
 ### Why MD5 for content hashing?
 

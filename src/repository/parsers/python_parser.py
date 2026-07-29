@@ -35,6 +35,23 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def _expr_to_name(node: ast.expr) -> str | None:
+    """Return the dotted name of a base-class expression, or ``None``.
+
+    Handles:
+
+    * ``Name("Foo")``           → ``"Foo"``
+    * ``Attribute(Name("m"), "Base")`` → ``"m.Base"``
+    * anything else             → ``None``
+    """
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _expr_to_name(node.value)
+        return f"{prefix}.{node.attr}" if prefix is not None else node.attr
+    return None
+
+
 def _decorator_name(node: ast.expr) -> str:
     """Return the simple string name of a decorator AST node.
 
@@ -193,6 +210,7 @@ def _make_function(
 
 def _make_class(node: ast.ClassDef, parent_qn: str | None) -> SymbolDef:
     qn = f"{parent_qn}.{node.name}" if parent_qn else node.name
+    bases = [n for b in node.bases if (n := _expr_to_name(b)) is not None]
     return SymbolDef(
         name=node.name,
         qualified_name=qn,
@@ -203,6 +221,7 @@ def _make_class(node: ast.ClassDef, parent_qn: str | None) -> SymbolDef:
         decorators=[_decorator_name(d) for d in node.decorator_list],
         is_async=False,
         parent=parent_qn,
+        base_classes=bases,
     )
 
 

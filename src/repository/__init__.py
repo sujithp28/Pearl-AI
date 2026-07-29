@@ -50,6 +50,18 @@ Phase 4 — Repository Index::
 
     print(index.stats())
 
+Phase 5 — Reference Graph::
+
+    from src.repository.graph import RepositoryGraph
+
+    graph = RepositoryGraph.build(index)
+
+    cycles = graph.detect_cycles()
+    result = graph.impact("src/agent/agent.py")
+    path   = graph.shortest_path("src/a.py", "src/c.py",
+                                  kind=EdgeKind.IMPORTS)
+    print(graph.stats())
+
 Each phase is a separate module; importing this package at any phase
 always exposes the most recent public surface.
 """
@@ -63,13 +75,29 @@ from src.repository.models import (
 )
 from src.repository.scanner import GitignoreRules, RepositoryScanner
 from src.repository.index import IndexStats, RepositoryIndex, SymbolEntry
+from src.repository.graph import (
+    Edge,
+    EdgeKind,
+    GraphStats,
+    ImpactResult,
+    Node,
+    NodeKind,
+    RepositoryGraph,
+)
 
 __all__ = [
     "EXTENSION_TO_LANGUAGE",
+    "Edge",
+    "EdgeKind",
     "FileInfo",
     "GitignoreRules",
+    "GraphStats",
+    "ImpactResult",
     "IndexStats",
     "Language",
+    "Node",
+    "NodeKind",
+    "RepositoryGraph",
     "RepositoryIndex",
     "RepositoryScanner",
     "ScanResult",

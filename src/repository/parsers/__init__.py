@@ -138,6 +138,16 @@ class SymbolDef:
         ``raise SomeException(...)`` statements at the top level of the
         body are captured; re-raises and nested raises are omitted.
         Used by the Context Builder (Phase 6) for error-path analysis.
+
+    Extended metadata (Phase 5 — populated by parsers that support it)
+    -------------------------------------------------------------------
+    base_classes:
+        Names of base classes for ``CLASS`` symbols — e.g.
+        ``["Base", "Mixin"]`` for ``class Foo(Base, Mixin):``.
+        Simple names are stored as-is; dotted names like
+        ``"module.Base"`` are stored with the dot chain preserved.
+        Defaults to ``[]`` so existing parsers are backward-compatible.
+        Used by the Reference Graph (Phase 5) to build INHERITS edges.
     """
 
     name: str
@@ -153,6 +163,8 @@ class SymbolDef:
     signature: str | None = None
     return_type: str | None = None
     raises: list[str] = field(default_factory=list)
+    # Phase 5 — extended metadata (optional; defaults preserve backward compat)
+    base_classes: list[str] = field(default_factory=list)
 
     def __repr__(self) -> str:
         async_prefix = "async " if self.is_async else ""
