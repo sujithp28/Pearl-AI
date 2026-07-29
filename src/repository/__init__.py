@@ -7,20 +7,30 @@ repository-aware engineering assistant that can answer questions like
 and "Which files are most relevant to this task?" without reading the
 entire repository on every turn.
 
-Current phase (Phase 1 — Repository Scanner):
+Phase 1 — Repository Scanner::
 
     from src.repository import RepositoryScanner, Language
+    from pathlib import Path
 
-    scanner = RepositoryScanner(Path("/my/project"))
+    scanner = RepositoryScanner(Path("."))
     result  = scanner.scan()
 
     for fi in result.source_files(Language.PYTHON):
         print(fi.relative_path, fi.size)
 
-Subsequent phases will add parsers, indexes, a reference graph, a
-context builder, a ranking engine, and high-level :class:`Repository`
-APIs.  Each phase is a separate module; importing this package at any
-phase always exposes the most recent public surface.
+Phase 2 — Language Parser Framework::
+
+    from src.repository.parsers import ParserRegistry, SymbolKind
+
+    registry = ParserRegistry.default()
+    results  = registry.parse_many(result.source_files(Language.PYTHON))
+
+    for pr in results:
+        funcs = [s for s in pr.symbols if s.kind is SymbolKind.FUNCTION]
+        print(f"{pr.file_info.relative_path}: {len(funcs)} function(s)")
+
+Each phase is a separate module; importing this package at any phase
+always exposes the most recent public surface.
 """
 
 from src.repository.models import (
