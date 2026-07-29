@@ -119,6 +119,25 @@ class SymbolDef:
         Qualified name of the enclosing symbol, or ``None`` for
         top-level symbols.  A method inside a class has the class's
         qualified name as its parent.
+
+    Extended metadata (Phase 4 — populated by parsers that support it)
+    -------------------------------------------------------------------
+    signature:
+        Parameter list as a source-level string, e.g.
+        ``"(self, path: str, content: str) -> None"``.  Parsers that
+        cannot extract this leave it as ``None``.  Used by the Context
+        Builder (Phase 6) to enrich LLM prompts and by Search (Phase 7)
+        to display call signatures in results.
+    return_type:
+        Return type annotation as a string — e.g. ``"str | None"``.
+        ``None`` when absent or when the parser does not extract it.
+        Used by the Reference Graph (Phase 5) for type-level resolution.
+    raises:
+        Exception type names raised directly in the symbol body — e.g.
+        ``["ValueError", "OSError"]``.  Conservative: only explicit
+        ``raise SomeException(...)`` statements at the top level of the
+        body are captured; re-raises and nested raises are omitted.
+        Used by the Context Builder (Phase 6) for error-path analysis.
     """
 
     name: str
@@ -130,6 +149,10 @@ class SymbolDef:
     decorators: list[str] = field(default_factory=list)
     is_async: bool = False
     parent: str | None = None
+    # Phase 4 — extended metadata (optional; defaults preserve backward compat)
+    signature: str | None = None
+    return_type: str | None = None
+    raises: list[str] = field(default_factory=list)
 
     def __repr__(self) -> str:
         async_prefix = "async " if self.is_async else ""

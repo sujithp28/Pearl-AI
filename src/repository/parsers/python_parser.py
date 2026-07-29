@@ -133,6 +133,26 @@ def _extract(
                 symbols.append(sym)
 
 
+def _extract_raises(body: list[ast.stmt]) -> list[str]:
+    """Return exception type names raised at the top level of *body*.
+
+    Only direct ``raise SomeExc(...)`` and ``raise SomeExc`` statements
+    are captured.  Re-raises (bare ``raise``) and raises inside nested
+    function/class bodies are excluded — those belong to their own symbol.
+    """
+    names: list[str] = []
+    for node in body:
+        if isinstance(node, ast.Raise) and node.exc is not None:
+            exc = node.exc
+            if isinstance(exc, ast.Call):
+                exc = exc.func
+            if isinstance(exc, ast.Name):
+                names.append(exc.id)
+            elif isinstance(exc, ast.Attribute):
+                names.append(exc.attr)
+    return names
+
+
 def _make_function(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     parent_qn: str | None,
@@ -140,6 +160,21 @@ def _make_function(
 ) -> SymbolDef:
     qn = f"{parent_qn}.{node.name}" if parent_qn else node.name
     kind = SymbolKind.METHOD if in_class else SymbolKind.FUNCTION
+
+    # signature — e.g. "(self, path: str) -> None"
+    try:
+        args_str = ast.unparse(node.args)
+        ret = f" -> {ast.unparse(node.returns)}" if node.returns else ""
+        signature: str | None = f"({args_str}){ret}"
+    except Exception:  # noqa: BLE001
+        signature = None
+
+    # return_type — e.g. "str | None"
+    try:
+        return_type: str | None = ast.unparse(node.returns) if node.returns else None
+    except Exception:  # noqa: BLE001
+        return_type = None
+
     return SymbolDef(
         name=node.name,
         qualified_name=qn,
@@ -150,6 +185,9 @@ def _make_function(
         decorators=[_decorator_name(d) for d in node.decorator_list],
         is_async=isinstance(node, ast.AsyncFunctionDef),
         parent=parent_qn,
+        signature=signature,
+        return_type=return_type,
+        raises=_extract_raises(node.body),
     )
 
 

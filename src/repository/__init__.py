@@ -29,6 +29,27 @@ Phase 2 — Language Parser Framework::
         funcs = [s for s in pr.symbols if s.kind is SymbolKind.FUNCTION]
         print(f"{pr.file_info.relative_path}: {len(funcs)} function(s)")
 
+Phase 4 — Repository Index::
+
+    from src.repository.index import RepositoryIndex
+
+    index = RepositoryIndex.build(results)
+
+    # Exact lookup
+    entry = index.lookup_qualified("PearlAgent.run_autonomous")
+
+    # Find all classes
+    classes = index.symbols_by_kind(SymbolKind.CLASS)
+
+    # Glob search
+    managers = index.search("*Manager")
+
+    # Import graph queries
+    deps   = index.imports_for("src/agent/agent.py")
+    users  = index.files_importing("asyncio")
+
+    print(index.stats())
+
 Each phase is a separate module; importing this package at any phase
 always exposes the most recent public surface.
 """
@@ -41,13 +62,17 @@ from src.repository.models import (
     detect_language,
 )
 from src.repository.scanner import GitignoreRules, RepositoryScanner
+from src.repository.index import IndexStats, RepositoryIndex, SymbolEntry
 
 __all__ = [
     "EXTENSION_TO_LANGUAGE",
     "FileInfo",
     "GitignoreRules",
+    "IndexStats",
     "Language",
+    "RepositoryIndex",
     "RepositoryScanner",
     "ScanResult",
+    "SymbolEntry",
     "detect_language",
 ]

@@ -54,15 +54,19 @@ src/repository/
 │                          FileInfo, ScanResult
 ├── scanner.py           Phase 1 — Repository Scanner
 │                          GitignoreRules, RepositoryScanner
+├── index.py             Phase 4 — Repository Index
+│                          SymbolEntry, IndexStats, RepositoryIndex
 └── parsers/
     ├── __init__.py      Phase 2 — Language Parser Framework
     │                      BaseParser, ParserRegistry, ParseResult, SymbolDef
-    └── python_parser.py Phase 3 — Python AST Parser (planned)
+    └── python_parser.py Phase 3 — Python AST Parser
 ```
 
 Dependencies flow downward.  `scanner.py` imports only from `models.py`.
 `parsers/` imports only from `models.py` and the Python standard library.
-Neither imports from `src/agent/`, `src/tools/`, or `src/mcp/`.
+`index.py` imports only from `models.py` and `parsers/`.
+None of the repository modules import from `src/agent/`, `src/tools/`,
+or `src/mcp/`.
 
 ---
 
@@ -528,24 +532,168 @@ All errors are non-fatal — the parser always returns a `ParseResult`:
 
 ---
 
-## 6. Future Phases (roadmap)
+## 6. Phase 4 — Repository Index
 
-| Phase | Module | Goal |
-|---|---|---|
-| 4 | `index.py` | Symbol index — fast lookup by name, kind, file |
-| 5 | `graph.py` | Reference graph — import graph, call graph, inheritance |
-| 6 | `context_builder.py` | Automatically select most-relevant files for a task |
-| 7 | `search.py` | Cross-repository symbol and text search |
-| 8 | `ranking.py` | Result ranking by reference count, proximity, importance |
-| 9 | `repository.py` | High-level `Repository` facade — `scan()`, `search()`, `index()` |
-| 10 | — | Multi-language readiness audit |
+### Goal
+
+Build a production-grade in-memory index from the parse results of every
+file in a repository.  The index is the primary data layer for all
+downstream phases — it answers every structured query about symbols and
+imports in O(1) or O(n) time without re-parsing files.
+
+### Architecture
+
+Five internal dicts are populated in a single O(n) pass over parse results:
+
+| Internal dict | Key | Value | Answers |
+|---|---|---|---|
+| `_by_file` | `relative_path` | `list[SymbolEntry]` | "what symbols live in this file?" |
+| `_by_name` | unqualified name | `list[SymbolEntry]` | "where is `PatchManager` defined?" |
+| `_by_qualified_name` | qualified name | `SymbolEntry` | O(1) exact lookup |
+| `_by_kind` | `SymbolKind` | `list[SymbolEntry]` | "list all `CLASS` symbols" |
+| `_imports_by_file` | `relative_path` | `list[str]` | "what does this file import?" |
+
+### Key classes
+
+#### `SymbolEntry` (index.py)
+
+A flat, denormalised record that joins `SymbolDef` with its `FileInfo`.
+Callers never need to join two data structures to answer a query.
+
+```python
+from src.repository.index import SymbolEntry
+
+entry: SymbolEntry
+entry.symbol        # SymbolDef — full symbol metadata
+entry.file_info     # FileInfo  — file the symbol came from
+entry.relative_path # str       — convenience alias
+entry.language      # Language  — convenience alias
+```
+
+#### `IndexStats` (index.py)
+
+Lightweight statistics snapshot, returned by `RepositoryIndex.stats()`.
+
+```python
+from src.repository.index import IndexStats
+
+s: IndexStats
+s.file_count        # int          — indexed files
+s.symbol_count      # int          — total symbols
+s.import_count      # int          — total import strings
+s.build_duration_ms # float        — wall-clock build time
+s.languages         # frozenset[Language]
+s.error_file_count  # int          — files with parse errors
+```
+
+#### `RepositoryIndex` (index.py)
+
+```python
+from src.repository.index import RepositoryIndex
+from src.repository.parsers import SymbolKind
+
+index = RepositoryIndex.build(parse_results)
+
+# Exact O(1) lookup by qualified name
+entry = index.lookup_qualified("PearlAgent.run_autonomous")
+
+# All definitions of a name (multi-file)
+entries = index.lookup("PatchManager")
+
+# All symbols in one file, in source order
+file_syms = index.symbols_in_file("src/agent/agent.py")
+
+# All symbols of a kind
+methods = index.symbols_by_kind(SymbolKind.METHOD)
+
+# Glob search on qualified names
+managers = index.search("*Manager")
+members  = index.search("PearlAgent.*")
+
+# Import queries
+deps   = index.imports_for("src/agent/agent.py")
+users  = index.files_importing("asyncio")
+files  = index.indexed_files()    # all FileInfo, sorted by path
+
+# Diagnostics
+print(index.stats())
+print(len(index))   # total symbol count
+```
+
+### Data flow
+
+```
+list[ParseResult]
+       │
+       ▼
+RepositoryIndex.build()   ← O(n) single pass
+       │
+       ├── _by_file[path]          → list[SymbolEntry]
+       ├── _by_name[name]          → list[SymbolEntry]
+       ├── _by_qualified_name[qn]  → SymbolEntry
+       ├── _by_kind[kind]          → list[SymbolEntry]
+       └── _imports_by_file[path]  → list[str]
+```
+
+### What each future phase uses
+
+| Phase | Methods it calls |
+|---|---|
+| 5 — Reference Graph | `imports_for()`, `files_importing()`, `symbols_in_file()` |
+| 6 — Context Builder | `lookup()`, `lookup_qualified()`, `symbols_in_file()` |
+| 7 — Search | `search()`, `symbols_by_kind()`, `lookup()` |
+| 8 — Ranking | `symbols_by_kind()`, `files_importing()`, `stats()` |
+
+### Performance
+
+| Workload | Observed |
+|---|---|
+| Build 5 000 symbols | < 50 ms |
+| 1 000 `lookup()` calls | < 10 ms |
+| `search("*sym_*")` over 5 000 symbols | < 50 ms |
+
+---
+
+## 7. SymbolDef Extended Fields (Phase 4)
+
+Phase 4 adds three optional fields to `SymbolDef` that downstream phases
+will use.  All three default to safe values (`None` or `[]`) so all
+existing parsers work without modification.  The Python parser populates
+all three.
+
+| Field | Type | Populated by | Purpose |
+|---|---|---|---|
+| `signature` | `str \| None` | Python parser | Full parameter list — e.g. `"(self, path: str) -> None"`. Used by Context Builder (Phase 6) to enrich LLM prompts. |
+| `return_type` | `str \| None` | Python parser | Return annotation text — e.g. `"str \| None"`. Used by Reference Graph (Phase 5) for type-level resolution. |
+| `raises` | `list[str]` | Python parser | Exception type names raised directly in the body — e.g. `["ValueError", "OSError"]`. Used by Context Builder (Phase 6) for error-path analysis. |
+
+Extraction rules for the Python parser:
+
+| Field | Source |
+|---|---|
+| `signature` | `f"({ast.unparse(node.args)}){' -> ' + ast.unparse(node.returns) if node.returns else ''}"` |
+| `return_type` | `ast.unparse(node.returns)` if present, else `None` |
+| `raises` | Top-level `raise SomeExc(...)` and `raise SomeExc` statements in the function body. Bare `raise` and nested raises excluded. |
+
+---
+
+## 8. Future Phases (roadmap)
+
+| Phase | Module | Status | Goal |
+|---|---|---|---|
+| 5 | `graph.py` | Planned | Reference graph — import graph, call graph, inheritance |
+| 6 | `context_builder.py` | Planned | Automatically select most-relevant files for a task |
+| 7 | `search.py` | Planned | Cross-repository symbol and text search |
+| 8 | `ranking.py` | Planned | Result ranking by reference count, proximity, importance |
+| 9 | `repository.py` | Planned | High-level `Repository` facade — `scan()`, `search()`, `index()` |
+| 10 | — | Planned | Multi-language readiness audit |
 
 Each phase adds one module.  No existing module is rewritten.  Public
 surfaces are extended, never broken.
 
 ---
 
-## 6. Public API Reference
+## 9. Public API Reference
 
 ### Importing
 
@@ -559,6 +707,10 @@ from src.repository import (
     GitignoreRules,
     detect_language,
     EXTENSION_TO_LANGUAGE,
+    # Phase 4
+    RepositoryIndex,
+    SymbolEntry,
+    IndexStats,
 )
 
 # Parser framework (Phase 2+)
@@ -572,6 +724,9 @@ from src.repository.parsers import (
 
 # Python parser (Phase 3+)
 from src.repository.parsers.python_parser import PythonParser
+
+# Index (Phase 4+)
+from src.repository.index import RepositoryIndex, SymbolEntry, IndexStats
 ```
 
 ### End-to-end example: scan + filter + parse
@@ -592,16 +747,27 @@ print(f"Python files: {len(py_files)}")
 
 # 3. Parse (Phase 2+)
 registry = ParserRegistry.default()   # pre-loaded with built-in parsers
-for fi in py_files:
-    result = registry.parse(fi)
-    if result:
-        classes = [s for s in result.symbols if s.kind.name == "CLASS"]
-        print(f"  {fi.relative_path}: {len(classes)} class(es)")
+results  = registry.parse_many(py_files)
+for pr in results:
+    classes = [s for s in pr.symbols if s.kind.name == "CLASS"]
+    print(f"  {pr.file_info.relative_path}: {len(classes)} class(es)")
+
+# 4. Index (Phase 4+)
+from src.repository.index import RepositoryIndex
+index = RepositoryIndex.build(results)
+
+entry = index.lookup_qualified("MyClass.my_method")
+if entry:
+    print(f"Found at {entry.relative_path} L{entry.symbol.line_start}")
+
+managers = index.search("*Manager")
+users    = index.files_importing("asyncio")
+print(index.stats())
 ```
 
 ---
 
-## 7. Extension Guide
+## 10. Extension Guide
 
 ### Adding a new language extension
 
@@ -661,7 +827,7 @@ registry.register(GoParser())
 
 ---
 
-## 8. Performance Notes
+## 11. Performance Notes
 
 ### Scanner
 
@@ -690,7 +856,7 @@ registry.register(GoParser())
 
 ---
 
-## 9. Design Decisions
+## 12. Design Decisions
 
 ### Why MD5 for content hashing?
 
