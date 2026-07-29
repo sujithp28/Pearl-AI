@@ -601,6 +601,20 @@ class TestGitignoreIntegration:
         assert "main.py" in paths
         assert not any("node_modules" in p for p in paths)
 
+    def test_non_utf8_gitignore_does_not_crash(self, tmp_path: Path) -> None:
+        # A .gitignore with Latin-1 or binary content must not crash the scan.
+        (tmp_path / ".gitignore").write_bytes("# Fichiers générés\n*.pyc\n".encode("latin-1"))
+        (tmp_path / "main.py").write_text("x = 1", encoding="utf-8")
+        result = RepositoryScanner(tmp_path).scan()
+        assert "main.py" in rel_paths(result)
+
+    def test_binary_gitignore_does_not_crash(self, tmp_path: Path) -> None:
+        # A .gitignore with a UTF-16 BOM (binary) must not crash the scan.
+        (tmp_path / ".gitignore").write_bytes(b"\xff\xfe# UTF-16\n*.pyc\n")
+        (tmp_path / "app.py").write_text("x = 1", encoding="utf-8")
+        result = RepositoryScanner(tmp_path).scan()
+        assert "app.py" in rel_paths(result)
+
 
 # ---------------------------------------------------------------------------
 # RepositoryScanner — file metadata

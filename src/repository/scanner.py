@@ -484,7 +484,7 @@ class RepositoryScanner:
         if not gi_path.is_file():
             return None
         try:
-            lines = gi_path.read_text(encoding="utf-8").splitlines()
+            lines = gi_path.read_text(encoding="utf-8", errors="replace").splitlines()
             rules = GitignoreRules(directory, lines)
             return rules if len(rules) > 0 else None
         except OSError:
