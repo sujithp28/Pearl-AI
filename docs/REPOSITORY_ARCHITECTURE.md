@@ -380,11 +380,158 @@ results = registry.parse_many(file_infos)   # list[ParseResult]
 
 ---
 
-## 5. Future Phases (roadmap)
+## 5. Phase 3 — Python AST Parser
+
+### Goal
+
+Extract all symbols, imports, and structural metadata from Python source
+files using only the standard-library `ast` module.  The parser **never
+executes user code**.
+
+### Supported files
+
+`.py`, `.pyi` (stub files), `.pyx` (Cython source)
+
+### Data flow
+
+```
+PythonParser.parse(file_info)
+       │
+       ├─ _read()  — UTF-8 → latin-1 fallback → OSError capture
+       │
+       ├─ ast.parse()  — SyntaxError / ValueError captured as errors
+       │
+       ├─ _extract(tree.body)  — recursive, parent-tracked walk
+       │     ├─ ClassDef       → SymbolKind.CLASS, recurse body in_class=True
+       │     ├─ FunctionDef    → SymbolKind.FUNCTION or METHOD
+       │     ├─ AsyncFunctionDef → same + is_async=True
+       │     ├─ Assign         → SymbolKind.CONSTANT or VARIABLE (module/class scope only)
+       │     └─ AnnAssign      → same
+       │
+       └─ ast.walk()  — one pass for all Import / ImportFrom nodes
+```
+
+### SymbolDef contract for Python
+
+Every field is deterministic and derived from AST information only —
+no heuristics, no execution.
+
+#### Classes (`ClassDef`)
+
+| Field | Value |
+|---|---|
+| `kind` | `SymbolKind.CLASS` |
+| `name` | `node.name` |
+| `qualified_name` | `"Parent.ClassName"` — dot-joined ancestor chain |
+| `line_start` | `node.lineno` (line of `class Foo:`) |
+| `line_end` | `node.end_lineno` (last line of class body) |
+| `docstring` | `ast.get_docstring(node)` — `None` if absent |
+| `decorators` | decorator names in source order — see *Decorator extraction* below |
+| `is_async` | always `False` (Python classes are not async) |
+| `parent` | qualified name of enclosing class/function, or `None` |
+
+#### Functions and methods (`FunctionDef`, `AsyncFunctionDef`)
+
+| Field | Value |
+|---|---|
+| `kind` | `SymbolKind.METHOD` if direct parent is a class body; `SymbolKind.FUNCTION` otherwise |
+| `name` | `node.name` |
+| `qualified_name` | `"Class.method_name"` — dot-joined ancestor chain |
+| `line_start` | `node.lineno` |
+| `line_end` | `node.end_lineno` |
+| `docstring` | `ast.get_docstring(node)` — `None` if absent |
+| `decorators` | decorator names in source order |
+| `is_async` | `True` for `AsyncFunctionDef`, `False` for `FunctionDef` |
+| `parent` | qualified name of enclosing scope, or `None` |
+
+#### Variables and constants (`Assign`, `AnnAssign`)
+
+Only extracted at **module scope** and **class body scope** — not inside
+function bodies (local variables are noise for symbol search).
+
+Only simple single-name targets are extracted: `NAME = value` and
+`name: type = value`.  Tuple unpacking (`a, b = ...`) and chained
+assignment (`a = b = ...`) are skipped.
+
+| Field | Value |
+|---|---|
+| `kind` | `SymbolKind.CONSTANT` if `name == name.upper() and any(c.isalpha() for c in name)`; `SymbolKind.VARIABLE` otherwise |
+| `name` | target variable name |
+| `qualified_name` | `"Class.CONSTANT_NAME"` or just `"CONSTANT_NAME"` at module scope |
+| `line_start` | `node.lineno` |
+| `line_end` | `node.end_lineno` |
+| `docstring` | always `None` (assignments have no docstring) |
+| `decorators` | always `[]` |
+| `is_async` | always `False` |
+| `parent` | class qualified name, or `None` at module scope |
+
+Examples of the ALL_CAPS constant rule:
+
+| Name | Kind |
+|---|---|
+| `MAX_RETRIES` | CONSTANT |
+| `HTTP_404` | CONSTANT |
+| `_PRIVATE_CONST` | CONSTANT (starts with `_`, rest is upper) |
+| `variable` | VARIABLE |
+| `camelCase` | VARIABLE |
+| `__version__` | VARIABLE (contains lowercase letters) |
+| `MyClass` | VARIABLE (if assigned, not defined as ClassDef) |
+
+#### Decorator extraction
+
+Decorator names are extracted recursively:
+
+| Decorator syntax | Extracted string |
+|---|---|
+| `@classmethod` | `"classmethod"` |
+| `@property` | `"property"` |
+| `@some_module.decorator` | `"decorator"` (rightmost attribute name) |
+| `@lru_cache(maxsize=None)` | `"lru_cache"` (function name of the call) |
+| `@tool(name="x", ...)` | `"tool"` |
+| Any other expression | `ast.unparse(node)` as fallback |
+
+#### Import extraction
+
+All imports are extracted regardless of scope (module-level, inside
+functions, inside `if TYPE_CHECKING:` blocks).
+
+| Source | Extracted string |
+|---|---|
+| `import os` | `"import os"` |
+| `import sys, pathlib` | `"import sys"`, `"import pathlib"` (one per name) |
+| `from pathlib import Path` | `"from pathlib import Path"` |
+| `from pathlib import Path, PurePath` | `"from pathlib import Path, PurePath"` |
+| `from . import sibling` | `"from . import sibling"` |
+| `from ..utils import helper` | `"from ..utils import helper"` |
+
+#### Error handling
+
+All errors are non-fatal — the parser always returns a `ParseResult`:
+
+| Error type | Behaviour |
+|---|---|
+| `SyntaxError` from `ast.parse()` | Error string `"SyntaxError at line N: <msg>"` in `ParseResult.errors`; symbols/imports from that point onward are unavailable |
+| `UnicodeDecodeError` on read | Retry with `latin-1`; if that also fails, error in `ParseResult.errors` |
+| `OSError` (file not found, permissions) | Error in `ParseResult.errors`; empty symbols and imports |
+| Any other exception | Caught by `ParserRegistry.parse()`; error in `ParseResult.errors` |
+
+#### What is NOT extracted
+
+| Excluded | Reason |
+|---|---|
+| Local variables inside functions | Too noisy; not useful for symbol search or context selection |
+| Tuple-unpacked assignments (`a, b = ...`) | Ambiguous scope; conservative exclusion |
+| Chained assignments (`a = b = 0`) | Unusual; conservative exclusion |
+| Lambda bodies | Lambdas are anonymous; only the variable they're assigned to appears |
+| Comprehension variables | Scoped to the comprehension; not meaningful symbols |
+| Type comments | Covered by annotation syntax in modern Python |
+
+---
+
+## 6. Future Phases (roadmap)
 
 | Phase | Module | Goal |
 |---|---|---|
-| 3 | `parsers/python_parser.py` | Python AST parser — classes, functions, imports, type hints |
 | 4 | `index.py` | Symbol index — fast lookup by name, kind, file |
 | 5 | `graph.py` | Reference graph — import graph, call graph, inheritance |
 | 6 | `context_builder.py` | Automatically select most-relevant files for a task |
@@ -422,6 +569,9 @@ from src.repository.parsers import (
     SymbolDef,
     SymbolKind,
 )
+
+# Python parser (Phase 3+)
+from src.repository.parsers.python_parser import PythonParser
 ```
 
 ### End-to-end example: scan + filter + parse

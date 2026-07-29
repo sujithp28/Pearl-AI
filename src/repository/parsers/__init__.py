@@ -414,18 +414,21 @@ class ParserRegistry:
     def default(cls) -> "ParserRegistry":
         """Return a registry pre-loaded with all built-in parsers.
 
-        Phase 2 note: the framework is complete but no language parsers
-        exist yet.  Phase 3 adds :class:`~src.repository.parsers.python_parser.PythonParser`.
-        Once registered the default registry will include Python
-        automatically.
+        Built-in parsers registered by this method:
+
+        * :class:`~src.repository.parsers.python_parser.PythonParser`
+          for ``.py``, ``.pyi``, ``.pyx`` (Phase 3)
 
         To extend with extra parsers::
 
             registry = ParserRegistry.default()
             registry.register(MyCustomParser())
         """
+        # Import here to avoid a circular import at module load time.
+        from src.repository.parsers.python_parser import PythonParser  # noqa: PLC0415
+
         registry = cls()
-        # Phase 3+: registry.register(PythonParser())
+        registry.register(PythonParser())
         return registry
 
     # ------------------------------------------------------------------

@@ -12,6 +12,7 @@ Coverage areas
   parse_many, default(), __len__, __repr__
 * Integration — concrete parser end-to-end through registry
 * Layer rule — no imports from agent / tools / mcp
+* Benchmarks — framework overhead is sub-millisecond per file
 """
 
 from __future__ import annotations
@@ -596,10 +597,11 @@ class TestParserRegistryFactory:
         registry = ParserRegistry.default()
         assert isinstance(registry, ParserRegistry)
 
-    def test_default_is_currently_empty(self) -> None:
-        # Phase 2: no language parsers are registered yet.
+    def test_default_includes_python_parser(self) -> None:
+        # Phase 3: PythonParser is registered in default().
         registry = ParserRegistry.default()
-        assert len(registry) == 0
+        assert len(registry) >= 1
+        assert registry.supports(Language.PYTHON)
 
     def test_default_returns_new_instance_each_call(self) -> None:
         r1 = ParserRegistry.default()
@@ -608,10 +610,12 @@ class TestParserRegistryFactory:
 
     def test_default_is_independently_extendable(self) -> None:
         r1 = ParserRegistry.default()
+        # Overwrite PythonParser with FakePythonParser in r1
         r1.register(FakePythonParser())
         r2 = ParserRegistry.default()
-        # r2 must not see r1's parser
-        assert len(r2) == 0
+        # r2 must be an independent copy — it still has the real PythonParser,
+        # not the FakePythonParser we injected into r1.
+        assert r2.parser_for(Language.PYTHON) is not r1.parser_for(Language.PYTHON)
 
     def test_len_empty(self) -> None:
         assert len(ParserRegistry()) == 0
@@ -768,8 +772,116 @@ class TestLayerRule:
             if isinstance(node, ast.ImportFrom):
                 if node.module and node.module.startswith("src."):
                     src_imports.add(node.module)
-        allowed = {"src.repository.models"}
-        unexpected = src_imports - allowed
+        # Intra-package deferred imports (e.g. inside default()) are allowed.
+        allowed_prefixes = ("src.repository.models", "src.repository.parsers.")
+        unexpected = {
+            imp for imp in src_imports
+            if not any(imp == a or imp.startswith(a) for a in allowed_prefixes)
+        }
         assert not unexpected, (
             f"parsers/__init__.py has unexpected src.* imports: {unexpected}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Benchmarks — framework overhead
+# ---------------------------------------------------------------------------
+
+
+class TestParserFrameworkBenchmarks:
+    """Verify the framework itself adds negligible overhead.
+
+    These benchmarks test only the registry dispatch and error-containment
+    machinery, not any language parser.  Language-specific benchmarks live
+    in test_python_parser.py.
+    """
+
+    def _make_many_files(
+        self, tmp_path: Path, count: int, lang_ext: str = ".py"
+    ) -> list[FileInfo]:
+        files = []
+        for i in range(count):
+            f = tmp_path / f"file_{i}{lang_ext}"
+            f.write_text(f"x = {i}", encoding="utf-8")
+            files.append(
+                FileInfo(
+                    path=f,
+                    relative_path=f"file_{i}{lang_ext}",
+                    extension=lang_ext,
+                    language=detect_language(Path(f"file_{i}{lang_ext}")),
+                    size=f.stat().st_size,
+                    modified_at=f.stat().st_mtime,
+                    content_hash="",
+                )
+            )
+        return files
+
+    def test_registry_dispatch_100_files_under_100ms(
+        self, tmp_path: Path
+    ) -> None:
+        """Registry overhead for 100 files must be under 100 ms."""
+        import time
+
+        registry = ParserRegistry()
+        registry.register(FakePythonParser())
+        files = self._make_many_files(tmp_path, 100)
+
+        start = time.monotonic()
+        results = registry.parse_many(files)
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        assert len(results) == 100
+        assert elapsed_ms < 100, f"Framework dispatch took {elapsed_ms:.1f} ms (limit: 100 ms)"
+
+    def test_registry_skip_overhead_500_files_under_200ms(
+        self, tmp_path: Path
+    ) -> None:
+        """Skipping 500 unsupported files must cost under 200 ms."""
+        import time
+
+        registry = ParserRegistry()
+        registry.register(FakePythonParser())
+        # All TypeScript — no parser registered for them
+        files = self._make_many_files(tmp_path, 500, ".ts")
+
+        start = time.monotonic()
+        results = registry.parse_many(files)
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        assert results == []
+        assert elapsed_ms < 200, (
+            f"Skip overhead for 500 files: {elapsed_ms:.1f} ms (limit: 200 ms)"
+        )
+
+    def test_error_containment_overhead_is_negligible(
+        self, tmp_path: Path
+    ) -> None:
+        """Containing parser exceptions must add less than 5 ms per file."""
+        import time
+
+        class QuickBombParser(BaseParser):
+            @property
+            def language(self) -> Language:
+                return Language.GO
+
+            @property
+            def supported_extensions(self) -> frozenset[str]:
+                return frozenset({".go"})
+
+            def parse(self, file_info: FileInfo) -> ParseResult:
+                raise RuntimeError("boom")
+
+        registry = ParserRegistry()
+        registry.register(QuickBombParser())
+        files = self._make_many_files(tmp_path, 50, ".go")
+
+        start = time.monotonic()
+        results = registry.parse_many(files)
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        assert len(results) == 50
+        assert all(len(r.errors) == 1 for r in results)
+        per_file_ms = elapsed_ms / 50
+        assert per_file_ms < 5, (
+            f"Error containment overhead: {per_file_ms:.2f} ms/file (limit: 5 ms)"
         )
