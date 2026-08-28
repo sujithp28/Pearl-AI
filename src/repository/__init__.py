@@ -62,6 +62,15 @@ Phase 5 — Reference Graph::
                                   kind=EdgeKind.IMPORTS)
     print(graph.stats())
 
+Phase 6 — Semantic Context Builder::
+
+    from src.repository.context import SemanticContextBuilder, ContextConfig
+    from src.repository.service import RepositoryService
+
+    svc = RepositoryService.get_or_build(Path("."))
+    ctx = SemanticContextBuilder().build("fix the patch manager", svc)
+    # ctx is a token-budgeted string ready for Planner.plan(workspace_context=ctx)
+
 Each phase is a separate module; importing this package at any phase
 always exposes the most recent public surface.
 """
@@ -84,9 +93,12 @@ from src.repository.graph import (
     NodeKind,
     RepositoryGraph,
 )
+from src.repository.service import RepositoryService
+from src.repository.context import ContextConfig, RankedFile, SemanticContextBuilder
 
 __all__ = [
     "EXTENSION_TO_LANGUAGE",
+    "ContextConfig",
     "Edge",
     "EdgeKind",
     "FileInfo",
@@ -97,10 +109,13 @@ __all__ = [
     "Language",
     "Node",
     "NodeKind",
+    "RankedFile",
     "RepositoryGraph",
     "RepositoryIndex",
     "RepositoryScanner",
+    "RepositoryService",
     "ScanResult",
+    "SemanticContextBuilder",
     "SymbolEntry",
     "detect_language",
 ]

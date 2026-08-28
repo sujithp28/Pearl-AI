@@ -23,6 +23,8 @@ from src.config.settings import Settings
 from src.llm.client import LLMClient
 from src.memory import Memory
 from src.prompts.system import build_chat_system_prompt
+from src.repository.context import SemanticContextBuilder
+from src.repository.service import RepositoryService
 from src.tools.checkpoints import CheckpointManager
 from src.tools.registry import ToolRegistry
 
@@ -181,6 +183,18 @@ class PearlAgent:
         self._task_id = task.id
         self._recorded_step_count = 0
 
+        try:
+            _svc = RepositoryService.get_or_build(Path.cwd())
+            _ctx_builder: SemanticContextBuilder | None = SemanticContextBuilder()
+        except Exception:
+            logger.warning(
+                "Could not initialise RepositoryService; running without"
+                " semantic context.",
+                exc_info=True,
+            )
+            _svc = None
+            _ctx_builder = None
+
         self._executor = AutonomousExecutor(
             self.planner,
             self.dispatcher,
@@ -188,6 +202,8 @@ class PearlAgent:
             max_replans=max_replans,
             on_progress=on_progress,
             checkpoints=self.checkpoints,
+            context_builder=_ctx_builder,
+            context_service=_svc,
         )
 
         try:

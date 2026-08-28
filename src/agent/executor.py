@@ -33,7 +33,7 @@ import logging
 import subprocess
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
@@ -47,6 +47,10 @@ from src.tools.edit_tools import set_active_patch_manager
 from src.tools.patch_manager import PatchManager
 from src.tools.repo_tools import refresh_indexed_file
 from src.tools.shell_tools import _run_shell_command, set_active_command_approver
+
+if TYPE_CHECKING:
+    from src.repository.context import SemanticContextBuilder
+    from src.repository.service import RepositoryService
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +305,8 @@ class AutonomousExecutor:
         command_approver: CommandApprovalManager | None = None,
         personality: PersonalityManager | None = None,
         checkpoints: CheckpointManager | None = None,
+        context_builder: "SemanticContextBuilder | None" = None,
+        context_service: "RepositoryService | None" = None,
     ) -> None:
         self.planner = planner
         self.dispatcher = dispatcher
@@ -329,6 +335,10 @@ class AutonomousExecutor:
         self._cancel_event = threading.Event()
         self._paused: _PausedState | None = None
         self._initial_confidence_score: float | None = None
+        # Optional semantic context builder — when present, builds a
+        # graph-aware workspace_context string before every planner call.
+        self._context_builder = context_builder
+        self._context_service = context_service
 
     def _log_structured(self, event: str, **fields: Any) -> None:
         """
@@ -370,6 +380,25 @@ class AutonomousExecutor:
         """
 
         return self._paused is not None
+
+    def _build_workspace_context(self, prompt: str) -> str:
+        """
+        Return a semantic context string for `prompt` when a
+        `SemanticContextBuilder` and `RepositoryService` are available.
+        Returns "" on any error so a context failure never blocks planning.
+        """
+
+        if self._context_builder is None or self._context_service is None:
+            return ""
+
+        try:
+            return self._context_builder.build(prompt, self._context_service)
+        except Exception:
+            logger.warning(
+                "Semantic context build failed; proceeding without context.",
+                exc_info=True,
+            )
+            return ""
 
     def _check_cancelled(
         self,
@@ -583,9 +612,15 @@ class AutonomousExecutor:
                 reflection=_reflect(steps, "cancelled", 0),
             )
 
+        workspace_context = self._build_workspace_context(prompt)
+
         try:
             pending: list[ToolCall] = list(
-                self.planner.plan(prompt, cancel_check=self.is_cancelled)
+                self.planner.plan(
+                    prompt,
+                    workspace_context=workspace_context,
+                    cancel_check=self.is_cancelled,
+                )
             )
         except LLMCancelled:
             self._check_cancelled(events, steps)
@@ -653,15 +688,13 @@ class AutonomousExecutor:
         # the execution report and the reflection phase see useful output.
         result_iter = iter(command_results)
         for step in state.steps:
-            if (
-                isinstance(step.result, str)
-                and step.result.startswith(_STAGED_COMMAND_PREFIX)
+            if isinstance(step.result, str) and step.result.startswith(
+                _STAGED_COMMAND_PREFIX
             ):
                 cmd_result = next(result_iter, None)
                 if cmd_result is not None:
                     real_out = (
-                        cmd_result.stdout.strip()
-                        or f"(exit {cmd_result.returncode})"
+                        cmd_result.stdout.strip() or f"(exit {cmd_result.returncode})"
                     )
                     step.result = real_out
                     step.summary = _summarize(step.tool_name, True, result=real_out)
@@ -670,15 +703,13 @@ class AutonomousExecutor:
         # real results rather than staging placeholders.
         result_iter2 = iter(command_results)
         for entry in state.completed_for_replan:
-            if (
-                isinstance(entry.get("result"), str)
-                and entry["result"].startswith(_STAGED_COMMAND_PREFIX)
+            if isinstance(entry.get("result"), str) and entry["result"].startswith(
+                _STAGED_COMMAND_PREFIX
             ):
                 cmd_result = next(result_iter2, None)
                 if cmd_result is not None:
                     entry["result"] = (
-                        cmd_result.stdout.strip()
-                        or f"(exit {cmd_result.returncode})"
+                        cmd_result.stdout.strip() or f"(exit {cmd_result.returncode})"
                     )
 
         set_active_patch_manager(self.patch_manager)
