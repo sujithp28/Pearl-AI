@@ -337,6 +337,145 @@ def git_restore(files: list[str] | None = None) -> str:
 
 @tool(
     description=(
+        "Stage (git add) specific files or directories. Pass an empty "
+        "list to stage everything that is modified or new. Required "
+        "before git_commit, which only commits what is already staged."
+    ),
+    parameters={"files": "list[str]"},
+    returns="str",
+)
+def git_stage(files: list[str] | None = None) -> str:
+    """
+    Stage files for the next commit.
+
+    When `files` is empty or None, stages all modified and untracked
+    files (equivalent to ``git add .``). When non-empty, stages only
+    the listed paths.
+
+    Never stages files outside the workspace root.
+    """
+
+    _ensure_git_repo()
+
+    if not files:
+        logger.info("Staging all changes (git add .).")
+        result = _run_git("add", ".")
+    else:
+        if not all(isinstance(f, str) and f for f in files):
+            raise ValueError("Every entry in 'files' must be a non-empty string.")
+
+        logger.info("Staging: %s", files)
+        result = _run_git("add", "--", *files)
+
+    if result.returncode != 0:
+        raise GitError(f"git add failed: {result.stderr.strip()}")
+
+    staged = git_status().get("staged", [])
+    return f"Staged {len(staged)} file(s)."
+
+
+@tool(
+    description=(
+        "Show line-level authorship for a file (git blame). Returns a "
+        "list of annotated lines, each with the commit hash, author, "
+        "date, and the line content. Useful for understanding when and "
+        "why each line was last changed."
+    ),
+    parameters={"path": "str", "start_line": "int", "end_line": "int"},
+    returns="list[dict]",
+)
+def git_blame(
+    path: str,
+    start_line: int = 1,
+    end_line: int = 0,
+) -> list[dict[str, Any]]:
+    """
+    Return per-line authorship annotation for `path`.
+
+    Parameters
+    ----------
+    path:
+        File to annotate, relative to the workspace root.
+    start_line:
+        First line to include (1-indexed).  Defaults to 1.
+    end_line:
+        Last line to include (1-indexed, inclusive).  0 means "all
+        remaining lines" (the default).
+    """
+
+    _ensure_git_repo()
+
+    if not path or not path.strip():
+        raise ValueError("'path' must not be empty.")
+
+    if start_line < 1:
+        raise ValueError("'start_line' must be >= 1.")
+
+    logger.info("Running git blame on '%s'.", path)
+
+    args = ["blame", "--porcelain"]
+    if end_line > 0:
+        if end_line < start_line:
+            raise ValueError("'end_line' must be >= 'start_line'.")
+        args += [f"-L{start_line},{end_line}"]
+    elif start_line > 1:
+        args += [f"-L{start_line}"]
+
+    args += ["--", path]
+
+    result = _run_git(*args)
+
+    if result.returncode != 0:
+        raise GitError(f"git blame failed: {result.stderr.strip()}")
+
+    return _parse_blame_porcelain(result.stdout)
+
+
+def _parse_blame_porcelain(output: str) -> list[dict[str, Any]]:
+    """
+    Parse ``git blame --porcelain`` output into a list of annotated
+    line records.
+
+    Each record has: ``commit``, ``author``, ``date``, ``line_number``,
+    ``content``.
+    """
+
+    records: list[dict[str, Any]] = []
+    lines = output.splitlines()
+    i = 0
+    current: dict[str, Any] = {}
+
+    while i < len(lines):
+        line = lines[i]
+
+        # Header line: "<40-char hash> <orig-line> <final-line> [<num-lines>]"
+        if len(line) >= 40 and line[:40].isalnum() and " " in line[40:]:
+            parts = line.split()
+            current = {"commit": parts[0]}
+            try:
+                current["line_number"] = int(parts[2])
+            except (IndexError, ValueError):
+                current["line_number"] = 0
+        elif line.startswith("author "):
+            current["author"] = line[7:]
+        elif line.startswith("author-time "):
+            import datetime
+
+            ts = int(line[12:])
+            current["date"] = datetime.datetime.fromtimestamp(
+                ts, tz=datetime.timezone.utc
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        elif line.startswith("\t"):
+            current["content"] = line[1:]
+            records.append(dict(current))
+
+        i += 1
+
+    return records
+
+
+@tool(
+    description=(
         "Summarize uncommitted workspace changes: what files changed, "
         "how many lines added/removed, and which files are new or deleted."
     ),
