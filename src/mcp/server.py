@@ -180,6 +180,7 @@ class MCPServer:
         planner: Planner | None = None,
         memory: Memory | None = None,
         llm: LLMClient | None = None,
+        chat_llm: LLMClient | None = None,
         personality: PersonalityManager | None = None,
         checkpoints: CheckpointManager | None = None,
     ) -> None:
@@ -187,7 +188,12 @@ class MCPServer:
         self.dispatcher = dispatcher or ToolDispatcher(registry)
         self.planner = planner
         self.memory = memory or Memory()
+        # `llm` is the planning/general LLM — kept for backward compat
+        # (tests inject it directly). `chat_llm`, when provided, is used
+        # for pearl/chat responses so a faster or cheaper model can serve
+        # conversational turns while a more capable model handles planning.
         self.llm = llm
+        self._chat_llm = chat_llm
         self._personality = personality or PersonalityManager()
         # One store per server, shared between the manual
         # pearl/checkpoint* methods and the automatic pre-write
@@ -393,8 +399,14 @@ class MCPServer:
         if not isinstance(message, str) or not message:
             raise MCPProtocolError(INVALID_PARAMS, "'message' is required.")
 
-        if self.llm is None:
-            self.llm = LLMClient()
+        # Prefer the dedicated chat LLM when one was configured via
+        # ModelRouter; fall back to the general LLM (or build one lazily).
+        if self._chat_llm is not None:
+            active_llm = self._chat_llm
+        else:
+            if self.llm is None:
+                self.llm = LLMClient()
+            active_llm = self.llm
 
         history = self.memory.recent_messages(limit=Settings.CHAT_HISTORY_TURNS)
 
@@ -402,7 +414,7 @@ class MCPServer:
 
         chunks: list[str] = []
 
-        for chunk in self.llm.generate_stream(
+        for chunk in active_llm.generate_stream(
             message,
             history=history,
             system=build_chat_system_prompt(str(Path.cwd().resolve())),

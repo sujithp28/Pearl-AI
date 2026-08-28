@@ -137,6 +137,28 @@ class Settings:
     CUSTOM_MODEL = os.getenv("CUSTOM_MODEL", "")
 
     # ==================================================
+    # Model Routing (M6)
+    # ==================================================
+    #
+    # Pearl can use a different provider/model for planning (JSON-
+    # structured, needs accuracy) vs. chat (conversational, benefits
+    # from speed). Each falls back to LLM_PROVIDER / the provider's
+    # default model when unset.
+    #
+    # Example: use a large local model for planning and a fast remote
+    # one for chat:
+    #   PEARL_PLANNING_PROVIDER=ollama
+    #   PEARL_PLANNING_MODEL=llama3:70b
+    #   PEARL_CHAT_PROVIDER=openai
+    #   PEARL_CHAT_MODEL=gpt-4o-mini
+
+    PLANNING_PROVIDER = os.getenv("PEARL_PLANNING_PROVIDER", "")
+    PLANNING_MODEL = os.getenv("PEARL_PLANNING_MODEL", "")
+
+    CHAT_PROVIDER = os.getenv("PEARL_CHAT_PROVIDER", "")
+    CHAT_MODEL = os.getenv("PEARL_CHAT_MODEL", "")
+
+    # ==================================================
     # Generation
     # ==================================================
 

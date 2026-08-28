@@ -13,6 +13,7 @@ import threading
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
 from src.llm.client import LLMClient
+from src.llm.router import ModelRouter
 from src.main import build_registry
 from src.mcp.server import MCPServer
 from src.memory import Memory
@@ -57,12 +58,19 @@ def main() -> None:
     build_startup_index()
     dispatcher = ToolDispatcher(registry)
     memory = Memory()
-    llm = LLMClient()
-    planner = Planner(registry, dispatcher, llm)
+
+    # M6: ModelRouter selects the right LLM per task type.
+    # When PEARL_PLANNING_PROVIDER / PEARL_CHAT_PROVIDER are unset both
+    # fall back to PEARL_LLM_PROVIDER — identical to the prior behavior.
+    router = ModelRouter()
+    planning_llm = router.planning_client()
+    chat_llm = router.chat_client()
+
+    planner = Planner(registry, dispatcher, planning_llm)
 
     # Warm up the model in the background so it is in RAM by the time
     # the user sends their first message, avoiding a cold-start delay.
-    warmup = threading.Thread(target=_warm_up_llm, args=(llm,), daemon=True)
+    warmup = threading.Thread(target=_warm_up_llm, args=(planning_llm,), daemon=True)
     warmup.start()
 
     server = MCPServer(
@@ -70,7 +78,8 @@ def main() -> None:
         dispatcher=dispatcher,
         planner=planner,
         memory=memory,
-        llm=llm,
+        llm=planning_llm,
+        chat_llm=chat_llm if not router.all_same_provider() else None,
     )
 
     server.run_stdio()
