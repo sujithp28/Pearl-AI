@@ -98,6 +98,7 @@ function collectingPost(): {
 } {
   const messages: ChatMessage[] = [];
   const events: WebviewMessage[] = [];
+  let streamAccum = "";
 
   return {
     messages,
@@ -106,6 +107,19 @@ function collectingPost(): {
       events.push(m);
       if (m.type === "addMessage") {
         messages.push(m.message);
+      } else if (m.type === "startStream") {
+        streamAccum = "";
+      } else if (m.type === "appendChunk") {
+        streamAccum += m.chunk;
+      } else if (m.type === "finalizeStream") {
+        // Capture streaming assistant replies as if they were addMessage.
+        messages.push({
+          role: "assistant",
+          text: m.text,
+          html: m.html,
+          timestamp: m.timestamp,
+        });
+        streamAccum = "";
       }
     },
   };
@@ -167,20 +181,22 @@ function fixedPatchApprover(decision: PatchDecision): {
 // ---------------------------------------------------------------------
 
 test("falls back to pearl/chat when the plan needs no tool", async () => {
+  // Use a non-greeting message so the conversational fast-path is NOT
+  // taken — we want to exercise the planOnly → "none" → chat code path.
   const { sender, calls } = fakeSender({
     "pearl/planOnly": () => ({ steps: [{ tool: "none", arguments: {} }] }),
-    "pearl/chat": () => ({ message: "Hello there." }),
+    "pearl/chat": () => ({ message: "It depends on the context." }),
   });
   const { messages, post } = collectingPost();
   const { approve, requests } = fixedApprover("approved");
   const { approvePlan, calls: planCalls } = fixedPlanApprover("execute");
 
   const controller = new ChatController(sender, post, approve, approvePlan);
-  await controller.handleUserMessage("hi");
+  await controller.handleUserMessage("explain what this codebase does");
 
   assert.deepEqual(strip(messages), [
-    { role: "user", text: "hi" },
-    { role: "assistant", text: "Hello there." },
+    { role: "user", text: "explain what this codebase does" },
+    { role: "assistant", text: "It depends on the context." },
   ]);
   assert.equal(requests.length, 0, "no tool approval should be requested");
   assert.equal(planCalls.length, 0, "no plan approval should be requested");
@@ -193,6 +209,34 @@ test("falls back to pearl/chat when the plan needs no tool", async () => {
   assert.deepEqual(
     calls.map((c) => c.method),
     ["pearl/personality", "pearl/planOnly", "pearl/chat"]
+  );
+});
+
+test("conversational fast-path skips planOnly for greetings", async () => {
+  // Greetings must go directly to pearl/chat without calling planOnly,
+  // saving one LLM round-trip.
+  const { sender, calls } = fakeSender({
+    "pearl/chat": () => ({ message: "Hello there!" }),
+  });
+  const { messages, post } = collectingPost();
+  const { approve } = fixedApprover("approved");
+  const { approvePlan } = fixedPlanApprover("execute");
+
+  const controller = new ChatController(sender, post, approve, approvePlan);
+  await controller.handleUserMessage("hi");
+
+  assert.deepEqual(strip(messages), [
+    { role: "user", text: "hi" },
+    { role: "assistant", text: "Hello there!" },
+  ]);
+  // planOnly must NOT have been called — the fast-path skips it entirely.
+  assert.ok(
+    !calls.some((c) => c.method === "pearl/planOnly"),
+    "pearl/planOnly must not be called for greetings"
+  );
+  assert.ok(
+    calls.some((c) => c.method === "pearl/chat"),
+    "pearl/chat must be called"
   );
 });
 

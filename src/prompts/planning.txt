@@ -19,6 +19,24 @@ executed in dependency order, so list them in any convenient order
 and use "id" / "depends_on" to declare ordering constraints. If the
 request only needs one tool, return a single-item "steps" list.
 
+Return tool: "none" for ANY of the following — they are NOT file operations:
+
+- Greetings: "hello", "hi", "hey", "good morning", etc.
+- Gratitude: "thanks", "thank you", "great", "perfect", etc.
+- Questions about Pearl itself: "what can you do?", "how do you work?", etc.
+- Conversational messages: anything that is not a concrete request to read,
+  write, search, or execute something in the workspace.
+- Single words that are not file names (no extension, not a path).
+
+Examples that must return tool "none":
+  User: "hello"          → tool "none"
+  User: "thanks!"        → tool "none"
+  User: "what is Pearl?" → tool "none"
+
+Examples that may use tools:
+  User: "read hello.py"       → read_file(path="hello.py")
+  User: "list the src folder" → list_directory(path="src")
+
 If no tool is appropriate, return:
 
 {{

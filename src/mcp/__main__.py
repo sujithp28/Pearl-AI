@@ -8,6 +8,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+import threading
 
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
@@ -16,6 +17,27 @@ from src.main import build_registry
 from src.mcp.server import MCPServer
 from src.memory import Memory
 from src.tools.repo_tools import build_startup_index
+
+logger = logging.getLogger(__name__)
+
+
+def _warm_up_llm(llm: LLMClient) -> None:
+    """
+    Send a minimal prompt to the LLM provider so the model is loaded
+    into GPU/CPU memory before the user sends their first message.
+
+    Runs in a daemon thread: it never blocks server startup, and it
+    dies automatically when the process exits. A failure here (e.g.
+    Ollama not running, model not pulled) is logged but never raises —
+    the user will just see the normal cold-start latency.
+    """
+    try:
+        logger.info("Warming up LLM model in background...")
+        # consume the whole stream so Ollama actually loads the model
+        text = "".join(llm.generate_stream("hi"))
+        logger.info("LLM warm-up done (%d chars).", len(text))
+    except Exception as exc:
+        logger.warning("LLM warm-up failed (cold start expected): %s", exc)
 
 
 def main() -> None:
@@ -37,6 +59,11 @@ def main() -> None:
     memory = Memory()
     llm = LLMClient()
     planner = Planner(registry, dispatcher, llm)
+
+    # Warm up the model in the background so it is in RAM by the time
+    # the user sends their first message, avoiding a cold-start delay.
+    warmup = threading.Thread(target=_warm_up_llm, args=(llm,), daemon=True)
+    warmup.start()
 
     server = MCPServer(
         registry,

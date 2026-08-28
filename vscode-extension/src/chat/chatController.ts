@@ -36,7 +36,7 @@
  * and progress simply never streams for it.
  */
 
-import { sendChatMessage } from "../mcp/chatClient";
+import { sendChatMessageStream } from "../mcp/chatClient";
 import {
   ExecutionReportResult,
   approvePatches,
@@ -67,6 +67,9 @@ export interface ChatMessage {
 
 export type WebviewMessage =
   | { type: "addMessage"; message: ChatMessage }
+  | { type: "startStream" }
+  | { type: "appendChunk"; chunk: string }
+  | { type: "finalizeStream"; text: string; html: string; timestamp: string }
   | { type: "loading"; show: boolean }
   | { type: "timeline"; stage: TimelineStage | null; labels?: TimelineLabels }
   | { type: "executionState"; state: ExecutionState | null }
@@ -75,6 +78,15 @@ export type WebviewMessage =
 export type PostToWebview = (message: WebviewMessage) => void;
 
 const NO_TOOL = "none";
+
+// Words/phrases that are always conversational and never require a tool.
+// Matched case-insensitively after stripping leading/trailing punctuation.
+const CONVERSATIONAL_RE =
+  /^(hi+|hey+|hello+|hiya|howdy|greetings|good\s+(morning|afternoon|evening|night)|thanks?|thank\s+you|ty|cheers|great|perfect|awesome|cool|ok+a*y*|sure|got\s+it|makes?\s+sense|sounds?\s+good|wow|nice|interesting|what\s+(can|do)\s+you\s+do|how\s+do\s+you\s+work|what\s+is\s+pearl|who\s+are\s+you|are\s+you\s+there|really|yep|nope|yes|no|lol|haha|hmm+|what['’s]*\s+(is\s+)?(your\s+)?(home|workspace|working|project|root|current)\s+(path|dir(ectory)?|folder|location)?|where\s+(is|are)\s+you|what['’s]*\s+(your\s+)?(path|workspace|working\s+dir(ectory)?)|what\s+path)[!?.,\s]*$/i;
+
+function isConversational(text: string): boolean {
+  return CONVERSATIONAL_RE.test(text.trim());
+}
 
 export class ChatController {
   private readonly history: ChatMessage[] = [];
@@ -128,6 +140,17 @@ export class ChatController {
     }
 
     this.addAndPost("user", trimmed);
+
+    // Fast-path: skip the planner entirely for obvious conversational
+    // messages (greetings, questions about Pearl, short social phrases).
+    // These are guaranteed to produce tool:"none" plans, so calling
+    // planOnly first just adds an extra LLM round-trip with no benefit.
+    if (isConversational(trimmed)) {
+      this.postLoading(true);
+      await this.replyConversationally(trimmed);
+      return;
+    }
+
     this.postTimeline("planning");
     this.postLoading(true);
 
@@ -219,17 +242,45 @@ export class ChatController {
   }
 
   private async replyConversationally(text: string): Promise<void> {
-    // Callers already post loading(true) before deciding to fall
-    // back here (planning itself is also a network round trip); we
-    // only need to post the closing loading(false) once this
-    // request settles.
+    // Callers already post loading(true); we only post loading(false)
+    // once the stream's first chunk arrives (or on error).
     try {
-      const reply = await sendChatMessage(this.connection, text);
-      this.addAndPost("assistant", reply);
+      let started = false;
+      let accumulated = "";
+
+      const fullReply = await sendChatMessageStream(
+        this.connection,
+        text,
+        (chunk) => {
+          accumulated += chunk;
+          if (!started) {
+            // First chunk: dismiss loading dots, open streaming bubble.
+            started = true;
+            this.postLoading(false);
+            this.post({ type: "startStream" });
+          }
+          this.post({ type: "appendChunk", chunk });
+        }
+      );
+
+      if (!started) {
+        // Provider fell back to non-streaming (no chunks fired).
+        // Use the final reply from the request result directly.
+        this.postLoading(false);
+        accumulated = fullReply;
+        this.post({ type: "startStream" });
+      }
+
+      // Finalize with fully markdown-rendered HTML.
+      this.post({
+        type: "finalizeStream",
+        text: accumulated,
+        html: renderMarkdownToHtml(accumulated),
+        timestamp: new Date().toISOString(),
+      });
     } catch (error) {
-      this.addAndPost("error", describeConnectionError(error));
-    } finally {
       this.postLoading(false);
+      this.addAndPost("error", describeConnectionError(error));
     }
   }
 

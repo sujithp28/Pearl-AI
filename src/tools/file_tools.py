@@ -63,6 +63,11 @@ def read_file(path: str) -> str:
         raise FileNotFoundError(path)
 
     if not file_path.is_file():
+        if file_path.is_dir():
+            # Gracefully handle the common planner mistake of calling
+            # read_file on a directory: return a listing instead of crashing.
+            contents = sorted(item.name for item in file_path.iterdir())
+            return f"[directory: {path}]\n" + "\n".join(contents)
         raise IsADirectoryError(path)
 
     logger.info("Reading file: %s", file_path)

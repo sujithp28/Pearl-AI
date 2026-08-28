@@ -62,6 +62,14 @@ class StubLLM:
         self.systems.append(system)
         return self.response
 
+    def generate_stream(
+        self,
+        prompt: str,
+        history: list[dict[str, str]] | None = None,
+        system: str | None = None,
+    ):
+        yield self.generate(prompt, history=history, system=system)
+
 
 def build_server(with_planner: bool = False, llm: object | None = None) -> MCPServer:
     registry = build_registry()

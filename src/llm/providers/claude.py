@@ -8,6 +8,7 @@ not require it unless Claude is the configured provider.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 from src.llm.providers.base import LLMProvider
@@ -64,3 +65,18 @@ class ClaudeProvider(LLMProvider):
             raise ValueError("Model returned an empty response.")
 
         return text.strip()
+
+    def complete_stream(
+        self,
+        messages: list[dict[str, Any]],
+        temperature: float,
+        max_tokens: int,
+    ) -> Iterator[str]:
+        with self.client.messages.stream(
+            model=self.model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=messages,
+        ) as stream:
+            for text_chunk in stream.text_stream:
+                yield text_chunk

@@ -103,11 +103,24 @@ function collectingPost(): {
   post: PostToWebview;
 } {
   const messages: ChatMessage[] = [];
+  let streamAccum = "";
   return {
     messages,
     post: (m) => {
       if (m.type === "addMessage") {
         messages.push(m.message);
+      } else if (m.type === "startStream") {
+        streamAccum = "";
+      } else if (m.type === "appendChunk") {
+        streamAccum += m.chunk;
+      } else if (m.type === "finalizeStream") {
+        messages.push({
+          role: "assistant",
+          text: m.text,
+          html: m.html,
+          timestamp: m.timestamp,
+        });
+        streamAccum = "";
       }
     },
   };

@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Callable
 
@@ -192,6 +193,46 @@ class LLMClient:
                 raise
 
         return text
+
+    def generate_stream(
+        self,
+        prompt: str,
+        history: list[dict[str, str]] | None = None,
+        system: str | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+    ) -> Iterator[str]:
+        """
+        Stream the provider response for `prompt`, yielding text chunks
+        as they arrive.
+
+        Same message assembly as `generate()` — system prompt, history,
+        then `prompt` — but delegates to `provider.complete_stream()`
+        so the first token is visible immediately rather than after the
+        entire response is buffered.
+
+        Only suitable for the chat path where partial text is
+        displayable. Planning and tool-call paths must use
+        `generate_json()` (which needs the complete response to parse
+        JSON) and are not affected by this method.
+        """
+
+        if cancel_check is not None and cancel_check():
+            raise LLMCancelled("Cancelled before the request was sent.")
+
+        temperature = Settings.TEMPERATURE
+        max_new_tokens = Settings.MAX_NEW_TOKENS
+
+        messages: list[dict[str, str]] = [
+            *([{"role": "system", "content": system}] if system else []),
+            *(history or []),
+            {"role": "user", "content": prompt},
+        ]
+
+        logger.info("Streaming request to provider...")
+
+        yield from self.provider.complete_stream(messages, temperature, max_new_tokens)
+
+        logger.info("Stream finished.")
 
     def _extract_json(self, text: str) -> str:
         """

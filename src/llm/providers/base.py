@@ -10,6 +10,7 @@ LLM backend is configured.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from typing import Any
 
 
@@ -35,3 +36,20 @@ class LLMProvider(ABC):
         """
 
         raise NotImplementedError
+
+    def complete_stream(
+        self,
+        messages: list[dict[str, Any]],
+        temperature: float,
+        max_tokens: int,
+    ) -> Iterator[str]:
+        """
+        Stream `messages` to the provider, yielding text chunks as they
+        arrive.
+
+        Default implementation calls `complete()` and yields the whole
+        response as one chunk — providers that support native streaming
+        should override this to yield incrementally.
+        """
+
+        yield self.complete(messages, temperature, max_tokens)

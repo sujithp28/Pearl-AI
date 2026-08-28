@@ -379,9 +379,13 @@ class MCPServer:
     def _chat(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
         """
         Chat directly with the language model (a Pearl-specific
-        extension beyond the core MCP methods). Reuses the same
-        `LLMClient.generate()` pathway as `PearlAgent.chat()`, and
-        records both turns in Memory.
+        extension beyond the core MCP methods).
+
+        Streams the response via `pearl/chatChunk` notifications so the
+        UI can render text as it arrives rather than waiting for the
+        complete response. The final JSON-RPC result carries the full
+        accumulated text so callers that don't use notifications still
+        work correctly.
         """
 
         message = params.get("message")
@@ -392,19 +396,21 @@ class MCPServer:
         if self.llm is None:
             self.llm = LLMClient()
 
-        # Captured before recording this turn: `record_turn` would
-        # otherwise put `message` into the history too, and it's
-        # already being sent as the prompt — the model would see the
-        # same message twice.
         history = self.memory.recent_messages(limit=Settings.CHAT_HISTORY_TURNS)
 
         self.memory.record_turn("user", message)
 
-        response = self.llm.generate(
+        chunks: list[str] = []
+
+        for chunk in self.llm.generate_stream(
             message,
             history=history,
             system=build_chat_system_prompt(str(Path.cwd().resolve())),
-        )
+        ):
+            chunks.append(chunk)
+            notify("pearl/chatChunk", {"chunk": chunk})
+
+        response = "".join(chunks)
 
         self.memory.record_turn("agent", response)
 

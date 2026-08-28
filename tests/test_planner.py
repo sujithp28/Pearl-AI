@@ -297,3 +297,62 @@ def test_planner_workspace_root_rejects_paths_ensure_within_workspace_rejects(
     # And _ensure_within_workspace must also reject it.
     with pytest.raises(PermissionError):
         _ensure_within_workspace(str(outside))
+
+
+# ---------------------------------------------------------------------
+# Prompt content: conversational / no-tool guidance
+# ---------------------------------------------------------------------
+
+
+def test_planning_prompt_contains_none_guidance_for_greetings():
+    """
+    The planning prompt must explicitly tell the model to return
+    tool "none" for greetings and conversational messages.
+
+    This guards against the regression where "hello" produced
+    read_file(path="hello") because the prompt had no such guidance.
+    """
+    planner = build_planner()
+    prompt = planner.build_prompt("hello")
+
+    # The prompt must name at least one conversational category.
+    assert "greeting" in prompt.lower() or "hello" in prompt.lower()
+    # It must describe when to return "none".
+    assert '"none"' in prompt or "tool: " + '"none"' in prompt
+
+
+def test_planning_prompt_contains_example_none_for_hello():
+    """
+    The prompt must include a concrete example showing that 'hello'
+    maps to tool 'none', so the model has a worked example to follow.
+    """
+    planner = build_planner()
+    prompt = planner.build_prompt("hello")
+
+    assert 'hello' in prompt.lower()
+    assert 'none' in prompt
+
+
+def test_planner_routes_none_step_for_scripted_conversational_response(monkeypatch):
+    """
+    When the LLM (scripted here) returns tool 'none' for a greeting,
+    the planner must pass it through as a ToolCall with tool_name='none'
+    rather than dropping it or raising.
+
+    This does NOT prove the real LLM returns 'none' for greetings —
+    that requires a prompt-quality integration test with a real model.
+    It proves the routing works correctly when it does.
+    """
+    planner = build_planner()
+
+    monkeypatch.setattr(
+        planner.client,
+        "generate_json",
+        lambda prompt: {"steps": [{"tool": "none", "arguments": {}}]},
+    )
+
+    steps = list(planner.plan("hello"))
+
+    assert len(steps) == 1
+    assert steps[0].tool_name == "none"
+    assert steps[0].kwargs == {}

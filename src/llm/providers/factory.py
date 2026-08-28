@@ -52,6 +52,7 @@ def create_provider(name: str) -> LLMProvider:
             api_key=Settings.OLLAMA_API_KEY,
             base_url=Settings.OLLAMA_BASE_URL,
             model=Settings.OLLAMA_MODEL,
+            keep_alive="1h",
         )
 
     if normalized == "custom":

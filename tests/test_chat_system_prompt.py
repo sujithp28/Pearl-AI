@@ -223,6 +223,9 @@ def test_mcp_chat_passes_the_grounding_prompt():
             self.systems.append(system)
             return "reply"
 
+        def generate_stream(self, prompt, history=None, system=None):
+            yield self.generate(prompt, history=history, system=system)
+
     llm = RecordingLLM()
     server = MCPServer(ToolRegistry(), llm=llm)
 
@@ -246,6 +249,9 @@ def test_mcp_chat_grounding_names_the_real_workspace(tmp_path, monkeypatch):
         def generate(self, prompt, history=None, system=None):
             self.systems.append(system)
             return "reply"
+
+        def generate_stream(self, prompt, history=None, system=None):
+            yield self.generate(prompt, history=history, system=system)
 
     monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
 
