@@ -27,13 +27,17 @@ from src.tools.file_tools import (
     write_file,
 )
 from src.tools.git_tools import (
+    git_blame,
     git_commit,
     git_create_branch,
     git_diff,
     git_log,
     git_restore,
+    git_stage,
     git_status,
+    summarize_changes,
 )
+from src.tools.refactor_tools import batch_write_files, rename_symbol
 from src.tools.registry import ToolRegistry
 from src.tools.repo_tools import (
     explain_file,
@@ -61,6 +65,7 @@ from src.tools.symbol_editor import (
     insert_before_symbol,
     replace_class,
     replace_function,
+    replace_method,
 )
 
 logging.basicConfig(
@@ -115,8 +120,11 @@ def build_registry() -> ToolRegistry:
     registry.register(git_status)
     registry.register(git_log)
     registry.register(git_create_branch)
+    registry.register(git_stage)
     registry.register(git_commit)
     registry.register(git_restore)
+    registry.register(git_blame)
+    registry.register(summarize_changes)
 
     # Symbol-aware editing tools
     registry.register(find_function)
@@ -124,8 +132,13 @@ def build_registry() -> ToolRegistry:
     registry.register(find_method)
     registry.register(replace_function)
     registry.register(replace_class)
+    registry.register(replace_method)
     registry.register(insert_after_symbol)
     registry.register(insert_before_symbol)
+
+    # Multi-file refactoring tools
+    registry.register(batch_write_files)
+    registry.register(rename_symbol)
 
     return registry
 

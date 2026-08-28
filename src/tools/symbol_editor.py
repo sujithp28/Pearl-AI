@@ -338,6 +338,39 @@ def _apply_or_stage(file_path: Path, updated_content: str, summary: str) -> str:
 
 @tool(
     description=(
+        "Replace a method's full definition within a specific class "
+        "(including decorators) with new source, preserving the rest "
+        "of the file exactly. If `path` is omitted, the file is "
+        "located via the repository index."
+    ),
+    parameters={
+        "path": "str",
+        "class_name": "str",
+        "method_name": "str",
+        "new_source": "str",
+    },
+    returns="str",
+)
+def replace_method(
+    class_name: str, method_name: str, new_source: str, path: str = ""
+) -> str:
+    file_path = _resolve_path(path, class_name)
+    editor = _load_editor(file_path)
+    updated = editor.replace_method(class_name, method_name, new_source)
+
+    logger.info(
+        "Replacing method '%s.%s' in %s", class_name, method_name, file_path
+    )
+
+    return _apply_or_stage(
+        file_path,
+        updated,
+        f"replaced method '{class_name}.{method_name}' in '{file_path}'.",
+    )
+
+
+@tool(
+    description=(
         "Find a top-level function definition by name in a Python "
         "file. If `path` is omitted, the file is located via the "
         "repository index."

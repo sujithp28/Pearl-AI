@@ -13,6 +13,7 @@ from src.tools.symbol_editor import (
     insert_before_symbol,
     replace_class,
     replace_function,
+    replace_method,
 )
 
 SAMPLE = '''"""Sample module docstring."""
@@ -478,3 +479,56 @@ def test_replace_function_refreshes_repository_index(tmp_path, monkeypatch):
     assert len(locations) == 1
     assert locations[0]["file"] == "a.py"
     assert locations[0]["type"] == "function"
+
+
+# ---------------------------------------------------------------------------
+# replace_method tool (M4)
+# ---------------------------------------------------------------------------
+
+
+def test_tool_replace_method_writes_file_in_apply_mode(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    src = "class Greeter:\n    def greet(self):\n        return 'hello'\n"
+    (tmp_path / "a.py").write_text(src)
+
+    result = replace_method(
+        "Greeter",
+        "greet",
+        "    def greet(self):\n        return 'hi'\n",
+        path=str(tmp_path / "a.py"),
+    )
+
+    assert "replaced method" in result
+    text = (tmp_path / "a.py").read_text()
+    assert "return 'hi'" in text
+    assert "return 'hello'" not in text
+
+
+def test_tool_replace_method_preview_mode_stages_instead_of_writing(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    src = "class Greeter:\n    def greet(self):\n        return 'hello'\n"
+    (tmp_path / "a.py").write_text(src)
+
+    pm = PatchManager()
+    set_active_patch_manager(pm)
+    try:
+        replace_method(
+            "Greeter",
+            "greet",
+            "    def greet(self):\n        return 'hi'\n",
+            path=str(tmp_path / "a.py"),
+        )
+        assert len(pm.pending) == 1
+        assert (tmp_path / "a.py").read_text() == src
+    finally:
+        set_active_patch_manager(None)
+
+
+def test_tool_replace_method_raises_when_class_not_found(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.py").write_text("class Foo: pass\n")
+
+    with pytest.raises(SymbolNotFoundError):
+        replace_method("NonExistent", "some_method", "    pass\n", path=str(tmp_path / "a.py"))
