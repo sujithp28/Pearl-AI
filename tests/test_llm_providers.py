@@ -121,7 +121,7 @@ def test_gemini_provider_raises_clear_error_without_sdk():
 
 @pytest.mark.parametrize(
     "name",
-    ["openai", "openrouter", "ollama", "custom"],
+    ["openai", "openrouter", "custom"],
 )
 def test_create_provider_builds_openai_compatible_backends(name, monkeypatch):
     monkeypatch.setattr(Settings, "OPENAI_API_KEY", "dummy-key")
@@ -164,7 +164,6 @@ def test_supported_providers_lists_all_provider_names():
     assert set(SUPPORTED_PROVIDERS) == {
         "openai",
         "openrouter",
-        "ollama",
         "custom",
         "claude",
         "anthropic",
@@ -174,7 +173,7 @@ def test_supported_providers_lists_all_provider_names():
     }
 
 
-def test_scripted_provider_is_never_reached_without_asking_for_it():
+def test_scripted_provider_is_never_reached_without_asking_for_it(monkeypatch):
     """
     The scripted provider returns canned text. It must only ever be
     selected by explicit configuration — if a typo or a failure in a
@@ -183,7 +182,8 @@ def test_scripted_provider_is_never_reached_without_asking_for_it():
     """
 
     # A real provider name never yields the scripted one...
-    assert not isinstance(create_provider("ollama"), ScriptedProvider)
+    monkeypatch.setattr(Settings, "OPENAI_API_KEY", "dummy-key")
+    assert not isinstance(create_provider("openai"), ScriptedProvider)
 
     # ...and an unrecognized name fails loudly rather than degrading.
     with pytest.raises(ValueError):
@@ -215,22 +215,19 @@ def test_openrouter_provider_uses_openrouter_settings(monkeypatch):
     assert provider.model == Settings.OPENROUTER_MODEL
 
 
-def test_ollama_provider_uses_ollama_settings():
-    provider = create_provider("ollama")
-
-    assert provider.model == Settings.OLLAMA_MODEL
-
-
 # ---------------------------------------------------------------------
 # LLMClient integration with the provider abstraction
 # ---------------------------------------------------------------------
 
 
-def test_llm_client_defaults_to_settings_provider():
+def test_llm_client_defaults_to_settings_provider(monkeypatch):
+    monkeypatch.setattr(Settings, "OPENAI_API_KEY", "dummy-key")
+    monkeypatch.setattr(Settings, "LLM_PROVIDER", "openai")
+
     client = LLMClient()
 
     assert isinstance(client.provider, OpenAICompatibleProvider)
-    assert client.provider.model == Settings.OLLAMA_MODEL
+    assert client.provider.model == Settings.OPENAI_MODEL
 
 
 def test_llm_client_accepts_explicit_provider_name(monkeypatch):

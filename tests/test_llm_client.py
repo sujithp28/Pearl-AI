@@ -6,7 +6,16 @@ import httpx
 import pytest
 from openai import APIConnectionError
 
+from src.config.settings import Settings
 from src.llm.client import LLMClient
+from src.llm.providers.openai_compatible import OpenAICompatibleProvider
+
+
+@pytest.fixture(autouse=True)
+def _force_openai_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force all LLMClient() calls in this module to use OpenAICompatibleProvider."""
+    monkeypatch.setattr(Settings, "LLM_PROVIDER", "openai")
+    monkeypatch.setattr(Settings, "OPENAI_API_KEY", "dummy-test-key")
 
 
 def _make_response(content: str):

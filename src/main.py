@@ -67,6 +67,7 @@ from src.tools.symbol_editor import (
     replace_function,
     replace_method,
 )
+from src.tools.web_tools import web_context, web_fetch, web_search
 
 logging.basicConfig(
     level=logging.INFO,
@@ -139,6 +140,11 @@ def build_registry() -> ToolRegistry:
     # Multi-file refactoring tools
     registry.register(batch_write_files)
     registry.register(rename_symbol)
+
+    # Web Intelligence tools (M7)
+    registry.register(web_search)
+    registry.register(web_fetch)
+    registry.register(web_context)
 
     return registry
 

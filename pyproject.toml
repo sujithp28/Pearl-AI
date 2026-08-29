@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Pearl contributors" }]
-keywords = ["ai", "agent", "coding-assistant", "llm", "mcp", "ollama"]
+keywords = ["ai", "agent", "coding-assistant", "llm", "mcp", "web-intelligence"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -25,6 +25,8 @@ classifiers = [
 
 dependencies = [
     "openai>=1.0",
+    "httpx>=0.25",
+    "beautifulsoup4>=4.12",
 ]
 
 [project.optional-dependencies]

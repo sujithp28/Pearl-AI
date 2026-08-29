@@ -34,7 +34,6 @@ def _warm_up_llm(llm: LLMClient) -> None:
     """
     try:
         logger.info("Warming up LLM model in background...")
-        # consume the whole stream so Ollama actually loads the model
         text = "".join(llm.generate_stream("hi"))
         logger.info("LLM warm-up done (%d chars).", len(text))
     except Exception as exc:

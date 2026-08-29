@@ -1,8 +1,8 @@
 """
 Provider backend for any OpenAI-compatible chat completions API:
-OpenAI itself, OpenRouter, Ollama's `/v1` endpoint, and any other
-OpenAI-compatible endpoint all speak this same wire protocol, so they
-share one implementation.
+OpenAI itself, OpenRouter, local endpoints (LM Studio, llama.cpp, etc.),
+and any other OpenAI-compatible endpoint all speak this same wire protocol,
+so they share one implementation.
 """
 
 from __future__ import annotations
@@ -47,9 +47,6 @@ class OpenAICompatibleProvider(LLMProvider):
             timeout=timeout,
         )
         self.model = model
-        # Ollama-specific: how long to keep the model in RAM after the
-        # last request. "1h" avoids cold-start delays during a working
-        # session. Non-Ollama providers ignore unknown extra fields.
         self._extra_body = {"keep_alive": keep_alive} if keep_alive else None
 
     def complete(

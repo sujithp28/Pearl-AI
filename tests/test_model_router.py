@@ -29,8 +29,8 @@ from src.llm.router import ModelRouter, _effective_provider, _override_model
 class TestEffectiveProvider:
     def test_returns_global_provider_when_no_overrides(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("src.llm.router.Settings.PLANNING_PROVIDER", "")
-        monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "ollama")
-        assert _effective_provider("planning") == "ollama"
+        monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "openai")
+        assert _effective_provider("planning") == "openai"
 
     def test_returns_planning_provider_when_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("src.llm.router.Settings.PLANNING_PROVIDER", "openai")
@@ -41,8 +41,8 @@ class TestEffectiveProvider:
         assert _effective_provider("chat") == "gemini"
 
     def test_unknown_task_falls_back_to_global(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "ollama")
-        assert _effective_provider("embedding") == "ollama"
+        monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "openai")
+        assert _effective_provider("embedding") == "openai"
 
 
 # ---------------------------------------------------------------------------
@@ -54,12 +54,12 @@ class TestOverrideModel:
     def test_returns_none_when_no_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("src.llm.router.Settings.PLANNING_MODEL", "")
         monkeypatch.setattr("src.llm.router.Settings.CHAT_MODEL", "")
-        assert _override_model("ollama", "planning") is None
-        assert _override_model("ollama", "chat") is None
+        assert _override_model("openai", "planning") is None
+        assert _override_model("openai", "chat") is None
 
     def test_returns_planning_model_when_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("src.llm.router.Settings.PLANNING_MODEL", "llama3:70b")
-        assert _override_model("ollama", "planning") == "llama3:70b"
+        assert _override_model("openai", "planning") == "llama3:70b"
 
     def test_returns_chat_model_when_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("src.llm.router.Settings.CHAT_MODEL", "gpt-4o-mini")
@@ -120,17 +120,17 @@ class TestModelRouter:
         monkeypatch.setattr("src.llm.router.Settings.CHAT_PROVIDER", "")
         monkeypatch.setattr("src.llm.router.Settings.PLANNING_MODEL", "")
         monkeypatch.setattr("src.llm.router.Settings.CHAT_MODEL", "")
-        monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "ollama")
+        monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "openai")
         assert ModelRouter().all_same_provider() is True
 
     def test_all_same_provider_false_when_different_providers(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("src.llm.router.Settings.PLANNING_PROVIDER", "ollama")
-        monkeypatch.setattr("src.llm.router.Settings.CHAT_PROVIDER", "openai")
+        monkeypatch.setattr("src.llm.router.Settings.PLANNING_PROVIDER", "openai")
+        monkeypatch.setattr("src.llm.router.Settings.CHAT_PROVIDER", "openrouter")
         monkeypatch.setattr("src.llm.router.Settings.PLANNING_MODEL", "")
         monkeypatch.setattr("src.llm.router.Settings.CHAT_MODEL", "")
-        monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "ollama")
+        monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "openai")
         assert ModelRouter().all_same_provider() is False
 
     def test_all_same_provider_false_when_model_overrides_differ(
@@ -140,7 +140,7 @@ class TestModelRouter:
         monkeypatch.setattr("src.llm.router.Settings.CHAT_PROVIDER", "")
         monkeypatch.setattr("src.llm.router.Settings.PLANNING_MODEL", "llama3:70b")
         monkeypatch.setattr("src.llm.router.Settings.CHAT_MODEL", "")
-        monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "ollama")
+        monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "openai")
         assert ModelRouter().all_same_provider() is False
 
 

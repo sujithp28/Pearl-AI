@@ -87,8 +87,10 @@ class Settings:
     # ==================================================
 
     # Which provider LLMClient() connects to by default.
-    # One of: ollama, openai, openrouter, custom, claude, anthropic, gemini.
-    LLM_PROVIDER = os.getenv("PEARL_LLM_PROVIDER", "ollama")
+    # One of: openai, openrouter, custom, claude, anthropic, gemini.
+    # "custom" is the right choice for any local OpenAI-compatible endpoint
+    # (LM Studio, llama.cpp, vLLM, etc.) — set CUSTOM_BASE_URL and CUSTOM_MODEL.
+    LLM_PROVIDER = os.getenv("PEARL_LLM_PROVIDER", "openai")
 
     # -- OpenAI --
 
@@ -119,14 +121,6 @@ class Settings:
     )
 
     OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/auto")
-
-    # -- Ollama --
-
-    OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "ollama")
-
-    OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-
-    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 
     # -- Any other OpenAI-compatible endpoint --
 
@@ -227,6 +221,26 @@ class Settings:
     # One of: none, minimal, normal, fun. An unrecognized value falls
     # back to "minimal".
     EMOJI_MODE = os.getenv("EMOJI_MODE", "minimal")
+
+    # ==================================================
+    # Web Intelligence (M7)
+    # ==================================================
+
+    # HTTP timeout for page fetches (seconds).
+    WEB_FETCH_TIMEOUT = int(os.getenv("PEARL_WEB_FETCH_TIMEOUT", "15"))
+
+    # Maximum response body size to accept (bytes). Responses larger than
+    # this are rejected with a clear error rather than OOM-ing the process.
+    WEB_MAX_RESPONSE_BYTES = int(os.getenv("PEARL_WEB_MAX_RESPONSE_BYTES", str(5 * 1024 * 1024)))
+
+    # Maximum number of search results to fetch/process per web_context call.
+    WEB_MAX_RESULTS = int(os.getenv("PEARL_WEB_MAX_RESULTS", "5"))
+
+    # Maximum characters of evidence to send to the LLM per source.
+    WEB_EVIDENCE_CHARS = int(os.getenv("PEARL_WEB_EVIDENCE_CHARS", "2000"))
+
+    # Search provider: "duckduckgo" (default, no API key needed) or "none".
+    WEB_SEARCH_PROVIDER = os.getenv("PEARL_WEB_SEARCH_PROVIDER", "duckduckgo")
 
 
 settings = Settings()

@@ -16,7 +16,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from src.config.settings import Settings
 from src.prompts.system import build_chat_system_prompt
+
+
+@pytest.fixture(autouse=True)
+def _force_openai_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Settings, "LLM_PROVIDER", "openai")
+    monkeypatch.setattr(Settings, "OPENAI_API_KEY", "dummy-test-key")
 
 # ---------------------------------------------------------------------
 # The prompt itself

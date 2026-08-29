@@ -92,12 +92,11 @@ def test_values_containing_equals_are_preserved(tmp_path, monkeypatch):
 
 
 def test_urls_survive_intact(tmp_path, monkeypatch):
-    # The real-world case: OLLAMA_BASE_URL.
     monkeypatch.delenv("PEARL_TEST_URL", raising=False)
 
-    load_env_file(_write(tmp_path, "PEARL_TEST_URL=http://localhost:11434/v1\n"))
+    load_env_file(_write(tmp_path, "PEARL_TEST_URL=http://localhost:1234/v1\n"))
 
-    assert os.environ["PEARL_TEST_URL"] == "http://localhost:11434/v1"
+    assert os.environ["PEARL_TEST_URL"] == "http://localhost:1234/v1"
 
 
 def test_lines_without_an_equals_sign_are_skipped(tmp_path, monkeypatch):
