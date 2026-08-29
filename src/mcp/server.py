@@ -18,6 +18,8 @@ import sys
 from pathlib import Path
 from typing import IO, Any, Callable
 
+from openai import OpenAIError
+
 from src.agent.dispatcher import ToolDispatcher, ToolExecutionError, ToolNotFoundError
 from src.agent.executor import (
     AutonomousExecutor,
@@ -414,13 +416,24 @@ class MCPServer:
 
         chunks: list[str] = []
 
-        for chunk in active_llm.generate_stream(
-            message,
-            history=history,
-            system=build_chat_system_prompt(str(Path.cwd().resolve())),
-        ):
-            chunks.append(chunk)
-            notify("pearl/chatChunk", {"chunk": chunk})
+        try:
+            for chunk in active_llm.generate_stream(
+                message,
+                history=history,
+                system=build_chat_system_prompt(str(Path.cwd().resolve())),
+            ):
+                chunks.append(chunk)
+                notify("pearl/chatChunk", {"chunk": chunk})
+        except OpenAIError as exc:
+            _msg = str(exc)
+            if "credentials" in _msg.lower() or "api_key" in _msg.lower():
+                raise MCPProtocolError(
+                    INTERNAL_ERROR,
+                    "Pearl is not configured: no LLM provider API key found. "
+                    "Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY "
+                    "in your .env file and restart.",
+                ) from exc
+            raise
 
         response = "".join(chunks)
 
