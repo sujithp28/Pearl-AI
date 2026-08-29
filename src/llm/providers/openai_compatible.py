@@ -41,13 +41,26 @@ class OpenAICompatibleProvider(LLMProvider):
         timeout: float = 60.0,
         keep_alive: str | None = None,
     ) -> None:
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            timeout=timeout,
-        )
+        # Defer OpenAI client construction to first use: openai SDK v2+
+        # raises at construction time when api_key is absent/empty, which
+        # would prevent the MCP server from starting even before the user
+        # makes any LLM call.
+        self._api_key = api_key
+        self._base_url = base_url
+        self._timeout = timeout
+        self._openai_client: OpenAI | None = None
         self.model = model
         self._extra_body = {"keep_alive": keep_alive} if keep_alive else None
+
+    @property
+    def client(self) -> OpenAI:
+        if self._openai_client is None:
+            self._openai_client = OpenAI(
+                api_key=self._api_key,
+                base_url=self._base_url,
+                timeout=self._timeout,
+            )
+        return self._openai_client
 
     def complete(
         self,

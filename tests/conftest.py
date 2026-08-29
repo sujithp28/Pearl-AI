@@ -4,7 +4,14 @@ Shared pytest fixtures for Pearl's test suite.
 
 from __future__ import annotations
 
+import os
+
 import pytest
+
+# openai SDK v2+ validates credentials at constructor time.  Tests that mock
+# the LLM client never reach the real API, so a sentinel value is sufficient
+# and must be present before any test module imports trigger provider creation.
+os.environ.setdefault("OPENAI_API_KEY", "test-key-not-used")
 
 
 @pytest.fixture(autouse=True)
