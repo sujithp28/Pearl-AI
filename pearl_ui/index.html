@@ -8,1446 +8,1422 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* ── Reset ─────────────────────────────────────────────── */
+/* === Reset === */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
-button{cursor:pointer;font:inherit;border:none;background:none}
-input,textarea{font:inherit;border:none;outline:none;background:none}
+button{cursor:pointer;font:inherit;border:none;background:none;color:inherit}
+input,textarea{font:inherit;border:none;outline:none;background:none;color:inherit}
+ul,ol{list-style:none}
 a{color:inherit;text-decoration:none}
 
-/* ── Tokens ─────────────────────────────────────────────── */
+/* === Design tokens (dark-first) === */
 :root {
-  --bg:       #0D0F14;
-  --sidebar:  #111318;
-  --surface:  #161920;
-  --surface2: #1C1F28;
-  --border:   #252830;
-  --border2:  #2E3240;
-  --accent:   #6366F1;
-  --accent-h: #7577F3;
-  --accent-d: #4B4EDA;
-  --success:  #22C55E;
-  --warning:  #F59E0B;
-  --error:    #EF4444;
-  --text:     #E8EAF0;
-  --text2:    #9CA3B4;
-  --text3:    #5C6278;
-  --code-bg:  #12141A;
-  --plan-bg:  #1A1D28;
-  --plan-border: #3B3E6B;
-  --tool-bg:  #161A24;
-  --r-sm:     6px;
-  --r-md:     10px;
-  --r-lg:     14px;
+  --bg:       #0B0D12;
+  --sb:       #0E1017;
+  --surf:     #13161E;
+  --surf2:    #191D28;
+  --surf3:    #1F2336;
+  --b1:       #1A1E2C;
+  --b2:       #252A3C;
+  --b3:       #303654;
+  --acc:      #6366F1;
+  --acc-l:    #818CF8;
+  --acc-d:    #4F52D6;
+  --acc-dim:  rgba(99,102,241,.13);
+  --acc-dim2: rgba(99,102,241,.07);
+  --suc:      #22C55E;
+  --suc-dim:  rgba(34,197,94,.12);
+  --warn:     #F59E0B;
+  --warn-dim: rgba(245,158,11,.12);
+  --err:      #EF4444;
+  --err-dim:  rgba(239,68,68,.12);
+  --tx:       #E2E6F4;
+  --tx2:      #8B95AF;
+  --tx3:      #485069;
+  --code:     #C4C9DC;
+  --kw:       #C084FC;
+  --str:      #86EFAC;
+  --cmt:      #555F78;
+  --num:      #FCA5A5;
+  --fn:       #93C5FD;
+  --cls:      #F9A8D4;
+  --dec:      #FCD34D;
+  --font:     'Inter', system-ui, sans-serif;
+  --mono:     'JetBrains Mono', 'Fira Code', monospace;
+  --sb-w:     240px;
+  --ease:     .15s ease;
 }
-[data-theme="light"],:root:not([data-theme="dark"]) {
-  --bg:       #F4F5F9;
-  --sidebar:  #ECEEF4;
-  --surface:  #FFFFFF;
-  --surface2: #F0F2F7;
-  --border:   #E0E3EE;
-  --border2:  #D0D4E2;
-  --text:     #111318;
-  --text2:    #4B5268;
-  --text3:    #9099B0;
-  --code-bg:  #F0F2F7;
-  --plan-bg:  #F0F1FF;
-  --plan-border: #9598E8;
-  --tool-bg:  #F5F6FA;
+
+/* Light theme */
+[data-theme="light"] {
+  --bg:#F3F5FA; --sb:#EAEDF5; --surf:#FFFFFF; --surf2:#F0F3FA; --surf3:#E6EAF5;
+  --b1:#E8EBF5; --b2:#D8DCF0; --b3:#C4CBE8;
+  --tx:#0F1220; --tx2:#505A7A; --tx3:#8C97B4;
+  --code:#374060; --kw:#7C3AED; --str:#166534; --cmt:#94A3B8;
+  --num:#B91C1C; --fn:#1D4ED8; --cls:#9D174D; --dec:#92400E;
 }
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme:light) {
   :root:not([data-theme="dark"]) {
-    --bg:       #F4F5F9;
-    --sidebar:  #ECEEF4;
-    --surface:  #FFFFFF;
-    --surface2: #F0F2F7;
-    --border:   #E0E3EE;
-    --border2:  #D0D4E2;
-    --text:     #111318;
-    --text2:    #4B5268;
-    --text3:    #9099B0;
-    --code-bg:  #F0F2F7;
-    --plan-bg:  #F0F1FF;
-    --plan-border: #9598E8;
-    --tool-bg:  #F5F6FA;
+    --bg:#F3F5FA;--sb:#EAEDF5;--surf:#FFFFFF;--surf2:#F0F3FA;--surf3:#E6EAF5;
+    --b1:#E8EBF5;--b2:#D8DCF0;--b3:#C4CBE8;
+    --tx:#0F1220;--tx2:#505A7A;--tx3:#8C97B4;
+    --code:#374060;--kw:#7C3AED;--str:#166534;--cmt:#94A3B8;
+    --num:#B91C1C;--fn:#1D4ED8;--cls:#9D174D;--dec:#92400E;
   }
 }
 
-/* ── Layout ─────────────────────────────────────────────── */
+/* === Layout === */
 body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font);
   font-size: 14px;
-  color: var(--text);
-  background: var(--bg);
-  display: flex;
-  height: 100vh;
-}
-
-/* Sidebar */
-#sidebar {
-  width: 240px;
-  min-width: 240px;
-  background: var(--sidebar);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
-}
-#sidebar-header {
-  padding: 16px 14px 12px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.pearl-logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.pearl-gem {
-  width: 28px;
-  height: 28px;
-  background: linear-gradient(135deg, var(--accent), #8B5CF6);
-  border-radius: 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  flex-shrink: 0;
-}
-.pearl-name {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-}
-#new-chat-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  color: var(--text2);
-  font-size: 13px;
-  font-weight: 500;
-  transition: all .15s;
-}
-#new-chat-btn:hover {
-  background: var(--surface2);
-  color: var(--text);
-  border-color: var(--border2);
-}
-#new-chat-btn .plus { font-size: 16px; line-height: 1; color: var(--accent); }
-
-/* Workspace pill */
-#workspace-pill {
-  margin: 10px 14px 0;
-  padding: 7px 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background .15s;
-  overflow: hidden;
-}
-#workspace-pill:hover { background: var(--surface2); }
-#workspace-pill .ws-icon { color: var(--accent); flex-shrink: 0; font-size: 13px; }
-#workspace-name {
-  color: var(--text2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-}
-
-#chat-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 8px;
-}
-#chat-list::-webkit-scrollbar { width: 4px; }
-#chat-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-.chat-group-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: .7px;
-  padding: 10px 6px 4px;
-}
-.chat-item {
-  padding: 7px 8px;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: background .12s;
-}
-.chat-item:hover { background: var(--surface); color: var(--text); }
-.chat-item.active { background: var(--surface2); color: var(--text); }
-
-/* Status dot */
-#sidebar-footer {
-  padding: 10px 14px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text3);
-  flex-shrink: 0;
-}
-#conn-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: var(--text3);
-  flex-shrink: 0;
-  transition: background .3s;
-}
-#conn-dot.connected { background: var(--success); box-shadow: 0 0 6px color-mix(in srgb,var(--success) 40%,transparent); }
-#conn-dot.error { background: var(--error); }
-
-/* Main area */
-#main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  min-width: 0;
-  background: var(--bg);
-}
-
-/* Top bar */
-#topbar {
-  height: 48px;
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  border-bottom: 1px solid var(--border);
-  gap: 10px;
-  flex-shrink: 0;
-}
-#model-badge {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 99px;
-  font-size: 12px;
-  color: var(--text2);
-  cursor: pointer;
-  transition: background .15s;
-}
-#model-badge:hover { background: var(--surface2); }
-#model-badge .dot { color: var(--accent); font-size: 10px; }
-#theme-toggle {
-  width: 32px; height: 32px;
-  border-radius: var(--r-sm);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text2);
-  font-size: 16px;
-  transition: background .15s, color .15s;
-}
-#theme-toggle:hover { background: var(--surface); color: var(--text); }
-
-/* Messages area */
-#messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-#messages::-webkit-scrollbar { width: 6px; }
-#messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-
-/* Welcome screen */
-#welcome {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 40px 24px;
-}
-.welcome-gem {
-  width: 56px; height: 56px;
-  background: linear-gradient(135deg, var(--accent), #8B5CF6);
-  border-radius: 16px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 28px;
-}
-.welcome-title {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.4px;
-  text-align: center;
-}
-.welcome-sub {
-  font-size: 14px;
-  color: var(--text2);
-  text-align: center;
-  max-width: 360px;
-  line-height: 1.6;
-}
-.welcome-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-  max-width: 500px;
-  margin-top: 4px;
-}
-.welcome-chip {
-  padding: 8px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 99px;
-  font-size: 13px;
-  color: var(--text2);
-  cursor: pointer;
-  transition: all .15s;
-  white-space: nowrap;
-}
-.welcome-chip:hover {
-  background: var(--surface2);
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-/* Message bubble */
-.msg-row {
-  padding: 4px 0;
-  display: flex;
-  flex-direction: column;
-}
-.msg-row.user { align-items: flex-end; padding: 8px 20px; }
-.msg-row.pearl { align-items: flex-start; padding: 8px 20px; }
-
-.msg-bubble {
-  max-width: min(680px, 85%);
-  padding: 11px 15px;
-  border-radius: var(--r-md);
-  line-height: 1.65;
-}
-.msg-row.user .msg-bubble {
-  background: var(--accent);
-  color: #fff;
-  border-bottom-right-radius: 3px;
-}
-.msg-row.pearl .msg-bubble {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-bottom-left-radius: 3px;
-  color: var(--text);
-}
-.msg-meta {
-  font-size: 11px;
-  color: var(--text3);
-  margin-top: 4px;
-  padding: 0 4px;
-}
-
-/* Typing cursor */
-.cursor {
-  display: inline-block;
-  width: 2px; height: 14px;
-  background: var(--accent);
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  animation: blink .9s step-start infinite;
-}
-@keyframes blink { 50% { opacity: 0; } }
-
-/* Markdown inside bubbles */
-.msg-bubble p { margin: 0 0 8px; }
-.msg-bubble p:last-child { margin-bottom: 0; }
-.msg-bubble h1,.msg-bubble h2,.msg-bubble h3 {
-  font-weight: 600; margin: 12px 0 6px; line-height: 1.3;
-}
-.msg-bubble h1{font-size:18px}.msg-bubble h2{font-size:16px}.msg-bubble h3{font-size:14px}
-.msg-bubble code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
-  background: var(--code-bg);
-  padding: 2px 5px;
-  border-radius: 4px;
-  color: #A5B4FC;
-}
-.msg-row.user .msg-bubble code { background: rgba(0,0,0,.25); color: #E0E7FF; }
-.msg-bubble pre {
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  padding: 14px;
-  overflow-x: auto;
-  margin: 8px 0;
-}
-.msg-bubble pre code {
-  background: none; padding: 0; color: var(--text);
-  font-size: 13px; line-height: 1.6;
-}
-.msg-bubble ul,.msg-bubble ol { padding-left: 20px; margin: 6px 0; }
-.msg-bubble li { margin: 3px 0; }
-.msg-bubble blockquote {
-  border-left: 3px solid var(--border2);
-  padding-left: 12px;
-  color: var(--text2);
-  margin: 8px 0;
-}
-.msg-bubble strong { font-weight: 600; }
-.msg-bubble hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
-
-/* Tool card */
-.tool-card {
-  max-width: 620px;
-  width: 100%;
-  background: var(--tool-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  overflow: hidden;
-  margin: 4px 20px;
-}
-.tool-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--border);
-}
-.tool-icon { font-size: 14px; flex-shrink: 0; }
-.tool-name { font-size: 13px; font-weight: 500; font-family: 'JetBrains Mono', monospace; color: var(--text2); flex: 1; }
-.tool-status {
-  font-size: 11px;
-  padding: 2px 7px;
-  border-radius: 99px;
-  font-weight: 500;
-}
-.tool-status.running { background: rgba(99,102,241,.15); color: var(--accent); }
-.tool-status.ok { background: rgba(34,197,94,.12); color: var(--success); }
-.tool-status.fail { background: rgba(239,68,68,.12); color: var(--error); }
-.tool-body {
-  padding: 10px 12px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: var(--text2);
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-/* Plan card */
-.plan-card {
-  max-width: 620px;
-  width: 100%;
-  background: var(--plan-bg);
-  border: 1px solid var(--plan-border);
-  border-radius: var(--r-md);
-  overflow: hidden;
-  margin: 8px 20px;
-}
-.plan-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--plan-border);
-  font-weight: 600;
-  font-size: 13px;
-}
-.plan-body { padding: 12px 14px; }
-.plan-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 6px 0;
-  font-size: 13px;
-}
-.plan-step + .plan-step { border-top: 1px solid color-mix(in srgb, var(--plan-border) 40%, transparent); }
-.step-num {
-  width: 20px; height: 20px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px;
-  font-weight: 600;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-.step-text { color: var(--text); line-height: 1.5; }
-.step-sub { font-size: 12px; color: var(--text2); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
-
-.plan-actions {
-  display: flex;
-  gap: 8px;
-  padding: 12px 14px;
-  border-top: 1px solid var(--plan-border);
-}
-.btn-approve {
-  flex: 1;
-  padding: 9px;
-  background: var(--accent);
-  color: #fff;
-  border-radius: var(--r-sm);
-  font-size: 13px;
-  font-weight: 600;
-  transition: background .15s;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-}
-.btn-approve:hover { background: var(--accent-h); }
-.btn-approve:disabled { opacity: .5; cursor: not-allowed; }
-.btn-reject {
-  padding: 9px 16px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text2);
-  border-radius: var(--r-sm);
-  font-size: 13px;
-  font-weight: 500;
-  transition: all .15s;
-}
-.btn-reject:hover { background: var(--surface); color: var(--error); border-color: var(--error); }
-
-/* Diff card */
-.diff-card {
-  max-width: 680px;
-  width: 100%;
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  overflow: hidden;
-  margin: 4px 20px;
-}
-.diff-header {
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text2);
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 6px;
-}
-.diff-body {
-  padding: 10px 12px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  overflow-x: auto;
-  max-height: 320px;
-  overflow-y: auto;
-}
-.diff-line { white-space: pre; }
-.diff-line.add { color: var(--success); background: rgba(34,197,94,.08); }
-.diff-line.del { color: var(--error); background: rgba(239,68,68,.08); }
-.diff-line.hunk { color: var(--accent); }
-.diff-line.ctx { color: var(--text2); }
-
-/* Progress bar */
-.progress-bar-wrap {
-  max-width: 620px;
-  width: 100%;
-  margin: 4px 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.progress-track {
-  flex: 1;
-  height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 2px;
-  transition: width .4s ease;
-}
-.progress-label { font-size: 12px; color: var(--text2); white-space: nowrap; }
-
-/* Result card */
-.result-card {
-  max-width: 620px;
-  width: 100%;
-  background: var(--tool-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  padding: 12px 14px;
-  margin: 4px 20px;
-  font-size: 13px;
-}
-.result-ok { border-left: 3px solid var(--success); }
-.result-fail { border-left: 3px solid var(--error); }
-.result-header {
-  display: flex; align-items: center; gap: 8px;
-  font-weight: 600; margin-bottom: 8px;
-}
-.result-steps { display: flex; flex-direction: column; gap: 4px; }
-.result-step {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 12px; color: var(--text2);
-  font-family: 'JetBrains Mono', monospace;
-}
-.step-ok { color: var(--success); }
-.step-fail { color: var(--error); }
-
-/* Input area */
-#input-area {
-  flex-shrink: 0;
-  padding: 12px 20px 16px;
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-}
-#input-wrap {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 10px 12px;
-  transition: border-color .15s;
-}
-#input-wrap:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
-}
-#msg-input {
-  flex: 1;
-  resize: none;
-  min-height: 22px;
-  max-height: 180px;
   line-height: 1.5;
-  font-size: 14px;
-  color: var(--text);
-  background: none;
-}
-#msg-input::placeholder { color: var(--text3); }
-#input-actions {
+  color: var(--tx);
+  background: var(--bg);
   display: flex;
-  align-items: center;
-  gap: 6px;
+  height: 100vh;
+}
+
+/* === Sidebar === */
+#sidebar {
+  width: var(--sb-w);
+  min-width: var(--sb-w);
+  background: var(--sb);
+  border-right: 1px solid var(--b1);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  transition: width var(--ease), min-width var(--ease);
   flex-shrink: 0;
+  z-index: 10;
 }
-.input-action {
+#sidebar.collapsed { width: 0; min-width: 0; border-right-color: transparent; }
+#sb-inner { width: var(--sb-w); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+
+/* sidebar header */
+#sb-header { padding: 14px 12px 10px; flex-shrink: 0; }
+#logo { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; padding: 0 2px; }
+#logo-mark {
   width: 30px; height: 30px;
-  border-radius: 7px;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text2);
-  font-size: 15px;
-  transition: all .15s;
-}
-.input-action:hover { background: var(--surface2); color: var(--text); }
-#send-btn {
-  width: 34px; height: 34px;
-  background: var(--accent);
+  background: linear-gradient(140deg, #6366F1 10%, #8B5CF6 90%);
   border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
-  color: #fff;
-  font-size: 16px;
-  transition: background .15s, transform .1s;
+  flex-shrink: 0;
+  box-shadow: 0 2px 10px rgba(99,102,241,.3);
+}
+#logo-mark svg { width: 16px; height: 16px; }
+#logo-text { font-size: 15px; font-weight: 700; letter-spacing: -.3px; }
+#new-chat-btn {
+  width: 100%;
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 10px;
+  background: var(--surf);
+  border: 1px solid var(--b2);
+  border-radius: 7px;
+  color: var(--tx2);
+  font-size: 13px; font-weight: 500;
+  transition: background var(--ease), border-color var(--ease), color var(--ease);
+}
+#new-chat-btn:hover { background: var(--surf2); border-color: var(--b3); color: var(--tx); }
+.nc-icon {
+  width: 18px; height: 18px;
+  background: var(--acc-dim);
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--acc-l); font-size: 14px; line-height: 1; flex-shrink: 0;
+}
+
+/* search */
+.sb-search-box {
+  position: relative;
+  padding: 6px 12px 0;
   flex-shrink: 0;
 }
-#send-btn:hover { background: var(--accent-h); }
-#send-btn:active { transform: scale(.93); }
-#send-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
-#cancel-btn {
-  padding: 7px 14px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  color: var(--error);
-  font-size: 13px;
-  font-weight: 500;
-  display: none;
-  transition: all .15s;
+.sb-search-box svg {
+  position: absolute; left: 22px; top: 50%; transform: translateY(-50%);
+  width: 13px; height: 13px; color: var(--tx3); pointer-events: none;
 }
-#cancel-btn.visible { display: flex; align-items: center; gap: 5px; }
-#cancel-btn:hover { background: rgba(239,68,68,.1); border-color: var(--error); }
+#sb-search {
+  width: 100%; padding: 7px 10px 7px 30px;
+  background: var(--surf); border: 1px solid var(--b1); border-radius: 7px;
+  font-size: 13px; color: var(--tx);
+  transition: border-color var(--ease);
+}
+#sb-search::placeholder { color: var(--tx3); }
+#sb-search:focus { border-color: var(--b3); }
 
-.input-hint {
-  font-size: 11px;
-  color: var(--text3);
-  text-align: center;
-  margin-top: 7px;
+/* list */
+#sb-list {
+  flex: 1; overflow-y: auto; padding: 8px 8px 4px;
+  scrollbar-width: thin; scrollbar-color: var(--b2) transparent;
+}
+#sb-list::-webkit-scrollbar { width: 4px; }
+#sb-list::-webkit-scrollbar-thumb { background: var(--b2); border-radius: 2px; }
+.sb-group-label {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--tx3); padding: 10px 6px 4px; user-select: none;
+}
+.sb-item {
+  position: relative; padding: 7px 8px; border-radius: 7px; cursor: pointer;
+  font-size: 13px; color: var(--tx2);
+  display: flex; align-items: center; gap: 7px; min-height: 34px;
+  transition: background var(--ease), color var(--ease);
+}
+.sb-item:hover { background: var(--surf2); color: var(--tx); }
+.sb-item.active { background: var(--surf3); color: var(--tx); }
+.sb-item-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sb-item-ts { font-size: 11px; color: var(--tx3); flex-shrink: 0; }
+.sb-item-actions { display: none; gap: 2px; flex-shrink: 0; }
+.sb-item:hover .sb-item-actions,
+.sb-item.active .sb-item-actions { display: flex; }
+.sb-item:hover .sb-item-ts { display: none; }
+.sb-act {
+  width: 22px; height: 22px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--tx3); font-size: 13px;
+  transition: background var(--ease), color var(--ease);
+}
+.sb-act:hover { background: var(--b2); color: var(--tx); }
+.sb-act.del:hover { color: var(--err); }
+
+/* footer */
+#sb-footer {
+  padding: 10px 12px; border-top: 1px solid var(--b1);
+  display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;
+}
+#ws-badge {
+  display: flex; align-items: center; gap: 7px; padding: 7px 8px;
+  background: var(--surf); border: 1px solid var(--b1); border-radius: 7px;
+  cursor: pointer; overflow: hidden;
+  transition: background var(--ease), border-color var(--ease);
+}
+#ws-badge:hover { background: var(--surf2); border-color: var(--b2); }
+#ws-badge svg { width: 13px; height: 13px; color: var(--acc-l); flex-shrink: 0; }
+#ws-name { font-size: 12px; color: var(--tx2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.sb-footer-row { display: flex; align-items: center; gap: 6px; }
+#conn-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--tx3);
+  flex-shrink: 0; transition: background .4s;
+}
+#conn-dot.ok { background: var(--suc); box-shadow: 0 0 5px rgba(34,197,94,.4); }
+#conn-dot.err { background: var(--err); }
+#conn-label { font-size: 11.5px; color: var(--tx3); flex: 1; }
+#settings-btn {
+  width: 26px; height: 26px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--tx3); transition: background var(--ease), color var(--ease);
+}
+#settings-btn:hover { background: var(--surf2); color: var(--tx); }
+#settings-btn svg { width: 14px; height: 14px; }
+
+/* === Main === */
+#main { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100vh; background: var(--bg); }
+
+/* topbar */
+#topbar {
+  height: 50px; display: flex; align-items: center; padding: 0 16px;
+  border-bottom: 1px solid var(--b1); gap: 10px; flex-shrink: 0; background: var(--bg);
+}
+#sb-toggle {
+  width: 32px; height: 32px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--tx2); transition: background var(--ease), color var(--ease);
+}
+#sb-toggle:hover { background: var(--surf2); color: var(--tx); }
+#sb-toggle svg { width: 16px; height: 16px; }
+#chat-title {
+  font-size: 14px; font-weight: 500; color: var(--tx2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+}
+#topbar-right { display: flex; align-items: center; gap: 6px; }
+#mode-toggle {
+  display: flex; align-items: center;
+  background: var(--surf); border: 1px solid var(--b2); border-radius: 99px;
+  padding: 3px; gap: 2px;
+}
+.mode-btn {
+  padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 500;
+  color: var(--tx3); transition: all var(--ease); white-space: nowrap;
+}
+.mode-btn.active { background: var(--acc-dim); color: var(--acc-l); }
+#theme-btn {
+  width: 32px; height: 32px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--tx3); transition: background var(--ease), color var(--ease);
+}
+#theme-btn:hover { background: var(--surf2); color: var(--tx); }
+#theme-btn svg { width: 15px; height: 15px; }
+
+/* === Messages === */
+#messages {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--b2) transparent;
+  display: flex; flex-direction: column;
+}
+#messages::-webkit-scrollbar { width: 5px; }
+#messages::-webkit-scrollbar-thumb { background: var(--b2); border-radius: 3px; }
+#msg-inner {
+  flex: 1; padding: 20px 0 8px;
+  display: flex; flex-direction: column; gap: 2px;
 }
 
-/* Workspace modal */
-#ws-modal {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.6);
-  backdrop-filter: blur(4px);
-  z-index: 100;
-  align-items: center;
-  justify-content: center;
+/* === Empty state === */
+#empty-state {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 40px 32px; gap: 14px;
 }
-#ws-modal.open { display: flex; }
-#ws-dialog {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 24px;
-  width: 440px;
-  max-width: 90vw;
+#es-gem {
+  width: 52px; height: 52px;
+  background: linear-gradient(140deg, #6366F1 10%, #8B5CF6 90%);
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 20px rgba(99,102,241,.28);
 }
-#ws-dialog h2 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-#ws-dialog p { font-size: 13px; color: var(--text2); margin-bottom: 14px; }
-#ws-path-input {
-  width: 100%;
-  padding: 9px 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  color: var(--text);
-  font-size: 13px;
-  font-family: 'JetBrains Mono', monospace;
-  margin-bottom: 12px;
+#es-gem svg { width: 24px; height: 24px; }
+#es-title { font-size: 20px; font-weight: 700; letter-spacing: -.4px; text-align: center; }
+#es-sub { font-size: 14px; color: var(--tx2); text-align: center; max-width: 340px; line-height: 1.6; }
+#es-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 520px; margin-top: 4px; }
+.es-chip {
+  padding: 7px 14px; background: var(--surf); border: 1px solid var(--b2);
+  border-radius: 99px; font-size: 13px; color: var(--tx2); cursor: pointer;
+  transition: all var(--ease);
 }
-#ws-path-input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-.ws-buttons { display: flex; gap: 8px; justify-content: flex-end; }
-.ws-cancel { padding: 8px 16px; border-radius: var(--r-sm); color: var(--text2); font-size: 13px; }
-.ws-cancel:hover { color: var(--text); }
-.ws-open {
-  padding: 8px 16px;
-  background: var(--accent);
-  border-radius: var(--r-sm);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-}
-.ws-open:hover { background: var(--accent-h); }
+.es-chip:hover { background: var(--surf2); border-color: var(--acc); color: var(--acc-l); }
+.es-chip:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 
-/* Animations */
-@keyframes slideIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+/* === Message rows === */
+.msg-row { padding: 4px 20px; max-width: 100%; }
+.msg-user { display: flex; justify-content: flex-end; animation: fadeUp .18s ease; }
+.msg-pearl { display: flex; flex-direction: column; align-items: flex-start; animation: fadeUp .18s ease; }
+.msg-system { display: flex; flex-direction: column; align-items: flex-start; }
+
+.user-bub {
+  max-width: min(680px, 80%); background: var(--acc); color: #fff;
+  padding: 10px 14px; border-radius: 11px; border-bottom-right-radius: 3px;
+  font-size: 14px; line-height: 1.6; word-break: break-word;
 }
-.msg-row,.tool-card,.plan-card,.result-card,.diff-card,.progress-bar-wrap {
-  animation: slideIn .2s ease forwards;
+.pearl-bub {
+  max-width: min(780px, 95%); background: var(--surf); border: 1px solid var(--b1);
+  border-radius: 11px; border-bottom-left-radius: 3px;
+  padding: 12px 16px; color: var(--tx); font-size: 14px; line-height: 1.7;
+  word-break: break-word;
+}
+.msg-meta { font-size: 11px; color: var(--tx3); margin-top: 5px; padding: 0 2px; }
+.pearl-label {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--tx3);
+}
+.pearl-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--acc); flex-shrink: 0; }
+
+/* streaming cursor */
+.cursor {
+  display: inline-block; width: 2px; height: 14px;
+  background: var(--acc); margin-left: 1px; vertical-align: text-bottom;
+  border-radius: 1px; animation: blink .9s step-start infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* === Markdown === */
+.md p { margin: 0 0 10px; }
+.md p:last-child { margin-bottom: 0; }
+.md h1,.md h2,.md h3,.md h4 { font-weight: 600; margin: 14px 0 6px; line-height: 1.3; text-wrap: balance; }
+.md h1 { font-size: 18px; } .md h2 { font-size: 16px; } .md h3 { font-size: 15px; } .md h4 { font-size: 14px; font-weight: 700; }
+.md ul,.md ol { padding-left: 20px; margin: 6px 0; }
+.md li { margin: 4px 0; } .md li::marker { color: var(--tx3); }
+.md blockquote { border-left: 3px solid var(--b3); padding: 4px 0 4px 14px; color: var(--tx2); margin: 8px 0; }
+.md hr { border: none; border-top: 1px solid var(--b2); margin: 14px 0; }
+.md a { color: var(--acc-l); text-decoration: underline; text-decoration-color: var(--acc-dim); }
+.md a:hover { text-decoration-color: var(--acc-l); }
+.md strong { font-weight: 600; } .md em { font-style: italic; } .md del { text-decoration: line-through; color: var(--tx3); }
+.md code {
+  font-family: var(--mono); font-size: 12.5px;
+  background: var(--surf2); border: 1px solid var(--b1); border-radius: 4px;
+  padding: 1px 5px; color: var(--code);
+}
+.md table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 13px; overflow-x: auto; display: block; }
+.md th,.md td { border: 1px solid var(--b2); padding: 7px 10px; }
+.md th { background: var(--surf2); font-weight: 600; }
+.md .cbw { position: relative; margin: 10px 0; border: 1px solid var(--b2); border-radius: 7px; background: var(--bg); overflow: hidden; }
+.md .cbh {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 10px; background: var(--surf2); border-bottom: 1px solid var(--b1);
+}
+.md .cb-lang { font-family: var(--mono); font-size: 11px; color: var(--tx3); }
+.md .copy-btn {
+  font-size: 11px; color: var(--tx3); padding: 2px 7px;
+  border-radius: 4px; transition: background var(--ease), color var(--ease);
+}
+.md .copy-btn:hover { background: var(--b2); color: var(--tx); }
+.md .copy-btn.done { color: var(--suc); }
+.md pre {
+  padding: 14px; overflow-x: auto;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.65; color: var(--code); margin: 0;
+}
+.md pre::-webkit-scrollbar { height: 4px; }
+.md pre::-webkit-scrollbar-thumb { background: var(--b3); border-radius: 2px; }
+
+/* syntax highlight */
+.hl-kw{color:var(--kw)} .hl-str{color:var(--str)} .hl-cmt{color:var(--cmt);font-style:italic}
+.hl-num{color:var(--num)} .hl-fn{color:var(--fn)} .hl-cls{color:var(--cls)} .hl-dec{color:var(--dec)}
+
+/* === Tool group card === */
+.tool-group {
+  max-width: 680px; width: calc(100% - 40px); margin: 4px 20px;
+  border: 1px solid var(--b2); border-radius: 11px;
+  background: var(--surf); overflow: hidden;
+  animation: fadeUp .18s ease;
+}
+.tg-head {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  cursor: pointer; user-select: none;
+  transition: background var(--ease);
+}
+.tg-head:hover { background: var(--surf2); }
+.tg-icon { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
+.tg-title { font-size: 13px; font-weight: 500; flex: 1; }
+.tg-count { font-size: 11px; color: var(--tx3); background: var(--surf2); border-radius: 99px; padding: 1px 7px; }
+.tg-chev { width: 14px; height: 14px; color: var(--tx3); transition: transform var(--ease); flex-shrink: 0; }
+.tg-chev svg { width: 100%; height: 100%; }
+.tool-group.open .tg-chev { transform: rotate(180deg); }
+.tg-body { display: none; border-top: 1px solid var(--b1); }
+.tool-group.open .tg-body { display: block; }
+.t-step {
+  display: flex; align-items: flex-start; gap: 10px; padding: 8px 14px;
+  font-size: 13px; border-bottom: 1px solid var(--b1); position: relative;
+}
+.t-step:last-child { border-bottom: none; }
+.ts-ic { flex-shrink: 0; margin-top: 1px; font-size: 12px; width: 16px; text-align: center; }
+.ts-nm { font-family: var(--mono); font-size: 12px; color: var(--tx2); font-weight: 500; flex-shrink: 0; min-width: 120px; }
+.ts-sm { color: var(--tx2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.ts-exp { font-size: 11px; color: var(--tx3); padding: 2px 6px; border-radius: 4px; flex-shrink: 0; transition: background var(--ease); }
+.ts-exp:hover { background: var(--surf2); color: var(--tx); }
+.ts-out {
+  display: none; padding: 8px 14px 8px 42px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--tx2);
+  border-top: 1px solid var(--b1); line-height: 1.6;
+  white-space: pre-wrap; word-break: break-all;
+  max-height: 200px; overflow-y: auto; background: var(--surf2);
+}
+.ts-out.show { display: block; }
+
+@keyframes spin { to{transform:rotate(360deg)} }
+.spin { animation: spin .8s linear infinite; display: inline-block; }
+
+/* === Plan card === */
+.plan-card {
+  max-width: 620px; width: calc(100% - 40px); margin: 6px 20px;
+  background: var(--surf); border: 1px solid rgba(99,102,241,.25);
+  border-radius: 11px; overflow: hidden; animation: fadeUp .18s ease;
+}
+.plan-hd {
+  display: flex; align-items: center; gap: 9px; padding: 11px 14px;
+  border-bottom: 1px solid rgba(99,102,241,.15);
+  font-size: 13px; font-weight: 600;
+}
+.plan-badge {
+  margin-left: auto; font-size: 10px; font-weight: 600;
+  padding: 2px 7px; background: var(--acc-dim); color: var(--acc-l);
+  border-radius: 99px; text-transform: uppercase; letter-spacing: .5px;
+}
+.plan-steps { padding: 4px 0; }
+.plan-step { display: flex; align-items: flex-start; gap: 10px; padding: 8px 14px; font-size: 13px; }
+.plan-step + .plan-step { border-top: 1px solid var(--b1); }
+.ps-n {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--acc-dim2); border: 1px solid var(--acc-dim);
+  color: var(--acc-l); display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; flex-shrink: 0; margin-top: 1px;
+}
+.ps-body { flex: 1; min-width: 0; }
+.ps-text { color: var(--tx); } .ps-detail { font-size: 12px; color: var(--tx3); margin-top: 2px; font-family: var(--mono); }
+.plan-acts { padding: 12px 14px; border-top: 1px solid var(--b1); display: flex; gap: 8px; }
+.btn-approve {
+  flex: 1; padding: 9px 16px; background: var(--acc); color: #fff;
+  border-radius: 7px; font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: background var(--ease), opacity var(--ease);
+}
+.btn-approve:hover { background: var(--acc-l); }
+.btn-approve:disabled { opacity: .45; cursor: not-allowed; }
+.btn-reject {
+  padding: 9px 16px; background: var(--surf2); border: 1px solid var(--b2);
+  color: var(--tx2); border-radius: 7px; font-size: 13px; font-weight: 500;
+  transition: all var(--ease);
+}
+.btn-reject:hover { border-color: var(--err); color: var(--err); background: var(--err-dim); }
+
+/* === Diff viewer === */
+.diff-card {
+  max-width: 760px; width: calc(100% - 40px); margin: 4px 20px;
+  background: var(--surf); border: 1px solid var(--b2);
+  border-radius: 11px; overflow: hidden; animation: fadeUp .18s ease;
+}
+.diff-hd { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--b1); font-size: 13px; font-weight: 500; }
+.diff-files { border-bottom: 1px solid var(--b1); padding: 4px 0; }
+.diff-file { display: flex; align-items: center; gap: 8px; padding: 4px 14px; font-size: 12px; font-family: var(--mono); color: var(--tx2); }
+.dft { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; font-family: var(--font); }
+.dft-m { background: var(--warn-dim); color: var(--warn); }
+.dft-a { background: var(--suc-dim); color: var(--suc); }
+.dft-d { background: var(--err-dim); color: var(--err); }
+.diff-body {
+  font-family: var(--mono); font-size: 12px; line-height: 1.65;
+  overflow-x: auto; max-height: 360px; overflow-y: auto;
+  padding: 8px 0;
+}
+.diff-body::-webkit-scrollbar { height: 4px; width: 4px; }
+.diff-body::-webkit-scrollbar-thumb { background: var(--b3); border-radius: 2px; }
+.dl { display: block; padding: 0 14px; white-space: pre; min-width: max-content; }
+.dl.add { background: rgba(34,197,94,.08); color: #86EFAC; }
+.dl.del { background: rgba(239,68,68,.08); color: #FCA5A5; }
+.dl.hunk { color: var(--acc-l); background: rgba(99,102,241,.07); }
+.dl.ctx { color: var(--tx3); }
+.diff-acts {
+  padding: 12px 14px; border-top: 1px solid var(--b1);
+  display: flex; gap: 8px; align-items: center;
+}
+.diff-note { font-size: 12px; color: var(--tx3); flex: 1; }
+
+/* === Result card === */
+.result-card {
+  max-width: 620px; width: calc(100% - 40px); margin: 4px 20px;
+  padding: 11px 14px; background: var(--surf); border: 1px solid var(--b2);
+  border-radius: 11px; animation: fadeUp .18s ease; font-size: 13px;
+}
+.result-card.ok { border-left: 3px solid var(--suc); }
+.result-card.fail { border-left: 3px solid var(--err); }
+.result-card.warn { border-left: 3px solid var(--warn); }
+.result-hd { display: flex; align-items: center; gap: 8px; font-weight: 500; margin-bottom: 8px; }
+.result-steps { display: flex; flex-direction: column; gap: 3px; }
+.rs-item { display: flex; align-items: center; gap: 8px; font-size: 12px; font-family: var(--mono); color: var(--tx2); }
+.rs-ok { color: var(--suc); } .rs-fail { color: var(--err); }
+.rs-txt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* === Error / info === */
+.err-note {
+  max-width: 620px; width: calc(100% - 40px); margin: 4px 20px;
+  padding: 10px 14px; background: var(--err-dim);
+  border: 1px solid rgba(239,68,68,.25); border-radius: 7px;
+  font-size: 13px; color: var(--err);
+  display: flex; align-items: flex-start; gap: 8px; animation: fadeUp .18s ease;
+}
+.info-note {
+  max-width: 620px; width: calc(100% - 40px); margin: 4px 20px;
+  padding: 8px 14px; background: var(--surf2);
+  border: 1px solid var(--b2); border-radius: 7px;
+  font-size: 13px; color: var(--tx2); font-style: italic; animation: fadeUp .18s ease;
+}
+
+/* === Composer === */
+#composer { flex-shrink: 0; padding: 10px 20px 14px; background: var(--bg); border-top: 1px solid var(--b1); }
+#comp-wrap {
+  display: flex; align-items: flex-end; gap: 8px;
+  background: var(--surf); border: 1px solid var(--b2); border-radius: 15px;
+  padding: 10px 12px;
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+#comp-wrap:focus-within { border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-dim); }
+#input-txt {
+  flex: 1; resize: none; min-height: 22px; max-height: 200px;
+  line-height: 1.55; font-size: 14px; color: var(--tx);
+  background: none; caret-color: var(--acc);
+}
+#input-txt::placeholder { color: var(--tx3); }
+#comp-acts { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+#stop-btn {
+  padding: 7px 13px; background: var(--surf2); border: 1px solid var(--b2);
+  border-radius: 7px; color: var(--err); font-size: 13px; font-weight: 500;
+  display: none; align-items: center; gap: 5px;
+  transition: all var(--ease);
+}
+#stop-btn.show { display: flex; }
+#stop-btn:hover { background: var(--err-dim); border-color: var(--err); }
+#send-btn {
+  width: 34px; height: 34px; background: var(--acc); border-radius: 9px;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+  transition: background var(--ease), transform .1s; flex-shrink: 0;
+}
+#send-btn:hover:not(:disabled) { background: var(--acc-l); }
+#send-btn:active:not(:disabled) { transform: scale(.92); }
+#send-btn:disabled { opacity: .35; cursor: not-allowed; }
+#send-btn svg { width: 16px; height: 16px; }
+.comp-hint { font-size: 11px; color: var(--tx3); text-align: center; margin-top: 7px; }
+
+/* === Settings modal === */
+#settings-modal {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.55); backdrop-filter: blur(6px);
+  z-index: 100; align-items: center; justify-content: center;
+}
+#settings-modal.open { display: flex; }
+#settings-dlg {
+  background: var(--surf); border: 1px solid var(--b2);
+  border-radius: 15px; padding: 24px; width: 420px;
+  max-width: 90vw; max-height: 80vh; overflow-y: auto;
+  animation: fadeUp .18s ease;
+}
+.sd-ttl { font-size: 16px; font-weight: 700; margin-bottom: 18px; letter-spacing: -.3px; }
+.sd-sec { margin-bottom: 16px; }
+.sd-lbl { font-size: 11.5px; font-weight: 600; color: var(--tx3); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 7px; }
+.sd-inp {
+  width: 100%; padding: 8px 11px;
+  background: var(--bg); border: 1px solid var(--b2); border-radius: 7px;
+  font-size: 13px; font-family: var(--mono); color: var(--tx);
+  transition: border-color var(--ease);
+}
+.sd-inp:focus { border-color: var(--acc); }
+.sd-note { font-size: 12px; color: var(--tx3); margin-top: 5px; line-height: 1.5; }
+.sd-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.sd-cancel { padding: 8px 16px; border-radius: 7px; color: var(--tx2); font-size: 13px; }
+.sd-cancel:hover { color: var(--tx); }
+.sd-save {
+  padding: 8px 18px; background: var(--acc); border-radius: 7px;
+  color: #fff; font-size: 13px; font-weight: 600; transition: background var(--ease);
+}
+.sd-save:hover { background: var(--acc-l); }
+
+/* === Animations === */
+@keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+@media (prefers-reduced-motion:reduce) { *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important} }
+
+/* === Focus === */
+:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+button:focus:not(:focus-visible) { outline: none; }
+
+/* === Responsive === */
+@media (max-width:768px) {
+  #sidebar { position: absolute; height: 100vh; }
+  #sidebar.collapsed { pointer-events: none; }
+  .msg-row { padding: 4px 10px; }
+  .user-bub { max-width: 90%; }
+  .pearl-bub { max-width: 98%; }
+  .tool-group,.plan-card,.diff-card,.result-card,.err-note,.info-note {
+    width: calc(100% - 20px); margin-left: 10px; margin-right: 10px;
+  }
+  #composer { padding: 8px 10px 12px; }
+  #es-chips { max-width: 100%; }
 }
 </style>
 </head>
 <body>
 
 <!-- Sidebar -->
-<aside id="sidebar">
-  <div id="sidebar-header">
-    <div class="pearl-logo">
-      <div class="pearl-gem">◈</div>
-      <span class="pearl-name">Pearl AI</span>
+<aside id="sidebar" aria-label="Navigation">
+  <div id="sb-inner">
+    <div id="sb-header">
+      <div id="logo">
+        <div id="logo-mark" aria-hidden="true">
+          <svg viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round">
+            <polygon points="8,2 14,5.5 14,10.5 8,14 2,10.5 2,5.5" stroke-linejoin="round"/>
+            <polygon points="8,5.5 11,7 11,9 8,10.5 5,9 5,7" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.5)" stroke-width="1"/>
+          </svg>
+        </div>
+        <span id="logo-text">Pearl</span>
+      </div>
+      <button id="new-chat-btn" aria-label="New conversation">
+        <div class="nc-icon" aria-hidden="true">+</div>
+        <span>New conversation</span>
+      </button>
     </div>
-    <button id="new-chat-btn">
-      <span class="plus">+</span>
-      <span>New conversation</span>
-    </button>
-  </div>
 
-  <div id="workspace-pill" title="Change workspace">
-    <span class="ws-icon">📁</span>
-    <span id="workspace-name">Loading…</span>
-  </div>
+    <div class="sb-search-box">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <circle cx="6.5" cy="6.5" r="4.5"/><path d="M10.5 10.5l3 3" stroke-linecap="round"/>
+      </svg>
+      <input id="sb-search" type="search" placeholder="Search conversations…" aria-label="Search conversations">
+    </div>
 
-  <div id="chat-list">
-    <div class="chat-group-label">Today</div>
-    <div class="chat-item active" id="current-chat-item">New conversation</div>
-  </div>
+    <div id="sb-list" role="navigation" aria-label="Conversation history"></div>
 
-  <div id="sidebar-footer">
-    <div id="conn-dot"></div>
-    <span id="conn-label">Connecting…</span>
+    <div id="sb-footer">
+      <button id="ws-badge" aria-label="Change workspace">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path d="M2 5h12v8H2z M2 5l6-3 6 3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span id="ws-name">Loading…</span>
+      </button>
+      <div class="sb-footer-row">
+        <div id="conn-dot" role="status" aria-live="polite"></div>
+        <span id="conn-label" aria-live="polite">Connecting…</span>
+        <button id="settings-btn" aria-label="Open settings">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <circle cx="8" cy="8" r="2.5"/>
+            <path stroke-linecap="round" d="M8 1v2M8 13v2M1 8h2M13 8h2M3.22 3.22l1.41 1.41M11.37 11.37l1.41 1.41M3.22 12.78l1.41-1.41M11.37 4.63l1.41-1.41"/>
+          </svg>
+        </button>
+      </div>
+    </div>
   </div>
 </aside>
 
 <!-- Main -->
 <main id="main">
-  <div id="topbar">
-    <span style="font-size:13px;font-weight:600;color:var(--text2)">Pearl</span>
-    <div id="model-badge">
-      <span class="dot">●</span>
-      <span id="model-label">Auto</span>
+  <header id="topbar">
+    <button id="sb-toggle" aria-label="Toggle sidebar" aria-expanded="true">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+        <path d="M2 4h12M2 8h12M2 12h12"/>
+      </svg>
+    </button>
+    <span id="chat-title">Pearl AI</span>
+    <div id="topbar-right">
+      <div id="mode-toggle" role="group" aria-label="Interaction mode">
+        <button class="mode-btn active" data-mode="agent" aria-pressed="true">Agent</button>
+        <button class="mode-btn" data-mode="chat" aria-pressed="false">Chat</button>
+      </div>
+      <button id="theme-btn" aria-label="Toggle light/dark theme">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 1a7 7 0 1 0 4.9 11.95A5.5 5.5 0 0 1 8 1z"/>
+        </svg>
+      </button>
     </div>
-    <button id="theme-toggle" title="Toggle theme">☽</button>
-  </div>
+  </header>
 
-  <div id="messages">
-    <!-- Welcome screen -->
-    <div id="welcome">
-      <div class="welcome-gem">◈</div>
-      <h1 class="welcome-title">What can I help you build?</h1>
-      <p class="welcome-sub">
-        Pearl understands your codebase, searches the web, writes and reviews code,
-        and asks before changing anything.
-      </p>
-      <div class="welcome-chips">
-        <button class="welcome-chip" data-prompt="Summarize the project architecture">Summarize architecture</button>
-        <button class="welcome-chip" data-prompt="Where is the main entry point defined?">Find entry point</button>
-        <button class="welcome-chip" data-prompt="What tests are failing?">Check failing tests</button>
-        <button class="welcome-chip" data-prompt="Search the web for the latest Python httpx documentation">Web research</button>
-        <button class="welcome-chip" data-prompt="Show me the git history for the last 5 commits">Git history</button>
+  <div id="messages" role="log" aria-live="polite" aria-label="Conversation">
+    <div id="msg-inner">
+      <div id="empty-state">
+        <div id="es-gem" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12,3 21,8 21,16 12,21 3,16 3,8"/>
+            <polygon points="12,8 16,10.5 16,13.5 12,16 8,13.5 8,10.5" fill="rgba(255,255,255,0.2)" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>
+          </svg>
+        </div>
+        <h1 id="es-title">Your AI workspace.</h1>
+        <p id="es-sub">Ask Pearl about your code, run tasks, research the web, or refactor — Pearl always asks before changing files.</p>
+        <div id="es-chips">
+          <button class="es-chip" data-prompt="Summarize this repository — what does it do and how is it structured?">Understand this repository</button>
+          <button class="es-chip" data-prompt="Find any obvious bugs or potential issues in the codebase.">Find bugs</button>
+          <button class="es-chip" data-prompt="Search the web for the latest documentation for this project's main dependencies.">Search the web</button>
+          <button class="es-chip" data-prompt="Run the test suite and show me the results.">Run the tests</button>
+          <button class="es-chip" data-prompt="Show the git log for the last 10 commits and summarize what changed.">Recent git history</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <div id="input-area">
-    <div id="input-wrap">
-      <textarea id="msg-input" placeholder="Ask Pearl anything about your project…" rows="1"></textarea>
-      <div id="input-actions">
-        <button id="cancel-btn">✕ Cancel</button>
-        <button id="send-btn" title="Send (Enter)">↑</button>
+  <section id="composer" aria-label="Message composer">
+    <div id="comp-wrap">
+      <textarea
+        id="input-txt"
+        placeholder="Ask Pearl anything…"
+        rows="1"
+        aria-label="Type a message"
+        aria-multiline="true"
+      ></textarea>
+      <div id="comp-acts">
+        <button id="stop-btn" aria-label="Stop generation">
+          <svg viewBox="0 0 10 10" fill="currentColor" width="11" height="11" aria-hidden="true"><rect x="1" y="1" width="8" height="8" rx="1"/></svg>
+          Stop
+        </button>
+        <button id="send-btn" aria-label="Send message (Enter)">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+            <path d="M8 13V3M3 8l5-5 5 5"/>
+          </svg>
+        </button>
       </div>
     </div>
-    <div class="input-hint">Enter to send · Shift+Enter for new line · Pearl asks before changing files</div>
-  </div>
+    <p class="comp-hint">Enter to send · Shift+Enter for new line · Pearl reviews changes before applying</p>
+  </section>
 </main>
 
-<!-- Workspace modal -->
-<div id="ws-modal">
-  <div id="ws-dialog">
-    <h2>Open Workspace</h2>
-    <p>Enter the full path to your project directory.</p>
-    <input id="ws-path-input" type="text" placeholder="/home/user/my-project" spellcheck="false">
-    <div class="ws-buttons">
-      <button class="ws-cancel" id="ws-cancel-btn">Cancel</button>
-      <button class="ws-open" id="ws-open-btn">Open</button>
+<!-- Settings modal -->
+<div id="settings-modal" role="dialog" aria-modal="true" aria-labelledby="sd-ttl-el">
+  <div id="settings-dlg">
+    <h2 class="sd-ttl" id="sd-ttl-el">Settings</h2>
+    <div class="sd-sec">
+      <div class="sd-lbl">Workspace</div>
+      <input class="sd-inp" id="sd-ws" type="text" placeholder="/path/to/project" spellcheck="false" aria-label="Workspace path">
+      <p class="sd-note">The project directory Pearl uses as its root. Pearl will not access files outside this directory.</p>
+    </div>
+    <div class="sd-btns">
+      <button class="sd-cancel" id="sd-cancel">Cancel</button>
+      <button class="sd-save" id="sd-save">Save</button>
     </div>
   </div>
 </div>
 
 <script>
-// ── Config ────────────────────────────────────────────────
-const API = '';  // same origin — relative URLs
+// ─── Config ──────────────────────────────────────────────────
+const STORE_KEY = 'pearl-convs-v3';
+const MAX_CONVS = 60;
+const POLL_MS   = 9000;
 
-// ── State ─────────────────────────────────────────────────
-let isRunning = false;
-let awaitingApproval = false;
-let activeStream = null;
-let chatHistory = [];  // { role, content, ts }
-let sessionLabel = 'New conversation';
+// ─── State ───────────────────────────────────────────────────
+const S = {
+  mode:     'agent',
+  streaming: false,
+  id:       null,
+  convs:    [],
+  ws:       { path: '', name: '' },
+  ctrl:     null,
+};
 
-// ── DOM refs ──────────────────────────────────────────────
-const messages   = document.getElementById('messages');
-const welcome    = document.getElementById('welcome');
-const msgInput   = document.getElementById('msg-input');
-const sendBtn    = document.getElementById('send-btn');
-const cancelBtn  = document.getElementById('cancel-btn');
-const connDot    = document.getElementById('conn-dot');
-const connLabel  = document.getElementById('conn-label');
-const modelLabel = document.getElementById('model-label');
-const wsName     = document.getElementById('workspace-name');
-const wsPill     = document.getElementById('workspace-pill');
-const wsModal    = document.getElementById('ws-modal');
-const wsPathInput= document.getElementById('ws-path-input');
-const wsOpenBtn  = document.getElementById('ws-open-btn');
-const wsCancelBtn= document.getElementById('ws-cancel-btn');
-const newChatBtn = document.getElementById('new-chat-btn');
-const chatItem   = document.getElementById('current-chat-item');
-const themeToggle= document.getElementById('theme-toggle');
+// ─── DOM refs ─────────────────────────────────────────────────
+const g  = id => document.getElementById(id);
+const mk = (t, c) => { const e = document.createElement(t); if (c) e.className = c; return e; };
+const msgInner = g('msg-inner');
+const emptySt  = g('empty-state');
+const sidebar  = g('sidebar');
+const sbList   = g('sb-list');
+const sbSearch = g('sb-search');
+const inputTxt = g('input-txt');
+const sendBtn  = g('send-btn');
+const stopBtn  = g('stop-btn');
+const connDot  = g('conn-dot');
+const connLbl  = g('conn-label');
+const wsName   = g('ws-name');
+const chatTtl  = g('chat-title');
 
-// ── Init ──────────────────────────────────────────────────
+// ─── Boot ─────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  fetchStatus();
-  setInterval(fetchStatus, 8000);
-  autoResize();
+  loadStore();
+  renderSidebar();
+  wire();
+  pollStatus();
+  setInterval(pollStatus, POLL_MS);
+  resize();
 });
 
-async function fetchStatus() {
+// ─── Status ───────────────────────────────────────────────────
+async function pollStatus() {
   try {
-    const r = await fetch('/api/status');
-    if (!r.ok) throw new Error('not ok');
-    const d = await r.json();
-    connDot.className = 'connected';
-    connLabel.textContent = 'Connected';
-    wsName.textContent = d.workspace?.name || d.workspace?.path || 'Unknown';
-    if (d.workspace?.path) wsPathInput.value = d.workspace.path;
-    awaitingApproval = d.awaiting_approval;
-    isRunning = d.running;
-    updateSendState();
-  } catch {
-    connDot.className = 'error';
-    connLabel.textContent = 'Disconnected';
-  }
-}
-
-// ── Input ─────────────────────────────────────────────────
-msgInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    submit();
-  }
-});
-msgInput.addEventListener('input', autoResize);
-sendBtn.addEventListener('click', submit);
-cancelBtn.addEventListener('click', cancelRun);
-
-function autoResize() {
-  msgInput.style.height = 'auto';
-  msgInput.style.height = Math.min(msgInput.scrollHeight, 180) + 'px';
-}
-
-function updateSendState() {
-  const busy = isRunning;
-  sendBtn.disabled = busy;
-  cancelBtn.classList.toggle('visible', busy);
-}
-
-function submit() {
-  const text = msgInput.value.trim();
-  if (!text || isRunning) return;
-  msgInput.value = '';
-  autoResize();
-  hideWelcome();
-  sendMessage(text);
-}
-
-function hideWelcome() {
-  if (welcome && welcome.parentNode) {
-    welcome.style.display = 'none';
-  }
-}
-
-// ── Chips ─────────────────────────────────────────────────
-document.querySelectorAll('.welcome-chip').forEach(chip => {
-  chip.addEventListener('click', () => {
-    msgInput.value = chip.dataset.prompt;
-    autoResize();
-    submit();
-  });
-});
-
-// ── New chat ──────────────────────────────────────────────
-newChatBtn.addEventListener('click', () => {
-  if (isRunning) return;
-  while (messages.firstChild) messages.removeChild(messages.firstChild);
-  messages.appendChild(welcome);
-  welcome.style.display = '';
-  chatHistory = [];
-  sessionLabel = 'New conversation';
-  chatItem.textContent = sessionLabel;
-  msgInput.focus();
-});
-
-// ── Theme ─────────────────────────────────────────────────
-themeToggle.addEventListener('click', () => {
-  const cur = document.documentElement.getAttribute('data-theme');
-  document.documentElement.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
-  themeToggle.textContent = cur === 'dark' ? '☀' : '☽';
-});
-
-// ── Workspace ─────────────────────────────────────────────
-wsPill.addEventListener('click', () => { wsModal.classList.add('open'); wsPathInput.focus(); });
-wsCancelBtn.addEventListener('click', () => wsModal.classList.remove('open'));
-wsModal.addEventListener('click', e => { if (e.target === wsModal) wsModal.classList.remove('open'); });
-wsOpenBtn.addEventListener('click', openWorkspace);
-wsPathInput.addEventListener('keydown', e => { if (e.key === 'Enter') openWorkspace(); });
-
-async function openWorkspace() {
-  const path = wsPathInput.value.trim();
-  if (!path) return;
-  try {
-    const r = await fetch('/api/workspace', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path }),
-    });
-    const d = await r.json();
-    if (d.ok) {
-      wsName.textContent = d.workspace?.name || path;
-      wsModal.classList.remove('open');
-      showInfoBubble(`Workspace changed to: ${d.workspace?.path || path}`);
-    } else {
-      showInfoBubble(`Error: ${d.detail || 'Could not open workspace'}`);
+    const d = await get('/api/status');
+    connDot.className = 'ok';
+    connLbl.textContent = 'Connected';
+    if (d.workspace) {
+      S.ws = d.workspace;
+      wsName.textContent = d.workspace.name || d.workspace.path;
+      g('sd-ws').value = d.workspace.path || '';
     }
-  } catch (e) {
-    showInfoBubble(`Error: ${e.message}`);
+  } catch {
+    connDot.className = 'err';
+    connLbl.textContent = 'Disconnected';
   }
 }
 
-// ── Send message ──────────────────────────────────────────
-async function sendMessage(text) {
-  // Show user bubble
-  appendUserBubble(text);
-  if (sessionLabel === 'New conversation') {
-    sessionLabel = text.length > 40 ? text.slice(0, 40) + '…' : text;
-    chatItem.textContent = sessionLabel;
-  }
-
-  // Determine intent: if it looks like a task/coding request → /api/run
-  // Otherwise → /api/chat
-  // Simple heuristic: conversational starters → chat, everything else → run
-  const isConversational = /^(hello|hi|hey|thanks|thank you|what (can|do|is)|how do|who are|good|ok|okay|sure|yes|no|help me understand)\b/i.test(text)
-    && text.length < 120;
-
-  if (isConversational) {
-    await streamChat(text);
-  } else {
-    await streamRun(text);
-  }
+// ─── Wire ─────────────────────────────────────────────────────
+function wire() {
+  g('sb-toggle').addEventListener('click', () => {
+    const c = sidebar.classList.toggle('collapsed');
+    g('sb-toggle').setAttribute('aria-expanded', !c);
+  });
+  g('new-chat-btn').addEventListener('click', () => newChat());
+  g('ws-badge').addEventListener('click', openSettings);
+  g('settings-btn').addEventListener('click', openSettings);
+  g('sd-cancel').addEventListener('click', closeSettings);
+  g('sd-save').addEventListener('click', saveSettings);
+  g('settings-modal').addEventListener('click', e => { if (e.target === g('settings-modal')) closeSettings(); });
+  g('theme-btn').addEventListener('click', () => {
+    const t = document.documentElement.getAttribute('data-theme');
+    document.documentElement.setAttribute('data-theme', t === 'dark' ? 'light' : 'dark');
+  });
+  document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => {
+    S.mode = b.dataset.mode;
+    document.querySelectorAll('.mode-btn').forEach(x => {
+      x.classList.toggle('active', x.dataset.mode === S.mode);
+      x.setAttribute('aria-pressed', String(x.dataset.mode === S.mode));
+    });
+  }));
+  sendBtn.addEventListener('click', submit);
+  stopBtn.addEventListener('click', cancel);
+  inputTxt.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } });
+  inputTxt.addEventListener('input', resize);
+  sbSearch.addEventListener('input', () => renderSidebar(sbSearch.value.trim().toLowerCase()));
+  document.querySelectorAll('.es-chip').forEach(c => {
+    c.addEventListener('click', () => { inputTxt.value = c.dataset.prompt; resize(); submit(); });
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeSettings();
+    if (e.key === '/' && document.activeElement !== inputTxt && !g('settings-modal').classList.contains('open')) {
+      e.preventDefault(); inputTxt.focus();
+    }
+  });
+  g('sd-ws').addEventListener('keydown', e => { if (e.key === 'Enter') saveSettings(); });
 }
 
-// ── Chat stream ───────────────────────────────────────────
-async function streamChat(message) {
-  isRunning = true;
-  updateSendState();
+function resize() {
+  inputTxt.style.height = 'auto';
+  inputTxt.style.height = Math.min(inputTxt.scrollHeight, 200) + 'px';
+}
 
-  const { bubble, setText } = appendPearlBubble();
+// ─── Submit ───────────────────────────────────────────────────
+function submit() {
+  const text = inputTxt.value.trim();
+  if (!text || S.streaming) return;
+  inputTxt.value = ''; resize();
+  hideEmpty(); ensureConv();
+  addUserMsg(text);
+  if (S.mode === 'chat') doChat(text);
+  else doRun(text);
+}
+
+function hideEmpty() { if (emptySt.parentNode) emptySt.remove(); }
+
+function setStreaming(v) {
+  S.streaming = v;
+  sendBtn.disabled = v;
+  stopBtn.classList.toggle('show', v);
+}
+
+async function cancel() {
+  if (S.ctrl) S.ctrl.abort();
+  try { await post('/api/cancel'); } catch {}
+  setStreaming(false);
+}
+
+// ─── Chat ─────────────────────────────────────────────────────
+async function doChat(message) {
+  setStreaming(true);
+  S.ctrl = new AbortController();
+  const { setText } = addPearlBubble();
   let full = '';
-
   try {
     const resp = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ message }), signal: S.ctrl.signal,
     });
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const parts = buf.split('\n\n');
-      buf = parts.pop();
-      for (const part of parts) {
-        const ev = parseSSE(part);
-        if (!ev) continue;
-        if (ev.event === 'chunk') {
-          full += ev.data.text || '';
-          setText(full, true);
-        } else if (ev.event === 'error') {
-          setText(ev.data.text || 'Error', false);
-          bubble.style.borderColor = 'var(--error)';
-        }
-      }
+    for await (const ev of sse(resp)) {
+      if (ev.event === 'chunk') { full += ev.data.text || ''; setText(full, true); }
+      else if (ev.event === 'error') { setText(ev.data.text || 'Error.', false); break; }
+      else if (ev.event === 'done') break;
     }
     setText(full, false);
-  } catch (e) {
-    setText(`Connection error: ${e.message}`, false);
-    bubble.style.borderColor = 'var(--error)';
-  } finally {
-    isRunning = false;
-    updateSendState();
-  }
+    saveMsg('assistant', full);
+  } catch (e) { if (e.name !== 'AbortError') addErr(e.message); }
+  finally { setStreaming(false); }
 }
 
-// ── Autonomous run stream ─────────────────────────────────
-async function streamRun(prompt) {
-  isRunning = true;
-  updateSendState();
-
-  // Progress bar
-  const { barWrap, setProgress, setLabel } = appendProgressBar();
-  setProgress(5); setLabel('Planning…');
-
-  const toolCards = new Map();  // action → card element
-  let pearlBubble = null;
-  let pearlSetText = null;
+// ─── Agent run ────────────────────────────────────────────────
+async function doRun(prompt) {
+  setStreaming(true);
+  S.ctrl = new AbortController();
+  const groupEl = makeGroup();
+  const stepMap = new Map();
 
   try {
     const resp = await fetch('/api/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt }), signal: S.ctrl.signal,
     });
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const parts = buf.split('\n\n');
-      buf = parts.pop();
-      for (const part of parts) {
-        const ev = parseSSE(part);
-        if (!ev) continue;
-        await handleRunEvent(ev, barWrap, setProgress, setLabel, toolCards);
-      }
+    for await (const ev of sse(resp)) {
+      if (ev.event === 'progress') onProgress(ev.data, groupEl, stepMap);
+      else if (ev.event === 'result') await onResult(ev.data, groupEl, stepMap);
+      else if (ev.event === 'error') addErr(ev.data.message || 'Run failed.');
+      else if (ev.event === 'done') break;
     }
-  } catch (e) {
-    appendErrorNote(`Connection error: ${e.message}`);
-  } finally {
-    barWrap.remove();
-    isRunning = false;
-    updateSendState();
-    await fetchStatus();
+  } catch (e) { if (e.name !== 'AbortError') addErr(e.message); groupHdr(groupEl,'err','✕ Stopped',null,null); }
+  finally { setStreaming(false); }
+}
+
+function onProgress(d, g, map) {
+  const { status, currentStep: cs, totalSteps: ts, currentAction: ca } = d;
+  if (status === 'planning') groupHdr(g,'run','⚡ Planning…',cs,ts);
+  else if (status === 'executing_step') {
+    groupHdr(g,'run','⚡ Pearl is working',cs,ts);
+    if (ca) { const k = ca + (cs||0); if (!map.has(k)) { map.set(k, addStep(g,ca,'run','')); } }
+  } else if (status === 'step_completed') {
+    if (ca) { const k = ca + (cs||0); const el = map.get(k); if (el) doneStep(el, true); }
+  } else if (status === 'awaiting_approval') groupHdr(g,'warn','📋 Review required',cs,ts);
+  else if (status === 'task_completed') groupHdr(g,'ok','✓ Done',cs,ts);
+  scrollBot();
+}
+
+async function onResult(d, grp, map) {
+  const r = d.report;
+  if (!r) return;
+  if (r.steps?.length) {
+    refreshSteps(grp, r.steps);
+    const ok = r.steps.every(s => s.succeeded);
+    groupHdr(grp, ok ? 'ok' : 'warn', ok ? `✓ Done — ${r.steps.length} step(s)` : '⚠ Some steps failed', r.steps.length, r.steps.length);
+  }
+  if (r.stop_reason === 'awaiting_approval') {
+    groupHdr(grp,'warn','📋 Changes ready for review',null,null);
+    await showDiff();
+  } else if (!r.succeeded) {
+    const fail = r.steps?.find(s => !s.succeeded);
+    addErr(fail?.error || `Stopped: ${r.stop_reason}`);
+  } else {
+    const txt = bestOutput(r.steps);
+    if (txt) { const { setText } = addPearlBubble(); setText(txt, false); saveMsg('assistant', txt); }
   }
 }
 
-async function handleRunEvent(ev, barWrap, setProgress, setLabel, toolCards) {
-  const { event, data } = ev;
-
-  if (event === 'progress') {
-    const s = data.status || '';
-    const cur = data.currentStep || 0;
-    const tot = data.totalSteps || 1;
-    const action = data.currentAction || '';
-
-    if (s === 'planning') {
-      setProgress(10); setLabel('Planning…');
-    } else if (s === 'executing_step') {
-      const pct = Math.round(10 + (cur / Math.max(tot, 1)) * 75);
-      setProgress(pct);
-      setLabel(`Step ${cur}/${tot}`);
-      if (action) {
-        appendToolCard(action, 'running', toolCards);
-      }
-    } else if (s === 'step_completed') {
-      setProgress(Math.round(10 + (cur / Math.max(tot, 1)) * 80));
-      const action = data.currentAction || '';
-      if (action && toolCards.has(action)) {
-        const card = toolCards.get(action);
-        card.querySelector('.tool-status').textContent = '✓ done';
-        card.querySelector('.tool-status').className = 'tool-status ok';
-      }
-    } else if (s === 'task_completed') {
-      setProgress(100); setLabel('Done');
-    } else if (s === 'awaiting_approval') {
-      setProgress(90); setLabel('Awaiting approval');
+function bestOutput(steps) {
+  if (!steps?.length) return null;
+  const textTools = ['explain_file','summarize_project','search_text','find_symbol','find_references','read_file'];
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const s = steps[i];
+    if (!s.succeeded) continue;
+    if (textTools.some(t => s.tool_name?.includes(t))) {
+      if (typeof s.result === 'string' && s.result.length > 50) return s.result.slice(0, 5000);
+      if (s.summary?.length > 20) return s.summary;
     }
-  } else if (event === 'result') {
-    const report = data.report;
-    if (report) {
-      if (report.stop_reason === 'awaiting_approval') {
-        // Show the diff + approve/reject
-        await showApprovalCard(report);
-      } else {
-        appendResultCard(report);
-      }
-    }
-  } else if (event === 'error') {
-    appendErrorNote(data.message || 'An error occurred.');
   }
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const s = steps[i];
+    if (s.succeeded && typeof s.result === 'string' && s.result.length > 80) return s.result.slice(0, 5000);
+  }
+  return null;
 }
 
-// ── Approval ──────────────────────────────────────────────
-async function showApprovalCard(report) {
-  // Fetch the diff
-  let diff = '';
-  let files = [];
+// ─── Approval ─────────────────────────────────────────────────
+async function showDiff() {
+  let diff = '', files = [];
+  try { const p = await get('/api/patches'); diff = p.diff || ''; files = p.files || []; } catch {}
+  if (!files.length && !diff) return;
+  addDiffCard(diff, files);
+}
+async function approve(card) {
+  const ab = card.querySelector('.btn-approve');
+  ab.disabled = true; ab.textContent = 'Applying…';
   try {
-    const r = await fetch('/api/patches');
-    const d = await r.json();
-    diff = d.diff || '';
-    files = d.files || [];
-  } catch {}
-
-  const card = document.createElement('div');
-  card.className = 'plan-card';
-  card.innerHTML = `
-    <div class="plan-header">
-      <span>📋</span>
-      <span>Review Changes</span>
-      <span style="margin-left:auto;font-size:12px;color:var(--text2);font-weight:400">${files.length} file(s)</span>
-    </div>
-    <div class="plan-body">
-      ${files.map(f => `<div class="plan-step">
-        <div class="step-num">●</div>
-        <div><div class="step-text">${escHtml(f.split('/').pop())}</div>
-        <div class="step-sub">${escHtml(f)}</div></div>
-      </div>`).join('')}
-    </div>
-    <div class="plan-actions">
-      <button class="btn-approve" id="approve-btn">✓ Approve & Apply</button>
-      <button class="btn-reject" id="reject-btn">✕ Reject</button>
-    </div>
-  `;
-  messages.appendChild(card);
-  scrollBottom();
-
-  if (diff) {
-    messages.appendChild(buildDiffCard(diff));
-    scrollBottom();
-  }
-
-  card.querySelector('#approve-btn').addEventListener('click', async function() {
-    this.disabled = true;
-    this.textContent = 'Applying…';
-    const result = await doApprove();
+    const r = await post('/api/approve');
     card.remove();
-    appendResultCard(result);
-    await fetchStatus();
+    if (r.steps !== undefined) addResultCard(r);
+    else addErr(r.error || 'Failed.');
+    saveMsg('system','[Changes approved]');
+  } catch (e) { addErr(e.message); }
+}
+async function reject(card) {
+  try { await post('/api/reject'); } catch {}
+  card.remove();
+  addInfo('Changes rejected. Nothing written to disk.');
+  saveMsg('system','[Changes rejected]');
+}
+
+// ─── Tool group DOM ───────────────────────────────────────────
+function makeGroup() {
+  const w = mk('div','tool-group open msg-row msg-system');
+  w.innerHTML = `
+    <div class="tg-head" role="button" aria-expanded="true">
+      <span class="tg-icon spin">⟳</span>
+      <span class="tg-title">⚡ Pearl is working…</span>
+      <span class="tg-count"></span>
+      <span class="tg-chev" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6l4 4 4-4"/></svg></span>
+    </div>
+    <div class="tg-body" role="list"></div>`;
+  w.querySelector('.tg-head').addEventListener('click', () => {
+    const o = w.classList.toggle('open');
+    w.querySelector('.tg-head').setAttribute('aria-expanded', String(o));
   });
-
-  card.querySelector('#reject-btn').addEventListener('click', async function() {
-    const result = await doReject();
-    card.remove();
-    appendInfoBubble('Changes rejected. Nothing was written to disk.');
-    await fetchStatus();
+  msgInner.appendChild(w);
+  scrollBot();
+  return w;
+}
+function groupHdr(w, st, title, cur, tot) {
+  const ic = w.querySelector('.tg-icon'), ti = w.querySelector('.tg-title'), cn = w.querySelector('.tg-count');
+  ti.textContent = title;
+  if (st === 'run') { ic.className = 'tg-icon spin'; ic.textContent = '⟳'; }
+  else if (st === 'ok')   { ic.className = 'tg-icon'; ic.textContent = '✓'; ic.style.color = 'var(--suc)'; }
+  else if (st === 'warn') { ic.className = 'tg-icon'; ic.textContent = '⚠'; ic.style.color = 'var(--warn)'; }
+  else if (st === 'err')  { ic.className = 'tg-icon'; ic.textContent = '✕'; ic.style.color = 'var(--err)'; }
+  if (cur != null && tot != null) cn.textContent = `${cur}/${tot}`;
+}
+function addStep(w, name, status, summary) {
+  const body = w.querySelector('.tg-body');
+  const el = mk('div','t-step'); el.setAttribute('role','listitem');
+  const icon = status === 'run' ? '<span class="ts-ic spin" style="color:var(--acc-l)">⟳</span>'
+             : status === 'ok'  ? '<span class="ts-ic" style="color:var(--suc)">✓</span>'
+             :                    '<span class="ts-ic" style="color:var(--err)">✕</span>';
+  el.innerHTML = `${icon}<span class="ts-nm">${esc(toolLabel(name))}</span><span class="ts-sm">${esc(summary||'')}</span>`;
+  body.appendChild(el);
+  return el;
+}
+function doneStep(el, ok) {
+  const ic = el.querySelector('.ts-ic');
+  if (ic) { ic.className = 'ts-ic'; ic.style.color = ok ? 'var(--suc)' : 'var(--err)'; ic.textContent = ok ? '✓' : '✕'; }
+}
+function refreshSteps(w, steps) {
+  const body = w.querySelector('.tg-body'); body.innerHTML = '';
+  steps.forEach(s => {
+    const el = mk('div','t-step'); el.setAttribute('role','listitem');
+    const ok = s.succeeded;
+    const out = s.result || s.error || '';
+    const hasOut = typeof out === 'string' && out.length > 0;
+    el.innerHTML = `
+      <span class="ts-ic" style="color:var(--${ok?'suc':'err'})">${ok?'✓':'✕'}</span>
+      <span class="ts-nm">${esc(toolLabel(s.tool_name))}</span>
+      <span class="ts-sm">${esc(s.summary||'')}</span>
+      ${hasOut ? `<button class="ts-exp" aria-label="Toggle output">▾</button>` : ''}`;
+    if (hasOut) {
+      const outEl = mk('div','ts-out');
+      outEl.textContent = typeof out === 'string' ? out : JSON.stringify(out,null,2);
+      el.querySelector('.ts-exp').addEventListener('click', ev => {
+        ev.stopPropagation();
+        outEl.classList.toggle('show');
+        ev.target.textContent = outEl.classList.contains('show') ? '▴' : '▾';
+      });
+      el.appendChild(outEl);
+    }
+    body.appendChild(el);
   });
 }
 
-async function doApprove() {
-  try {
-    const r = await fetch('/api/approve', { method: 'POST' });
-    return await r.json();
-  } catch { return { error: 'Failed to approve' }; }
+// ─── Message DOM helpers ──────────────────────────────────────
+function addUserMsg(text) {
+  const r = mk('div','msg-row msg-user');
+  r.innerHTML = `<div class="user-bub">${esc(text)}</div>`;
+  msgInner.appendChild(r); scrollBot();
+  saveMsg('user', text);
 }
-
-async function doReject() {
-  try {
-    const r = await fetch('/api/reject', { method: 'POST' });
-    return await r.json();
-  } catch { return {}; }
-}
-
-async function cancelRun() {
-  try {
-    await fetch('/api/cancel', { method: 'POST' });
-    appendInfoBubble('Run cancelled.');
-  } catch {}
-  isRunning = false;
-  updateSendState();
-}
-
-// ── DOM helpers ───────────────────────────────────────────
-function appendUserBubble(text) {
-  const row = document.createElement('div');
-  row.className = 'msg-row user';
-  row.innerHTML = `
-    <div class="msg-bubble">${escHtml(text)}</div>
-    <div class="msg-meta">${timeNow()}</div>
-  `;
-  messages.appendChild(row);
-  scrollBottom();
-}
-
-function appendPearlBubble() {
-  const row = document.createElement('div');
-  row.className = 'msg-row pearl';
-  const bubble = document.createElement('div');
-  bubble.className = 'msg-bubble';
-  bubble.innerHTML = '<span class="cursor"></span>';
-  const meta = document.createElement('div');
-  meta.className = 'msg-meta';
-  meta.textContent = 'Pearl · ' + timeNow();
-  row.appendChild(bubble);
-  row.appendChild(meta);
-  messages.appendChild(row);
-  scrollBottom();
-
+function addPearlBubble() {
+  const r = mk('div','msg-row msg-pearl');
+  r.innerHTML = `
+    <div class="pearl-label"><span class="pearl-dot" aria-hidden="true"></span>Pearl</div>
+    <div class="pearl-bub md"><span class="cursor" aria-hidden="true"></span></div>
+    <div class="msg-meta">${now()}</div>`;
+  msgInner.appendChild(r); scrollBot();
+  const bub = r.querySelector('.pearl-bub');
   function setText(md, streaming) {
-    bubble.innerHTML = renderMd(md) + (streaming ? '<span class="cursor"></span>' : '');
-    scrollBottom();
+    bub.innerHTML = md ? renderMd(md) : '';
+    if (streaming) { const c = mk('span','cursor'); c.setAttribute('aria-hidden','true'); bub.appendChild(c); }
+    scrollBot();
   }
-
-  return { bubble, setText };
+  return { setText };
 }
-
-function appendInfoBubble(text) {
-  const row = document.createElement('div');
-  row.className = 'msg-row pearl';
-  row.innerHTML = `<div class="msg-bubble" style="color:var(--text2);font-style:italic">${escHtml(text)}</div>`;
-  messages.appendChild(row);
-  scrollBottom();
-}
-
-function showInfoBubble(text) { appendInfoBubble(text); }
-
-function appendProgressBar() {
-  const wrap = document.createElement('div');
-  wrap.className = 'progress-bar-wrap';
-  const track = document.createElement('div');
-  track.className = 'progress-track';
-  const fill = document.createElement('div');
-  fill.className = 'progress-fill';
-  fill.style.width = '0%';
-  track.appendChild(fill);
-  const lbl = document.createElement('span');
-  lbl.className = 'progress-label';
-  lbl.textContent = '';
-  wrap.appendChild(track);
-  wrap.appendChild(lbl);
-  messages.appendChild(wrap);
-  scrollBottom();
-
-  function setProgress(pct) { fill.style.width = pct + '%'; }
-  function setLabel(t) { lbl.textContent = t; }
-  return { barWrap: wrap, setProgress, setLabel };
-}
-
-function appendToolCard(action, status, cardMap) {
-  if (cardMap.has(action)) return;
-  const card = document.createElement('div');
-  card.className = 'tool-card';
-  const icon = toolIcon(action);
+function addDiffCard(diff, files) {
+  const card = mk('div','diff-card msg-row msg-system');
+  const fileHtml = files.map(f => `<div class="diff-file"><span class="dft dft-m">M</span>${esc(f)}</div>`).join('');
+  const diffHtml = diff.split('\n').map(line => {
+    let cls = 'ctx';
+    if (line.startsWith('+') && !line.startsWith('+++')) cls = 'add';
+    else if (line.startsWith('-') && !line.startsWith('---')) cls = 'del';
+    else if (line.startsWith('@@')) cls = 'hunk';
+    return `<span class="dl ${cls}">${esc(line)}</span>`;
+  }).join('');
   card.innerHTML = `
-    <div class="tool-card-header">
-      <span class="tool-icon">${icon}</span>
-      <span class="tool-name">${escHtml(action)}</span>
-      <span class="tool-status running">running</span>
-    </div>
-  `;
-  messages.appendChild(card);
-  cardMap.set(action, card);
-  scrollBottom();
+    <div class="diff-hd"><span aria-hidden="true">📄</span><span>Proposed changes${files.length ? ` — ${files.length} file${files.length!==1?'s':''}` : ''}</span></div>
+    ${files.length ? `<div class="diff-files">${fileHtml}</div>` : ''}
+    ${diff ? `<div class="diff-body">${diffHtml}</div>` : ''}
+    <div class="diff-acts">
+      <span class="diff-note">Pearl is asking for approval before writing to disk.</span>
+      <button class="btn-reject">Reject</button>
+      <button class="btn-approve">✓ Approve &amp; Apply</button>
+    </div>`;
+  card.querySelector('.btn-approve').addEventListener('click', () => approve(card));
+  card.querySelector('.btn-reject').addEventListener('click', () => reject(card));
+  msgInner.appendChild(card); scrollBot();
 }
-
-function appendResultCard(report) {
-  if (!report) return;
-  const ok = report.succeeded && report.stop_reason !== 'awaiting_approval';
-  const card = document.createElement('div');
-  card.className = `result-card ${ok ? 'result-ok' : 'result-fail'}`;
-  const steps = (report.steps || []);
+function addResultCard(r) {
+  const ok = r.succeeded;
+  const card = mk('div',`result-card ${ok?'ok':'fail'}`);
+  const steps = r.steps || [];
   card.innerHTML = `
-    <div class="result-header">
-      <span>${ok ? '✓' : '✗'}</span>
-      <span>${ok ? 'Completed' : 'Failed'} — ${steps.length} step(s)</span>
-      <span style="margin-left:auto;font-size:11px;color:var(--text3)">${report.stop_reason}</span>
+    <div class="result-hd">
+      <span aria-hidden="true">${ok?'✓':'✕'}</span>
+      <span>${ok?'Completed':'Failed'} — ${steps.length} step${steps.length!==1?'s':''}</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--tx3)">${esc(r.stop_reason||'')}</span>
     </div>
-    <div class="result-steps">
-      ${steps.map(s => `<div class="result-step">
-        <span class="${s.succeeded ? 'step-ok' : 'step-fail'}">${s.succeeded ? '✓' : '✗'}</span>
-        <span>${escHtml(s.tool_name)}</span>
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text3)">${escHtml(s.summary || '')}</span>
+    <div class="result-steps">${steps.map(s=>`
+      <div class="rs-item">
+        <span class="${s.succeeded?'rs-ok':'rs-fail'}" aria-hidden="true">${s.succeeded?'✓':'✕'}</span>
+        <span class="rs-txt">${esc(toolLabel(s.tool_name))} — ${esc(s.summary||'')}</span>
       </div>`).join('')}
-    </div>
-  `;
-  messages.appendChild(card);
-  scrollBottom();
+    </div>`;
+  msgInner.appendChild(card); scrollBot();
 }
-
-function appendErrorNote(msg) {
-  const row = document.createElement('div');
-  row.className = 'msg-row pearl';
-  row.innerHTML = `<div class="msg-bubble" style="border-color:var(--error);color:var(--error)">⚠ ${escHtml(msg)}</div>`;
-  messages.appendChild(row);
-  scrollBottom();
+function addErr(msg) {
+  const el = mk('div','err-note'); el.setAttribute('role','alert');
+  el.innerHTML = `<span aria-hidden="true">⚠</span><span>${esc(msg)}</span>`;
+  msgInner.appendChild(el); scrollBot();
 }
+function addInfo(msg) {
+  const el = mk('div','info-note');
+  el.textContent = msg;
+  msgInner.appendChild(el); scrollBot();
+}
+function scrollBot() { const m = g('messages'); m.scrollTop = m.scrollHeight; }
 
-function buildDiffCard(diff) {
-  const card = document.createElement('div');
-  card.className = 'diff-card';
-  const header = document.createElement('div');
-  header.className = 'diff-header';
-  header.innerHTML = '📄 Proposed changes';
-  const body = document.createElement('div');
-  body.className = 'diff-body';
-  diff.split('\n').forEach(line => {
-    const d = document.createElement('div');
-    d.className = 'diff-line';
-    if (line.startsWith('+') && !line.startsWith('+++')) d.classList.add('add');
-    else if (line.startsWith('-') && !line.startsWith('---')) d.classList.add('del');
-    else if (line.startsWith('@@')) d.classList.add('hunk');
-    else d.classList.add('ctx');
-    d.textContent = line;
+// ─── Sidebar & storage ────────────────────────────────────────
+function loadStore() {
+  try { S.convs = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch { S.convs = []; }
+}
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(S.convs.slice(-MAX_CONVS))); } catch {}
+}
+function ensureConv() { if (!S.id) newChat(false); }
+function newChat(render = true) {
+  const id = 'c' + Date.now();
+  S.convs.unshift({ id, title: 'New conversation', ts: Date.now(), msgs: [] });
+  S.id = id; save();
+  if (render) { clearMsgs(); chatTtl.textContent = 'Pearl AI'; }
+  renderSidebar();
+}
+function clearMsgs() {
+  while (msgInner.firstChild) msgInner.removeChild(msgInner.firstChild);
+  msgInner.appendChild(emptySt); emptySt.style.display = '';
+}
+function saveMsg(role, content) {
+  const c = S.convs.find(x => x.id === S.id); if (!c) return;
+  if (role === 'user' && c.title === 'New conversation' && content.length > 2) {
+    c.title = content.slice(0,54) + (content.length > 54 ? '…' : '');
+    chatTtl.textContent = c.title;
+    renderSidebar();
+  }
+  c.msgs.push({ role, content, ts: Date.now() }); save();
+}
+function loadConv(id) {
+  const c = S.convs.find(x => x.id === id); if (!c) return;
+  S.id = id; chatTtl.textContent = c.title; clearMsgs();
+  c.msgs.filter(m => m.role === 'user' || m.role === 'assistant').forEach(m => {
+    if (m.role === 'user') {
+      const r = mk('div','msg-row msg-user');
+      r.innerHTML = `<div class="user-bub">${esc(m.content)}</div>`;
+      msgInner.appendChild(r);
+    } else {
+      const r = mk('div','msg-row msg-pearl');
+      r.innerHTML = `
+        <div class="pearl-label"><span class="pearl-dot" aria-hidden="true"></span>Pearl</div>
+        <div class="pearl-bub md">${renderMd(m.content)}</div>
+        <div class="msg-meta">${tsStr(m.ts)}</div>`;
+      msgInner.appendChild(r);
+    }
   });
-  // rebuild with correct lines
-  body.innerHTML = '';
-  diff.split('\n').forEach(line => {
-    const d = document.createElement('div');
-    d.className = 'diff-line';
-    if (line.startsWith('+') && !line.startsWith('+++')) d.classList.add('add');
-    else if (line.startsWith('-') && !line.startsWith('---')) d.classList.add('del');
-    else if (line.startsWith('@@')) d.classList.add('hunk');
-    else d.classList.add('ctx');
-    d.textContent = line;
-    body.appendChild(d);
+  if (!msgInner.firstChild || msgInner.firstChild === emptySt) {
+    if (!emptySt.parentNode) msgInner.appendChild(emptySt);
+  } else if (emptySt.parentNode) emptySt.remove();
+  renderSidebar(); scrollBot();
+}
+function renderSidebar(filter = '') {
+  sbList.innerHTML = '';
+  const groups = [['Today',0,86400000],['Yesterday',86400000,172800000],['Last 7 days',172800000,604800000],['Older',604800000,Infinity]];
+  const now = Date.now();
+  groups.forEach(([label, lo, hi]) => {
+    const items = S.convs.filter(c => {
+      const age = now - c.ts;
+      return age >= lo && age < hi && (!filter || c.title.toLowerCase().includes(filter));
+    });
+    if (!items.length) return;
+    const gl = mk('div','sb-group-label'); gl.textContent = label; sbList.appendChild(gl);
+    items.forEach(conv => {
+      const item = mk('div',`sb-item${conv.id === S.id ? ' active' : ''}`);
+      item.setAttribute('role','button'); item.setAttribute('tabindex','0'); item.setAttribute('aria-label', conv.title);
+      item.innerHTML = `
+        <span class="sb-item-title">${esc(conv.title)}</span>
+        <span class="sb-item-ts">${relTs(conv.ts)}</span>
+        <span class="sb-item-actions">
+          <button class="sb-act rename" aria-label="Rename conversation" title="Rename">✎</button>
+          <button class="sb-act del" aria-label="Delete conversation" title="Delete">✕</button>
+        </span>`;
+      item.addEventListener('click', e => { if (!e.target.closest('.sb-act')) loadConv(conv.id); });
+      item.addEventListener('keydown', e => { if (e.key === 'Enter') loadConv(conv.id); });
+      item.querySelector('.rename').addEventListener('click', e => {
+        e.stopPropagation();
+        const t = prompt('Rename:', conv.title);
+        if (t?.trim()) { conv.title = t.trim(); save(); renderSidebar(filter); }
+      });
+      item.querySelector('.del').addEventListener('click', e => {
+        e.stopPropagation();
+        if (!confirm('Delete this conversation?')) return;
+        S.convs = S.convs.filter(x => x.id !== conv.id);
+        if (S.id === conv.id) { S.id = null; clearMsgs(); chatTtl.textContent = 'Pearl AI'; }
+        save(); renderSidebar(filter);
+      });
+      sbList.appendChild(item);
+    });
   });
-  card.appendChild(header);
-  card.appendChild(body);
-  return card;
 }
 
-// ── Markdown ──────────────────────────────────────────────
+// ─── Settings ─────────────────────────────────────────────────
+function openSettings() { g('settings-modal').classList.add('open'); g('sd-ws').focus(); }
+function closeSettings() { g('settings-modal').classList.remove('open'); }
+async function saveSettings() {
+  const path = g('sd-ws').value.trim(); if (!path) return;
+  try {
+    const r = await post('/api/workspace', { path });
+    if (r.ok) { S.ws = r.workspace; wsName.textContent = r.workspace.name; closeSettings(); addInfo(`Workspace: ${r.workspace.path}`); }
+    else addErr(r.detail || 'Could not change workspace.');
+  } catch (e) { addErr(e.message); }
+}
+
+// ─── SSE ──────────────────────────────────────────────────────
+async function* sse(resp) {
+  const reader = resp.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const parts = buf.split('\n\n'); buf = parts.pop() ?? '';
+    for (const part of parts) {
+      if (!part.trim()) continue;
+      let event = 'message', data = '';
+      for (const line of part.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) data = line.slice(5).trim();
+      }
+      if (!data) continue;
+      try { yield { event, data: JSON.parse(data) }; } catch {}
+    }
+  }
+}
+
+// ─── API helpers ──────────────────────────────────────────────
+async function get(path) {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(await r.text() || `HTTP ${r.status}`);
+  return r.json();
+}
+async function post(path, body) {
+  const r = await fetch(path, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) throw new Error(await r.text() || `HTTP ${r.status}`);
+  return r.json();
+}
+
+// ─── Markdown ─────────────────────────────────────────────────
 function renderMd(text) {
   if (!text) return '';
-  let html = escHtml(text);
-  // code blocks
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
-    `<pre><code class="lang-${escHtml(lang)}">${code}</code></pre>`
-  );
-  // inline code
-  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-  // bold
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // italic
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  // headers
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  // hr
-  html = html.replace(/^---$/gm, '<hr>');
-  // unordered list
-  html = html.replace(/^[*\-] (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
-  // numbered list (simple)
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-  // blockquote
-  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-  // paragraphs (double newline)
-  html = html.replace(/\n\n(?!<)/g, '</p><p>');
-  // single newlines inside paragraphs
-  html = html.replace(/\n(?!<)/g, '<br>');
-  return `<p>${html}</p>`;
+  const blocks = [], inlines = [];
+  // Extract fenced code blocks first
+  let s = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const i = blocks.length; blocks.push({lang, code}); return `\x00B${i}\x00`;
+  });
+  // Inline code
+  s = s.replace(/`([^`\n]+)`/g, (_, c) => { const i = inlines.length; inlines.push(c); return `\x00I${i}\x00`; });
+  // HTML escape
+  s = he(s);
+  // Block-level
+  s = s.replace(/^#{4} (.+)$/gm,'<h4>$1</h4>');
+  s = s.replace(/^#{3} (.+)$/gm,'<h3>$1</h3>');
+  s = s.replace(/^#{2} (.+)$/gm,'<h2>$1</h2>');
+  s = s.replace(/^#{1} (.+)$/gm,'<h1>$1</h1>');
+  s = s.replace(/^[-*]{3,}$/gm,'<hr>');
+  s = s.replace(/^&gt; (.+)$/gm,'<blockquote>$1</blockquote>');
+  // Lists
+  s = s.replace(/^[*\-+] (.+)$/gm,'<li>$1</li>');
+  s = s.replace(/((?:^<li>.*<\/li>\n?)+)/gm, m => `<ul>${m}</ul>`);
+  s = s.replace(/^\d+\. (.+)$/gm,'<XLI>$1</XLI>');
+  s = s.replace(/((?:^<XLI>.*<\/XLI>\n?)+)/gm, m => `<ol>${m.replace(/<XLI>/g,'<li>').replace(/<\/XLI>/g,'</li>')}</ol>`);
+  // Inline markup
+  s = s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  s = s.replace(/__(.+?)__/g,'<strong>$1</strong>');
+  s = s.replace(/\*([^*\n]+)\*/g,'<em>$1</em>');
+  s = s.replace(/~~(.+?)~~/g,'<del>$1</del>');
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Paragraphs
+  const paras = s.split(/\n{2,}/);
+  s = paras.map(p => {
+    const t = p.trim();
+    if (!t || /^<(h[1-4]|ul|ol|blockquote|hr|table)/.test(t)) return t;
+    return `<p>${t.replace(/\n/g,'<br>')}</p>`;
+  }).join('\n');
+  // Restore inlines
+  s = s.replace(/\x00I(\d+)\x00/g, (_,i) => `<code>${he(inlines[+i])}</code>`);
+  // Restore blocks
+  s = s.replace(/\x00B(\d+)\x00/g, (_,i) => {
+    const {lang, code} = blocks[+i];
+    const hl = hilight(code, lang);
+    return `<div class="cbw"><div class="cbh"><span class="cb-lang">${esc(lang||'text')}</span><button class="copy-btn" onclick="doCopy(this,${JSON.stringify(code)})">Copy</button></div><pre><code>${hl}</code></pre></div>`;
+  });
+  return s;
+}
+function he(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ─── Copy ─────────────────────────────────────────────────────
+function doCopy(btn, code) {
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = 'Copied!'; btn.classList.add('done');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 2000);
+  }).catch(() => { btn.textContent = 'Failed'; setTimeout(() => btn.textContent = 'Copy', 1500); });
 }
 
-// ── Utilities ─────────────────────────────────────────────
-function parseSSE(raw) {
-  const lines = raw.split('\n');
-  let event = 'message', data = '';
-  for (const l of lines) {
-    if (l.startsWith('event: ')) event = l.slice(7).trim();
-    else if (l.startsWith('data: ')) data = l.slice(6).trim();
+// ─── Syntax highlight ─────────────────────────────────────────
+const KW = {
+  python: new Set('def class import from return if elif else for while with try except finally raise pass break continue and or not in is lambda yield async await True False None global nonlocal del assert as'.split(' ')),
+  javascript: new Set('function class const let var return if else for while do switch case break continue new this super import export default async await typeof instanceof in of try catch finally throw null undefined true false void delete yield from extends static'.split(' ')),
+  typescript: new Set('function class const let var return if else for while do switch case break continue new this super import export default async await typeof instanceof in of try catch finally throw null undefined true false void delete yield from extends static interface type enum namespace abstract implements declare readonly private public protected as'.split(' ')),
+  rust: new Set('fn let mut const struct enum impl trait use mod pub return if else match for while loop break continue true false self super crate where type async await move ref in as'.split(' ')),
+  go: new Set('func var const type struct interface package import return if else for range switch case break continue go chan select defer map make new nil true false iota fallthrough goto'.split(' ')),
+  bash: new Set('if then else elif fi for while do done case esac function return in echo export local readonly shift set unset trap exit source'.split(' ')),
+};
+function hilight(code, lang) {
+  if (!lang || lang === 'text' || lang === 'plain') return he(code);
+  if (lang === 'diff') return hDiff(code);
+  if (lang === 'json') return hJson(code);
+  const kws = KW[lang] || KW.javascript;
+  let out = '', i = 0, n = code.length;
+  while (i < n) {
+    // Comments
+    if ((lang==='python'||lang==='bash') && code[i]==='#') {
+      let j=i; while (j<n && code[j]!=='\n') j++;
+      out += `<span class="hl-cmt">${he(code.slice(i,j))}</span>`; i=j; continue;
+    }
+    if ((lang==='javascript'||lang==='typescript'||lang==='rust'||lang==='go') && code.slice(i,i+2)==='//') {
+      let j=i; while (j<n && code[j]!=='\n') j++;
+      out += `<span class="hl-cmt">${he(code.slice(i,j))}</span>`; i=j; continue;
+    }
+    if ((lang==='javascript'||lang==='typescript'||lang==='rust'||lang==='go') && code.slice(i,i+2)==='/*') {
+      const end = code.indexOf('*/',i+2); const j = end===-1?n:end+2;
+      out += `<span class="hl-cmt">${he(code.slice(i,j))}</span>`; i=j; continue;
+    }
+    // Triple string Python
+    if (lang==='python' && (code.slice(i,i+3)==='"""'||code.slice(i,i+3)==="'''")) {
+      const q=code.slice(i,i+3), end=code.indexOf(q,i+3), j=end===-1?n:end+3;
+      out += `<span class="hl-str">${he(code.slice(i,j))}</span>`; i=j; continue;
+    }
+    // Strings
+    if (code[i]==='"'||code[i]==="'"||code[i]==='`') {
+      const q=code[i]; let j=i+1;
+      while (j<n) { if (code[j]==='\\'){j+=2;continue} if (code[j]===q){j++;break} if (q!=='`'&&code[j]==='\n') break; j++; }
+      out += `<span class="hl-str">${he(code.slice(i,j))}</span>`; i=j; continue;
+    }
+    // Numbers
+    if (/\d/.test(code[i])&&(i===0||/\W/.test(code[i-1]))) {
+      let j=i; while (j<n&&/[\d.xXa-fA-F_]/.test(code[j])) j++;
+      out += `<span class="hl-num">${he(code.slice(i,j))}</span>`; i=j; continue;
+    }
+    // Identifiers
+    if (/[a-zA-Z_$]/.test(code[i])) {
+      let j=i; while (j<n&&/\w/.test(code[j])) j++;
+      const w = code.slice(i,j);
+      const prev = out.replace(/<[^>]*>/g,'').trimEnd();
+      const prevWord = prev.split(/\s+/).pop()||'';
+      if (prevWord==='class') { out += `<span class="hl-cls">${he(w)}</span>`; i=j; continue; }
+      if (['def','function','fn','func'].includes(prevWord)) { out += `<span class="hl-fn">${he(w)}</span>`; i=j; continue; }
+      if (lang==='python'&&i>0&&code[i-1]==='@') { out += `<span class="hl-dec">${he(w)}</span>`; i=j; continue; }
+      out += kws.has(w) ? `<span class="hl-kw">${he(w)}</span>` : he(w);
+      i=j; continue;
+    }
+    if (code[i]==='@'&&lang==='python') { out += `<span class="hl-dec">@</span>`; i++; continue; }
+    out += he(code[i]); i++;
   }
-  if (!data) return null;
-  try { return { event, data: JSON.parse(data) }; } catch { return null; }
+  return out;
+}
+function hDiff(code) {
+  return code.split('\n').map(l => {
+    if (l.startsWith('+')) return `<span class="hl-str">${he(l)}</span>`;
+    if (l.startsWith('-')) return `<span class="hl-num">${he(l)}</span>`;
+    if (l.startsWith('@@')) return `<span class="hl-kw">${he(l)}</span>`;
+    return he(l);
+  }).join('\n');
+}
+function hJson(code) {
+  return he(code)
+    .replace(/(&quot;[^&]*&quot;)(\s*:)/g, '<span class="hl-fn">$1</span>$2')
+    .replace(/:\s*(&quot;[^&]*&quot;)/g, (m,v) => m.replace(v, `<span class="hl-str">${v}</span>`))
+    .replace(/\b(true|false|null)\b/g, '<span class="hl-kw">$1</span>')
+    .replace(/\b(\d+\.?\d*)\b/g, '<span class="hl-num">$1</span>');
 }
 
-function escHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// ─── Utilities ────────────────────────────────────────────────
+function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function now() { return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
+function tsStr(ts) { if (!ts) return ''; return new Date(ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
+function relTs(ts) {
+  const d = Date.now()-ts;
+  if (d<3600000) return Math.max(1,Math.floor(d/60000))+'m';
+  if (d<86400000) return Math.floor(d/3600000)+'h';
+  return Math.floor(d/86400000)+'d';
 }
-
-function timeNow() {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function scrollBottom() {
-  messages.scrollTop = messages.scrollHeight;
-}
-
-function toolIcon(name) {
-  if (!name) return '⚙';
-  n = name.toLowerCase();
-  if (n.includes('read') || n.includes('explain')) return '📄';
-  if (n.includes('write') || n.includes('create') || n.includes('edit')) return '✏️';
-  if (n.includes('search') || n.includes('find') || n.includes('index')) return '🔍';
-  if (n.includes('git')) return '⑂';
-  if (n.includes('web') || n.includes('fetch')) return '🌐';
-  if (n.includes('shell') || n.includes('run') || n.includes('exec')) return '▶';
-  if (n.includes('rename') || n.includes('refactor') || n.includes('replace')) return '♻';
-  return '⚙';
+function toolLabel(name) {
+  if (!name) return 'Tool';
+  const m = { read_file:'Read file', write_file:'Write file', search_text:'Search', find_symbol:'Find symbol',
+    execute_shell:'Run command', index_repository:'Index repo', explain_file:'Explain file',
+    summarize_project:'Summarize project', find_references:'Find references', rename_symbol:'Rename symbol',
+    batch_write_files:'Write files', create_file:'Create file', replace_in_file:'Replace in file' };
+  return m[name] || name.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 }
 </script>
 </body>
