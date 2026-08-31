@@ -162,23 +162,25 @@ class Settings:
     # -- Local inference (zero-configuration default) --
     #
     # When PEARL_INFERENCE_API_KEY is not set, Pearl runs inference locally
-    # using a small open-weight model downloaded on first run.
+    # using an open-weight model downloaded on first run (~1.1 GB).
     #
-    # Default: Qwen2.5-0.5B-Instruct Q4_K_M (~491 MB, Apache 2.0)
-    #   ~18-30 tok/s on a modern CPU (i5-10300H with AVX2)
+    # Default: Qwen2.5-1.5B-Instruct Q4_K_M (1065 MB, Apache 2.0)
+    #   ~16 tok/s on a modern CPU (i5-10300H with AVX2)
+    #   Requires ~1.3 GB RAM. 4/4 tool-selection, reliable JSON planning.
+    #
+    # Lightweight fallback (lower RAM machines):
+    #   LOCAL_MODEL_REPO=Qwen/Qwen2.5-0.5B-Instruct-GGUF
+    #   LOCAL_MODEL_FILE=qwen2.5-0.5b-instruct-q4_k_m.gguf  (469 MB, 40 tok/s)
+    #   NOTE: 0.5B model fails tool-selection 0/4 — not suitable for planning.
     #
     # Requires: pip install llama-cpp-python
     #   --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
-    #
-    # Override model:
-    #   LOCAL_MODEL_REPO=Qwen/Qwen2.5-1.5B-Instruct-GGUF
-    #   LOCAL_MODEL_FILE=qwen2.5-1.5b-instruct-q4_k_m.gguf  (1.1 GB, better quality)
 
     LOCAL_MODEL_REPO = os.getenv(
-        "LOCAL_MODEL_REPO", "Qwen/Qwen2.5-0.5B-Instruct-GGUF"
+        "LOCAL_MODEL_REPO", "Qwen/Qwen2.5-1.5B-Instruct-GGUF"
     )
     LOCAL_MODEL_FILE = os.getenv(
-        "LOCAL_MODEL_FILE", "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+        "LOCAL_MODEL_FILE", "qwen2.5-1.5b-instruct-q4_k_m.gguf"
     )
     LOCAL_MODEL_DIR = os.getenv(
         "LOCAL_MODEL_DIR",
