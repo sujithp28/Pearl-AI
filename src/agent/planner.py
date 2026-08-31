@@ -185,12 +185,15 @@ class Planner:
             indent=4,
         )
 
+        recovery_hint = failed.get("suggestion", "") if isinstance(failed, dict) else ""
+
         return prompt_template.format(
             tools=tools,
             user_prompt=user_prompt,
             completed_steps=json.dumps(completed, indent=4, default=str),
             failed_step=json.dumps(failed, indent=4, default=str),
             workspace_root=self._workspace_root(),
+            recovery_hint=recovery_hint,
         )
 
     def replan(

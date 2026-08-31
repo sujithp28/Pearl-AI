@@ -17,6 +17,9 @@ time). The checks here are pre-execution fast-fails only.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from src.agent.dependency_graph import DependencyCycleError, topological_sort
 from src.llm.parser import ToolCall
 
@@ -70,6 +73,49 @@ DESTRUCTIVE_WRITE_TOOLS: frozenset[str] = frozenset(
     )
 )
 
+# Directories skipped when scanning for workspace extensions — mirrors
+# repo_tools.IGNORED_DIRS so the scan stays fast on real projects.
+_IGNORED_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "node_modules",
+        ".pytest_cache",
+        ".mypy_cache",
+        "dist",
+        "build",
+        ".tox",
+        ".eggs",
+    }
+)
+
+
+def _extensions_in_workspace() -> frozenset[str]:
+    """
+    Return all file extensions present in the current workspace (lowercase).
+
+    Used by validate_plan to detect when the model requested a file whose
+    extension has never appeared in this project — a strong signal of
+    path hallucination (e.g. ``src/Foo.java`` in a Python repo).
+
+    Fails open: returns an empty frozenset (no check applied) when the
+    workspace cannot be scanned, so a broken scan never blocks planning.
+    """
+    root = Path.cwd()
+    exts: set[str] = set()
+    try:
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in _IGNORED_DIRS]
+            for fname in filenames:
+                ext = Path(fname).suffix.lower()
+                if ext:
+                    exts.add(ext)
+    except Exception:
+        return frozenset()
+    return frozenset(exts)
+
 
 def validate_plan(steps: list[ToolCall]) -> None:
     """
@@ -102,6 +148,8 @@ def validate_plan(steps: list[ToolCall]) -> None:
             f"Plan has {len(steps)} step(s); maximum is {MAX_STEPS}."
         )
 
+    workspace_exts = _extensions_in_workspace()
+
     for i, step in enumerate(steps, 1):
         if step.tool_name == "none":
             continue
@@ -115,6 +163,22 @@ def validate_plan(steps: list[ToolCall]) -> None:
                         f"Step {i} ({step.tool_name!r}): argument "
                         f"{arg_name!r} references a forbidden system "
                         f"path: {arg_val!r}"
+                    )
+
+        # Extension hallucination check: if the model asks to read a file
+        # whose extension has never appeared in this workspace, flag it.
+        # Only applied when workspace_exts is non-empty (scan succeeded)
+        # and only for read_file / write_file — create_file legitimately
+        # introduces new extensions so it is excluded.
+        if step.tool_name in ("read_file", "write_file", "replace_in_file", "edit_lines"):
+            raw_path = step.kwargs.get("path", "")
+            if isinstance(raw_path, str) and raw_path:
+                ext = Path(raw_path).suffix.lower()
+                if ext and workspace_exts and ext not in workspace_exts:
+                    errors.append(
+                        f"Step {i} ({step.tool_name!r}): path {raw_path!r} "
+                        f"has extension {ext!r} which does not exist in this "
+                        f"workspace. Use search_code to find the correct path."
                     )
 
     # Read-before-write: any destructive write tool must be preceded by at

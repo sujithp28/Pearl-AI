@@ -838,6 +838,32 @@ class AutonomousExecutor:
 
         return report
 
+    @staticmethod
+    def _recovery_suggestion(tool_name: str, exc: Exception) -> str:
+        """
+        Return a one-sentence hint the replanner can include in the next plan.
+
+        Kept narrow: only produces suggestions for failure modes that are both
+        common (file not found, wrong extension, permission denied) and where a
+        specific next-step exists. Everything else returns an empty string so
+        the replanner isn't polluted with generic advice.
+        """
+        msg = str(exc).lower()
+        if tool_name in ("read_file", "write_file", "replace_in_file", "edit_lines"):
+            if "no such file" in msg or "not found" in msg or "does not exist" in msg:
+                return (
+                    "The target file was not found. Use search_code to locate "
+                    "the correct path before attempting another file operation."
+                )
+            if "permission" in msg or "access" in msg or "workspace" in msg.lower():
+                return (
+                    "The path is outside the workspace boundary. "
+                    "Use list_files to discover valid paths."
+                )
+        if tool_name == "search_code" and ("invalid" in msg or "regex" in msg):
+            return "The search pattern was invalid. Simplify the pattern and retry."
+        return ""
+
     def _execute(
         self,
         prompt: str,
@@ -1092,6 +1118,7 @@ class AutonomousExecutor:
                 )
 
                 try:
+                    suggestion = self._recovery_suggestion(tool_call.tool_name, exc)
                     revised = self.planner.replan(
                         prompt,
                         completed=completed_for_replan,
@@ -1099,6 +1126,8 @@ class AutonomousExecutor:
                             "tool": tool_call.tool_name,
                             "arguments": tool_call.kwargs,
                             "error": error,
+                            "error_type": error_type,
+                            **({"suggestion": suggestion} if suggestion else {}),
                         },
                         cancel_check=self.is_cancelled,
                         # Pass the 1-indexed replan number so the confidence

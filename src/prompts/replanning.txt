@@ -59,6 +59,19 @@ The step that just failed:
 
 {failed_step}
 
+Recovery guidance (if present, follow this before proposing any write step):
+
+If the failed step tried to read or write a file that was not found,
+use search_code to locate the correct path first. Do NOT guess paths —
+only reference files you have confirmed exist via search or list_files.
+
+If the failed step referenced a file with an extension that does not
+exist in this workspace (e.g. a .java file in a Python project), the
+path was hallucinated. Use search_code or list_files to find what
+actually exists before proceeding.
+
+{recovery_hint}
+
 Return EXACTLY one object in this schema:
 
 {{
