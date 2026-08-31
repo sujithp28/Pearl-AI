@@ -980,7 +980,7 @@ async function onResult(d, grp, map) {
     const fail = r.steps?.find(s => !s.succeeded);
     addErr(fail?.error || `Stopped: ${r.stop_reason}`);
   } else {
-    const txt = bestOutput(r.steps);
+    const txt = r.final_answer || bestOutput(r.steps);
     if (txt) { const { setText } = addPearlBubble(); setText(txt, false); saveMsg('assistant', txt); }
   }
 }
@@ -1018,7 +1018,8 @@ async function approve(card) {
     card.remove();
     if (r.steps !== undefined) addResultCard(r);
     else addErr(r.error || 'Failed.');
-    saveMsg('system','[Changes approved]');
+    if (r.final_answer) { const { setText } = addPearlBubble(); setText(r.final_answer, false); saveMsg('assistant', r.final_answer); }
+    else saveMsg('system','[Changes approved]');
   } catch (e) { addErr(e.message); }
 }
 async function reject(card) {

@@ -59,6 +59,23 @@ like /tmp, /home, /etc, /var, or "..". Such a step is rejected before
 it runs and fails the plan — if the user asks for a file "anywhere"
 or does not say where, put it in the workspace root.
 
+REPOSITORY QUESTIONS — when the answer depends on the user's workspace:
+
+- Do NOT invent file paths. Before reading any file whose exact path
+  you do not know from the context above, add a search_code or
+  list_directory step first to discover the real path.
+- Pattern: search → identify actual file → read file.
+- Never assume a file exists without confirming it via search or list.
+
+WEB QUESTIONS — when the user asks for:
+  latest / current / recent / online / external information,
+  documentation that may have changed, or facts from the internet:
+- Use the web_context tool. Do not answer solely from training knowledge.
+
+TOOL RESULTS ARE EVIDENCE:
+- Do not claim a step succeeded if it failed.
+- Do not invent results that were not returned by the tool.
+
 Available tools:
 
 {tools}

@@ -17,11 +17,14 @@ from typing import Any
 from src.agent.executor import AutonomousExecutor, ExecutionReport, ProgressEvent
 from src.agent.planner import Planner
 from src.agent.dispatcher import ToolDispatcher
+from src.agent.synthesizer import Synthesizer
 from src.config.settings import Settings
 from src.llm.router import ModelRouter
 from src.main import build_registry
 from src.memory import Memory
 from src.prompts.system import build_chat_system_prompt
+from src.repository.context import SemanticContextBuilder
+from src.repository.service import RepositoryService
 from src.tools.checkpoints import CheckpointManager
 from src.tools.repo_tools import build_startup_index
 
@@ -54,9 +57,18 @@ class PearlSession:
 
         self.planner = Planner(self.registry, self.dispatcher, self._planning_llm)
 
+        self._synthesizer = Synthesizer(self._chat_llm)
+
+        # Repository intelligence (M3 stack) — context builder is lazy-built
+        # on first use so it never blocks startup.
+        self._context_service = RepositoryService.get_or_build(self.workspace)
+        self._context_builder = SemanticContextBuilder()
+
         # Active executor — None when idle, set during a run
         self._executor: AutonomousExecutor | None = None
         self._executor_lock = threading.Lock()
+        # Prompt of the current/most-recent run, needed for post-approval synthesis.
+        self._current_prompt: str = ""
 
         # Build startup index in background
         threading.Thread(
@@ -173,10 +185,13 @@ class PearlSession:
                 self.dispatcher,
                 on_progress=on_progress,
                 checkpoints=self.checkpoints,
+                context_builder=self._context_builder,
+                context_service=self._context_service,
             )
 
             with self._executor_lock:
                 self._executor = executor
+                self._current_prompt = prompt
 
             try:
                 report = executor.run(prompt)
@@ -194,15 +209,20 @@ class PearlSession:
                 )
                 return
 
+            result = _report_to_dict(report)
+            if report.stop_reason != "awaiting_approval":
+                result["final_answer"] = self._synthesizer.synthesize(prompt, report)
+
             asyncio.run_coroutine_threadsafe(
-                event_queue.put({"type": "result", "report": _report_to_dict(report)}),
+                event_queue.put({"type": "result", "report": result}),
                 _get_loop(),
             )
 
             if report.stop_reason != "awaiting_approval":
+                final_ans = result.get("final_answer", "")
                 self.memory.record_turn(
                     "agent",
-                    f"Completed ({report.stop_reason}): {len(report.steps)} step(s).",
+                    final_ans or f"Completed ({report.stop_reason}): {len(report.steps)} step(s).",
                 )
                 with self._executor_lock:
                     self._executor = None
@@ -214,6 +234,7 @@ class PearlSession:
             if self._executor is None or not self._executor.is_awaiting_approval():
                 return {"error": "No run awaiting approval."}
             executor = self._executor
+            prompt = self._current_prompt
 
         # Capture before apply_all() clears staging
         planned = list(executor.patch_manager.affected_files())
@@ -226,11 +247,13 @@ class PearlSession:
         result = _report_to_dict(report)
 
         if report.stop_reason not in ("awaiting_approval", "rejected", "cancelled"):
+            result["final_answer"] = self._synthesizer.synthesize(prompt, report)
             with self._executor_lock:
                 self._executor = None
+            final_ans = result.get("final_answer", "")
             self.memory.record_turn(
                 "agent",
-                f"Approved. Completed ({report.stop_reason}): {len(report.steps)} step(s).",
+                final_ans or f"Approved. Completed ({report.stop_reason}): {len(report.steps)} step(s).",
             )
             result["verification"] = _run_verification(self.workspace, planned)
 
