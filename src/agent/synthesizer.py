@@ -41,26 +41,33 @@ def _truncate(text: str, limit: int) -> str:
 
 def _format_results(report: "ExecutionReport") -> str:
     """
-    Build a compact evidence block from succeeded tool steps.
-    Excludes 'none' steps (conversational no-ops).
-    """
-    succeeded = [
-        s for s in report.steps
-        if s.succeeded and s.tool_name != "none"
-    ]
+    Build a compact evidence block from tool steps.
 
-    if not succeeded:
+    Succeeded steps show their result. Failed steps are labelled [FAILED]
+    so the synthesizer knows what was NOT accomplished. 'none' steps
+    (conversational no-ops) are excluded.
+    """
+    meaningful = [s for s in report.steps if s.tool_name != "none"]
+
+    if not meaningful:
         return "(No tools were used — respond conversationally.)"
 
-    # Most recent results last (execution order), capped to _MAX_RESULTS.
-    capped = succeeded[-_MAX_RESULTS:]
+    # Cap to _MAX_RESULTS most-recent steps (succeeded + failed combined).
+    capped = meaningful[-_MAX_RESULTS:]
     parts: list[str] = []
     for step in capped:
-        result_text = str(step.result) if step.result is not None else step.summary
-        parts.append(
-            f"Tool: {step.tool_name}\n"
-            f"Result: {_truncate(result_text, _MAX_RESULT_CHARS)}"
-        )
+        if step.succeeded:
+            result_text = str(step.result) if step.result is not None else step.summary
+            parts.append(
+                f"Tool: {step.tool_name}\n"
+                f"Result: {_truncate(result_text, _MAX_RESULT_CHARS)}"
+            )
+        else:
+            error_text = step.error or step.summary or "unknown error"
+            parts.append(
+                f"Tool: {step.tool_name} [FAILED]\n"
+                f"Error: {_truncate(error_text, 400)}"
+            )
 
     return "\n\n---\n\n".join(parts)
 
@@ -77,18 +84,45 @@ class Synthesizer:
         self.client = client
         self._prompt_template = _PROMPT_FILE.read_text(encoding="utf-8")
 
-    def synthesize(self, user_prompt: str, report: "ExecutionReport") -> str:
+    def synthesize(
+        self,
+        user_prompt: str,
+        report: "ExecutionReport",
+        verification: "dict | None" = None,
+    ) -> str:
         """
         Return a Markdown answer grounded in report's tool results.
+
+        Parameters
+        ----------
+        user_prompt:
+            The original user request.
+        report:
+            Execution report; both succeeded and failed steps are included
+            in the evidence block so the synthesizer knows what was not done.
+        verification:
+            Optional post-approval verification data (test run, git status).
+            When present, it is appended to the prompt so the synthesizer
+            can confirm whether changes landed correctly.
 
         Returns an empty string on failure so callers can fall back
         gracefully — never raises.
         """
         tool_results = _format_results(report)
 
+        verification_section = ""
+        if verification:
+            status = verification.get("status", "unknown")
+            detail = verification.get("detail") or verification.get("summary") or ""
+            verification_section = (
+                f"\nVerification result: {status}"
+                + (f"\n{_truncate(str(detail), 600)}" if detail else "")
+            )
+
         prompt = self._prompt_template.format(
             user_prompt=user_prompt,
             tool_results=tool_results,
+            verification_section=verification_section,
         )
 
         try:

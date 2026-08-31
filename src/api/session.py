@@ -94,40 +94,34 @@ class PearlSession:
         Yield (event_type, data) tuples for a chat message.
         event_type is "chunk" or "done".
         """
-        import os
-        old_cwd = os.getcwd()
-        os.chdir(self.workspace)
+        history = self.memory.recent_messages(limit=Settings.CHAT_HISTORY_TURNS)
+        self.memory.record_turn("user", message)
+
+        chunks: list[str] = []
         try:
-            history = self.memory.recent_messages(limit=Settings.CHAT_HISTORY_TURNS)
-            self.memory.record_turn("user", message)
+            for chunk in self._chat_llm.generate_stream(
+                message,
+                history=history,
+                system=build_chat_system_prompt(str(self.workspace)),
+            ):
+                chunks.append(chunk)
+                yield "chunk", chunk
 
-            chunks: list[str] = []
-            try:
-                for chunk in self._chat_llm.generate_stream(
-                    message,
-                    history=history,
-                    system=build_chat_system_prompt(str(self.workspace)),
-                ):
-                    chunks.append(chunk)
-                    yield "chunk", chunk
+            response = "".join(chunks)
+            self.memory.record_turn("agent", response)
+            yield "done", response
 
-                response = "".join(chunks)
-                self.memory.record_turn("agent", response)
-                yield "done", response
-
-            except Exception as exc:
-                msg = str(exc)
-                if "credentials" in msg.lower() or "api_key" in msg.lower() or "not configured" in msg.lower():
-                    err = (
-                        "Pearl is not connected to a model. "
-                        "Open Settings to choose a provider, or add the "
-                        "appropriate key to your .env file and restart."
-                    )
-                else:
-                    err = f"LLM error: {msg}"
-                yield "error", err
-        finally:
-            os.chdir(old_cwd)
+        except Exception as exc:
+            msg = str(exc)
+            if "credentials" in msg.lower() or "api_key" in msg.lower() or "not configured" in msg.lower():
+                err = (
+                    "Pearl is not connected to a model. "
+                    "Open Settings to choose a provider, or add the "
+                    "appropriate key to your .env file and restart."
+                )
+            else:
+                err = f"LLM error: {msg}"
+            yield "error", err
 
     # -------------------------------------------------------------- autonomous
 
@@ -247,7 +241,12 @@ class PearlSession:
         result = _report_to_dict(report)
 
         if report.stop_reason not in ("awaiting_approval", "rejected", "cancelled"):
-            result["final_answer"] = self._synthesizer.synthesize(prompt, report)
+            # Run verification first so synthesis can incorporate the outcome.
+            verification = _run_verification(self.workspace, planned)
+            result["verification"] = verification
+            result["final_answer"] = self._synthesizer.synthesize(
+                prompt, report, verification=verification
+            )
             with self._executor_lock:
                 self._executor = None
             final_ans = result.get("final_answer", "")
@@ -255,7 +254,6 @@ class PearlSession:
                 "agent",
                 final_ans or f"Approved. Completed ({report.stop_reason}): {len(report.steps)} step(s).",
             )
-            result["verification"] = _run_verification(self.workspace, planned)
 
         return result
 

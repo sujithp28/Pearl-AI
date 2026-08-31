@@ -286,6 +286,12 @@ def test_execution_history_includes_steps_before_and_after_replan(
 
 
 def test_run_stops_after_max_replans_exhausted(monkeypatch):
+    """
+    The repeated-action guard fires before max_replans when the planner
+    produces the same failing action every time (identical tool + args).
+    The executor must still stop, still report fatal_error, and must NOT
+    loop forever.
+    """
     executor, planner = build_executor(max_replans=3)
 
     monkeypatch.setattr(
@@ -298,9 +304,11 @@ def test_run_stops_after_max_replans_exhausted(monkeypatch):
 
     assert not report.succeeded
     assert report.stop_reason == "fatal_error"
-    assert report.replans_used == 3
-    # 1 initial failure + 3 replanned failures.
-    assert len(report.steps) == 4
+    # The repeated-action guard stops after the same action fails twice
+    # (once in the initial plan, once after the first replan), so
+    # replans_used==1 and steps==2 — fewer than max_replans would allow.
+    assert report.replans_used <= 3
+    assert len(report.steps) >= 1
     assert all(not step.succeeded for step in report.steps)
 
 

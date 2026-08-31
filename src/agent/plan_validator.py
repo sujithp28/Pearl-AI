@@ -195,6 +195,25 @@ def validate_plan(steps: list[ToolCall]) -> None:
                 "prior read_file step in this plan."
             )
 
+    # Duplicate write detection: the same path written by more than one step
+    # indicates a conflicting plan (second write would silently clobber the
+    # first).  create_file is included because creating the same file twice
+    # is equally nonsensical.
+    _WRITE_TOOLS: frozenset[str] = DESTRUCTIVE_WRITE_TOOLS | frozenset({"create_file"})
+    write_paths: dict[str, int] = {}
+    for i, step in enumerate(steps, 1):
+        if step.tool_name in _WRITE_TOOLS:
+            path = step.kwargs.get("path", "")
+            if isinstance(path, str) and path:
+                if path in write_paths:
+                    errors.append(
+                        f"Step {i} ({step.tool_name!r}): path {path!r} is "
+                        f"already written at step {write_paths[path]}. "
+                        "Remove the duplicate write."
+                    )
+                else:
+                    write_paths[path] = i
+
     if errors:
         raise PlanValidationError("; ".join(errors))
 

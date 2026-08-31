@@ -86,13 +86,42 @@ class TestConversationalPath:
         prompt = client.generate.call_args[0][0]
         assert "No tools were needed" in prompt or "conversationally" in prompt
 
-    def test_empty_succeeded_steps_signals_conversational(self):
-        """When all steps failed, _format_results signals no-tools path."""
+    def test_all_none_steps_signals_conversational(self):
+        """When all steps are 'none', _format_results signals conversational."""
+        report = _report(_step("none"))
+        text = _format_results(report)
+        assert "No tools were used" in text or "No tools were needed" in text or "conversationally" in text
+
+
+class TestFailedStepsInEvidence:
+    def test_failed_step_labelled_in_evidence(self):
+        """Failed steps must appear in the evidence block with [FAILED] label."""
+        failed = _step("write_file", error="permission denied", succeeded=False)
+        failed.error = "permission denied"
+        report = _report(failed)
+        text = _format_results(report)
+        assert "[FAILED]" in text
+        assert "permission denied" in text
+
+    def test_mixed_success_and_failure_both_included(self):
+        """Both succeeded and failed steps appear in the evidence block."""
+        ok = _step("read_file", result="content here")
+        fail = _step("write_file", error="disk full", succeeded=False)
+        fail.error = "disk full"
+        report = _report(ok, fail)
+        text = _format_results(report)
+        assert "content here" in text
+        assert "[FAILED]" in text
+        assert "disk full" in text
+
+    def test_only_failed_steps_not_conversational(self):
+        """When only failed steps exist, we still show them (not the no-tools message)."""
         failed = _step("read_file", error="file not found", succeeded=False)
         failed.error = "file not found"
         report = _report(failed)
         text = _format_results(report)
-        assert "No tools were used" in text or "No tools were needed" in text
+        assert "[FAILED]" in text
+        assert "No tools were used" not in text and "No tools were needed" not in text
 
 
 # ---------------------------------------------------------------------------
@@ -204,3 +233,50 @@ class TestRepositoryContextWiring:
         )
         result = executor._build_workspace_context("prompt")
         assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# 6. Verification data reaches synthesis (G2)
+# ---------------------------------------------------------------------------
+
+class TestVerificationPassedToSynthesis:
+    def test_verification_status_included_in_prompt(self):
+        """When verification is passed, its status must appear in the synthesis prompt."""
+        client = _mock_client("Done.")
+        syn = Synthesizer(client)
+        report = _report(_step("write_file", result="written"))
+        verification = {"status": "SUCCESS", "detail": "All tests passed."}
+
+        syn.synthesize("fix the bug", report, verification=verification)
+
+        prompt = client.generate.call_args[0][0]
+        assert "SUCCESS" in prompt
+        assert "All tests passed" in prompt
+
+    def test_no_verification_omits_section(self):
+        """When verification is None, the prompt must not contain a verification header."""
+        client = _mock_client("Done.")
+        syn = Synthesizer(client)
+        report = _report(_step("read_file", result="content"))
+
+        syn.synthesize("explain code", report, verification=None)
+
+        prompt = client.generate.call_args[0][0]
+        # The verification_section placeholder should be empty — no stray text.
+        assert "Verification result:" not in prompt
+
+    def test_verification_failure_included(self):
+        """A FAILED verification must appear in the prompt so the model can report it."""
+        client = _mock_client("The tests failed.")
+        syn = Synthesizer(client)
+        report = _report(_step("write_file", result="written"))
+        verification = {
+            "status": "FAILED",
+            "detail": "2 tests failed: test_auth, test_login",
+        }
+
+        syn.synthesize("implement login", report, verification=verification)
+
+        prompt = client.generate.call_args[0][0]
+        assert "FAILED" in prompt
+        assert "test_auth" in prompt

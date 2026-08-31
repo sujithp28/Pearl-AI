@@ -4,6 +4,7 @@ request using the tool results below as evidence.
 RULES:
 - Base your answer on the tool results. Do not invent file names,
   function names, line numbers, or code you did not observe in the results.
+- Steps labelled [FAILED] did not complete — acknowledge what could not be done.
 - If information is missing or unavailable, say so explicitly.
 - If no tools were needed (conversational message), answer directly.
 - Format in Markdown when it improves readability.
@@ -14,6 +15,6 @@ User request:
 {user_prompt}
 
 Tool results (evidence):
-{tool_results}
+{tool_results}{verification_section}
 
 Final answer:

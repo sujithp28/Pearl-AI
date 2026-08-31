@@ -391,7 +391,10 @@ class TestIT3ReplanConfidence:
 
         monkeypatch.setattr(planner_module, "score_plan", _spy)
 
-        # Three plans: boom, boom, _add
+        # Two plans: boom, boom.  The repeated-action guard fires after the second
+        # _boom failure (same tool + args) and stops execution without reaching the
+        # third plan.  The key invariant under test is that replans_used increments
+        # correctly in each score_plan call.
         monkeypatch.setattr(
             planner.client,
             "generate_json",
@@ -402,12 +405,13 @@ class TestIT3ReplanConfidence:
             ),
         )
 
-        report = executor.run("fail twice then recover")
+        report = executor.run("fail twice, abort via repeated-action guard")
 
-        assert report.succeeded
-        # Calls: initial (0), replan-1 (1), replan-2 (2)
-        assert captured == [0, 1, 2], (
-            f"Expected replans_used sequence [0, 1, 2], got {captured}"
+        assert not report.succeeded
+        assert report.stop_reason == "fatal_error"
+        # Calls: initial plan (0), replan-1 (1). Guard fires; no third plan.
+        assert captured == [0, 1], (
+            f"Expected replans_used sequence [0, 1], got {captured}"
         )
 
 

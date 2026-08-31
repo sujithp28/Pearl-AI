@@ -51,6 +51,12 @@ logger = logging.getLogger(__name__)
 _llm_lock = threading.Lock()
 _llm: Any = None  # llama_cpp.Llama, set on first use
 
+# ponytail: global lock — llama_cpp.Llama is not thread-safe for concurrent
+# inference calls. This serializes all complete()/complete_stream() calls so
+# planning and chat never overlap on the same object. Upgrade to per-session
+# locks if multi-user throughput ever matters.
+_inference_lock = threading.Lock()
+
 
 def _get_shared_llm(model_path: str, n_ctx: int, n_threads: int) -> Any:
     global _llm
@@ -197,12 +203,13 @@ class LocalInferenceProvider(LLMProvider):
         max_tokens: int,
     ) -> str:
         llm = self._get_llm()
-        result = llm.create_chat_completion(
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stream=False,
-        )
+        with _inference_lock:
+            result = llm.create_chat_completion(
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=False,
+            )
         content = result["choices"][0]["message"].get("content", "")
         if not content:
             raise ValueError("Local model returned an empty response.")
@@ -215,12 +222,13 @@ class LocalInferenceProvider(LLMProvider):
         max_tokens: int,
     ) -> Iterator[str]:
         llm = self._get_llm()
-        for chunk in llm.create_chat_completion(
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stream=True,
-        ):
-            delta = chunk["choices"][0]["delta"]
-            if "content" in delta and delta["content"]:
-                yield delta["content"]
+        with _inference_lock:
+            for chunk in llm.create_chat_completion(
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True,
+            ):
+                delta = chunk["choices"][0]["delta"]
+                if "content" in delta and delta["content"]:
+                    yield delta["content"]

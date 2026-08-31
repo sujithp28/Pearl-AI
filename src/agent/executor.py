@@ -615,13 +615,7 @@ class AutonomousExecutor:
         workspace_context = self._build_workspace_context(prompt)
 
         try:
-            pending: list[ToolCall] = list(
-                self.planner.plan(
-                    prompt,
-                    workspace_context=workspace_context,
-                    cancel_check=self.is_cancelled,
-                )
-            )
+            pending = self._plan_with_retry(prompt, workspace_context, events, steps)
         except LLMCancelled:
             self._check_cancelled(events, steps)
             return ExecutionReport(
@@ -630,6 +624,25 @@ class AutonomousExecutor:
                 replans_used=0,
                 events=events,
                 reflection=_reflect(steps, "cancelled", 0),
+            )
+        except Exception as plan_exc:
+            # Both planning attempts failed — surface the error clearly.
+            logger.error("Planning failed after retry: %s", plan_exc)
+            self._emit(
+                events,
+                "task_completed",
+                current_step=0,
+                total_steps=0,
+                current_action=self._personality.format(EventKind.FAILURE),
+            )
+            set_active_patch_manager(None)
+            set_active_command_approver(None)
+            return ExecutionReport(
+                steps=steps,
+                stop_reason="fatal_error",
+                replans_used=1,
+                events=events,
+                reflection=_reflect(steps, "fatal_error", 1),
             )
 
         self._initial_confidence_score = self.planner.last_confidence_score
@@ -838,6 +851,65 @@ class AutonomousExecutor:
 
         return report
 
+    def _plan_with_retry(
+        self,
+        prompt: str,
+        workspace_context: str,
+        events: list[ProgressEvent],
+        steps: list[ExecutionStep],
+    ) -> list[ToolCall]:
+        """
+        Attempt to produce a valid plan with one retry on failure.
+
+        If the first attempt fails (bad JSON, invalid tool, validation
+        error), the error is fed back to the model as a replanning prompt
+        and one more attempt is made.  A second failure propagates to the
+        caller.
+
+        ``LLMCancelled`` is never retried — it propagates immediately.
+        """
+        try:
+            return list(self.planner.plan(
+                prompt,
+                workspace_context=workspace_context,
+                cancel_check=self.is_cancelled,
+            ))
+        except LLMCancelled:
+            raise
+        except Exception as first_exc:
+            logger.warning(
+                "Plan attempt 1 failed (%s: %s); retrying with error feedback.",
+                type(first_exc).__name__,
+                first_exc,
+            )
+            self._log_structured(
+                "plan_retry",
+                error=str(first_exc)[:200],
+                error_type=type(first_exc).__name__,
+            )
+            self._emit(
+                events,
+                "replanning",
+                current_step=0,
+                total_steps=0,
+                current_action=self._personality.format(EventKind.REPLANNING),
+            )
+            # Feed the validation failure back to the model as a replan prompt.
+            return list(self.planner.replan(
+                prompt,
+                completed=[],
+                failed={
+                    "tool": "planning",
+                    "error": str(first_exc)[:400],
+                    "error_type": "validation",
+                    "suggestion": (
+                        "Your previous plan was malformed or invalid. "
+                        "Return a fresh, correctly structured JSON plan."
+                    ),
+                },
+                cancel_check=self.is_cancelled,
+            ))
+
     @staticmethod
     def _recovery_suggestion(tool_name: str, exc: Exception) -> str:
         """
@@ -893,6 +965,11 @@ class AutonomousExecutor:
         # After a replan the new ToolCall objects have different ids, so
         # old retry counts for a failed step cannot pollute the new plan.
         _retry_counts: dict[int, int] = {}
+
+        # Counts how many times each (tool_name, serialised_kwargs) pair
+        # has failed with a fatal error across all replans.  When the same
+        # action fails twice, replanning cannot help — stop to prevent loops.
+        _failed_action_counts: dict[tuple[str, str], int] = {}
 
         while pending:
             iteration += 1
@@ -1052,6 +1129,60 @@ class AutonomousExecutor:
                     total_steps=iteration + len(pending),
                     current_action=self._personality.format(EventKind.WARNING),
                 )
+
+                # Repeated-action guard: if the same tool+arguments fails
+                # twice with a fatal error, replanning cannot help — the
+                # model would just produce the same broken step again.
+                try:
+                    _action_key = (
+                        tool_call.tool_name,
+                        json.dumps(
+                            {k: str(v) for k, v in sorted(tool_call.kwargs.items())},
+                            sort_keys=True,
+                        ),
+                    )
+                except Exception:
+                    _action_key = (tool_call.tool_name, str(tool_call.kwargs))
+
+                _failed_action_counts[_action_key] = (
+                    _failed_action_counts.get(_action_key, 0) + 1
+                )
+
+                if _failed_action_counts[_action_key] >= 2:
+                    logger.warning(
+                        "Step %d: '%s' with the same arguments has failed "
+                        "%d times; aborting to prevent a replan loop.",
+                        iteration,
+                        tool_call.tool_name,
+                        _failed_action_counts[_action_key],
+                    )
+                    self._log_structured(
+                        "repeated_action_abort",
+                        iteration=iteration,
+                        tool=tool_call.tool_name,
+                        fail_count=_failed_action_counts[_action_key],
+                    )
+
+                    awaiting = self._check_awaiting_approval(
+                        prompt, pending, steps, events,
+                        completed_for_replan, replans_used, iteration,
+                    )
+                    if awaiting is not None:
+                        return awaiting
+
+                    self._emit(
+                        events,
+                        "task_completed",
+                        current_step=len(steps),
+                        total_steps=len(steps),
+                        current_action=self._personality.format(EventKind.FAILURE),
+                    )
+                    return ExecutionReport(
+                        steps=steps,
+                        stop_reason="fatal_error",
+                        replans_used=replans_used,
+                        events=events,
+                    )
 
                 if replans_used >= self.max_replans:
                     logger.info(
