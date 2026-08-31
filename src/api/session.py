@@ -105,11 +105,11 @@ class PearlSession:
 
             except Exception as exc:
                 msg = str(exc)
-                if "credentials" in msg.lower() or "api_key" in msg.lower():
+                if "credentials" in msg.lower() or "api_key" in msg.lower() or "not configured" in msg.lower():
                     err = (
-                        "Pearl is not configured: no LLM API key found. "
-                        "Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY "
-                        "in your .env file and restart."
+                        "Pearl is not connected to a model. "
+                        "Open Settings to choose a provider, or add the "
+                        "appropriate key to your .env file and restart."
                     )
                 else:
                     err = f"LLM error: {msg}"
@@ -181,8 +181,15 @@ class PearlSession:
             try:
                 report = executor.run(prompt)
             except Exception as exc:
+                msg = str(exc)
+                if any(k in msg.lower() for k in ("credentials", "api_key", "not configured", "authentication")):
+                    msg = (
+                        "Pearl is not connected to a model. "
+                        "Open Settings to choose a provider, or add the "
+                        "appropriate key to your .env file and restart."
+                    )
                 asyncio.run_coroutine_threadsafe(
-                    event_queue.put({"type": "error", "message": str(exc)}),
+                    event_queue.put({"type": "error", "message": msg}),
                     _get_loop(),
                 )
                 return
@@ -208,20 +215,26 @@ class PearlSession:
                 return {"error": "No run awaiting approval."}
             executor = self._executor
 
+        # Capture before apply_all() clears staging
+        planned = list(executor.patch_manager.affected_files())
+
         try:
             report = executor.approve()
         except Exception as exc:
             return {"error": str(exc)}
 
-        if report.stop_reason != "awaiting_approval":
+        result = _report_to_dict(report)
+
+        if report.stop_reason not in ("awaiting_approval", "rejected", "cancelled"):
             with self._executor_lock:
                 self._executor = None
             self.memory.record_turn(
                 "agent",
                 f"Approved. Completed ({report.stop_reason}): {len(report.steps)} step(s).",
             )
+            result["verification"] = _run_verification(self.workspace, planned)
 
-        return _report_to_dict(report)
+        return result
 
     def reject(self) -> dict[str, Any]:
         with self._executor_lock:
@@ -297,3 +310,25 @@ def _safe(v: Any) -> Any:
     if isinstance(v, (str, int, float, bool, type(None))):
         return v
     return str(v)
+
+
+def _run_verification(workspace: Path, planned_files: list[str]) -> dict[str, Any]:
+    try:
+        from src.agent.verification import VerificationEngine
+        vr = VerificationEngine(workspace_root=workspace).verify(planned_files)
+        return {
+            "status": vr.status.value,
+            "risk": vr.risk.value,
+            "confidence": round(vr.confidence, 2),
+            "planned_files": list(vr.planned_files),
+            "changed_files": list(vr.changed_files),
+            "unexpected_files": list(vr.unexpected_files),
+            "tests_run": vr.tests_run,
+            "tests_passed": vr.tests_passed,
+            "tests_failed": vr.tests_failed,
+            "diff_summary": vr.diff_summary,
+            "evidence": list(vr.evidence),
+        }
+    except Exception as exc:
+        logger.warning("VerificationEngine failed (non-fatal): %s", exc)
+        return {"status": "TOOL_SUCCESS_BUT_TASK_UNVERIFIED", "error": str(exc)}

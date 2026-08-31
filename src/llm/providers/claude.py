@@ -26,22 +26,55 @@ class ClaudeProvider(LLMProvider):
         timeout: float = 60.0,
     ) -> None:
         try:
-            import anthropic
+            import anthropic as _anthropic
         except ImportError as exc:
             raise ImportError(
                 "The 'anthropic' package is required to use the Claude "
                 "provider. Install it with `pip install anthropic`."
             ) from exc
 
-        self.client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+        self._anthropic = _anthropic
+        self._api_key = api_key
+        self._timeout = timeout
         self.model = model
+        self._client: Any = None  # lazy — built on first use
 
         self.TRANSIENT_ERRORS = (
-            anthropic.APIConnectionError,
-            anthropic.APITimeoutError,
-            anthropic.RateLimitError,
-            anthropic.InternalServerError,
+            _anthropic.APIConnectionError,
+            _anthropic.APITimeoutError,
+            _anthropic.RateLimitError,
+            _anthropic.InternalServerError,
         )
+
+    def _get_client(self) -> Any:
+        if self._client is None:
+            if not self._api_key:
+                raise ValueError(
+                    "Anthropic API key is not configured. "
+                    "Set ANTHROPIC_API_KEY in your .env file."
+                )
+            self._client = self._anthropic.Anthropic(
+                api_key=self._api_key, timeout=self._timeout
+            )
+        return self._client
+
+    @staticmethod
+    def _split_system(
+        messages: list[dict[str, Any]],
+    ) -> tuple[str | None, list[dict[str, Any]]]:
+        """
+        Anthropic's Messages API requires system content as a separate
+        `system` parameter — passing it as a role in the messages list
+        causes a validation error. Extract it here before dispatch.
+        """
+        system: str | None = None
+        filtered: list[dict[str, Any]] = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                system = msg["content"]
+            else:
+                filtered.append(msg)
+        return system, filtered
 
     def complete(
         self,
@@ -49,12 +82,17 @@ class ClaudeProvider(LLMProvider):
         temperature: float,
         max_tokens: int,
     ) -> str:
-        response = self.client.messages.create(
+        system, user_msgs = self._split_system(messages)
+        kwargs: dict[str, Any] = dict(
             model=self.model,
             max_tokens=max_tokens,
             temperature=temperature,
-            messages=messages,
+            messages=user_msgs,
         )
+        if system:
+            kwargs["system"] = system
+
+        response = self._get_client().messages.create(**kwargs)
 
         if not response.content:
             raise ValueError("No content returned from model.")
@@ -72,11 +110,16 @@ class ClaudeProvider(LLMProvider):
         temperature: float,
         max_tokens: int,
     ) -> Iterator[str]:
-        with self.client.messages.stream(
+        system, user_msgs = self._split_system(messages)
+        kwargs: dict[str, Any] = dict(
             model=self.model,
             max_tokens=max_tokens,
             temperature=temperature,
-            messages=messages,
-        ) as stream:
+            messages=user_msgs,
+        )
+        if system:
+            kwargs["system"] = system
+
+        with self._get_client().messages.stream(**kwargs) as stream:
             for text_chunk in stream.text_stream:
                 yield text_chunk

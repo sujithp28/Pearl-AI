@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -1042,6 +1043,7 @@ def test_execute_shell_step_pauses_for_approval(monkeypatch, workspace):
     assert report.steps[0].succeeded
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="touch is a POSIX command")
 def test_approving_runs_the_staged_command_and_completes(monkeypatch, workspace):
     executor, planner = build_executor()
     marker = workspace / "marker.txt"
@@ -1096,6 +1098,7 @@ def test_rejecting_discards_the_staged_command_without_running_it(
     assert not executor.command_approver.has_pending()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="touch is a POSIX command")
 def test_file_edit_and_shell_command_pause_in_the_same_batch(monkeypatch, workspace):
     executor, planner = build_executor()
     target = str(workspace / "a.py")

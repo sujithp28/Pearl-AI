@@ -42,10 +42,13 @@ nothing above that point needs to change to swap it in.
 from __future__ import annotations
 
 import contextvars
+import getpass
 import logging
+import platform
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Callable
 
@@ -77,7 +80,7 @@ MAX_TIMEOUT = Settings.SHELL_MAX_TIMEOUT
 # deny-by-default, not block-by-exception.
 DEFAULT_ALLOWED_COMMANDS = frozenset(
     {
-        # Core POSIX utilities
+        # Core POSIX utilities (Linux/macOS)
         "ls",
         "cat",
         "echo",
@@ -131,6 +134,25 @@ DEFAULT_ALLOWED_COMMANDS = frozenset(
         "zip",
         "gzip",
         "gunzip",
+        # Windows native commands
+        "dir",
+        "type",
+        "where",
+        "copy",
+        "move",
+        "del",
+        "ren",
+        "rename",
+        "md",
+        "rd",
+        "xcopy",
+        "robocopy",
+        "attrib",
+        "fc",
+        "more",
+        "cls",
+        "powershell",
+        "pwsh",
         # Version control
         "git",
         # Language toolchains / package managers / test runners
@@ -200,6 +222,12 @@ _DANGEROUS_PATTERNS = [
     re.compile(r"\bchmod\s+-R\s+.*\s+/(\s|$)"),
     re.compile(r"\b(sudo|doas)\b"),
     re.compile(r"\b(shutdown|reboot|poweroff|halt)\b"),
+    # Windows-specific catastrophic patterns
+    re.compile(r"\bformat\s+[a-zA-Z]:"),
+    re.compile(r"\brd\s+(/s\s+)?/[sq]\s+[a-zA-Z]:\\"),
+    re.compile(r"\bdel\s+(/[fsq]\s+)+[a-zA-Z]:\\"),
+    re.compile(r"\breg\s+delete\s+HK(LM|CU|CR|U|CC)"),
+    re.compile(r"\bnet\s+(user|localgroup)\s+.*\s+/add"),
 ]
 
 
@@ -522,7 +550,7 @@ def _run_python_script(
     logger.info("Executing python script: %s", script)
 
     return subprocess.run(
-        ["python3", script],
+        [sys.executable, script],
         shell=False,
         text=True,
         capture_output=True,
@@ -566,7 +594,7 @@ def run_python(
     timeout = min(timeout, MAX_TIMEOUT)
     cpu_seconds, memory_mb = _resolved_limits(cpu_seconds, memory_mb)
 
-    command = f"python3 {script}"
+    command = f"{sys.executable} {script}"
 
     request = ShellCommandRequest(
         command=command,
@@ -671,15 +699,12 @@ def operating_system() -> str:
     """
     Return operating system.
 
-    Runs directly rather than through `execute_shell`: this is a
-    fixed, hardcoded, always-safe introspection command, not an
-    LLM-composed one, so it isn't subject to allowlisting or
-    approval staging — which also means it keeps working (returning
-    a real string, not a "staged for approval" placeholder) during
-    an `AutonomousExecutor` run.
+    Uses the stdlib `platform` module — cross-platform and never
+    requires a shell, so it works on Windows, Linux, and macOS
+    without allowlisting or approval staging.
     """
 
-    return _run_fixed_command("uname -a")
+    return platform.platform()
 
 
 @tool(
@@ -777,11 +802,10 @@ def current_user() -> str:
     """
     Return current user.
 
-    Runs directly rather than through `execute_shell` — see
-    `operating_system`'s docstring for why.
+    Uses `getpass.getuser()` — cross-platform stdlib, no shell needed.
     """
 
-    return _run_fixed_command("whoami")
+    return getpass.getuser()
 
 
 # Maximum bytes of pytest output included in the structured result —
@@ -866,7 +890,7 @@ def run_tests(
     logger.info("Running tests in: %s", path)
 
     proc = subprocess.run(
-        ["pytest", path, "--tb=short", "-q", "--no-header"],
+        [sys.executable, "-m", "pytest", path, "--tb=short", "-q", "--no-header"],
         shell=False,
         text=True,
         capture_output=True,

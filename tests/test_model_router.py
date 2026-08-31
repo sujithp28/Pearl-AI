@@ -65,6 +65,34 @@ class TestOverrideModel:
         monkeypatch.setattr("src.llm.router.Settings.CHAT_MODEL", "gpt-4o-mini")
         assert _override_model("openai", "chat") == "gpt-4o-mini"
 
+    # Pearl-specific: each task routes to its own model tier so that
+    # planning uses a more capable model than chat.
+    def test_pearl_chat_routes_to_chat_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("src.llm.router.Settings.PLANNING_MODEL", "")
+        monkeypatch.setattr("src.llm.router.Settings.CHAT_MODEL", "")
+        monkeypatch.setattr(
+            "src.llm.router.Settings.PEARL_INFERENCE_CHAT_MODEL",
+            "anthropic/claude-haiku-test",
+        )
+        assert _override_model("pearl", "chat") == "anthropic/claude-haiku-test"
+
+    def test_pearl_planning_routes_to_plan_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("src.llm.router.Settings.PLANNING_MODEL", "")
+        monkeypatch.setattr("src.llm.router.Settings.CHAT_MODEL", "")
+        monkeypatch.setattr(
+            "src.llm.router.Settings.PEARL_INFERENCE_PLAN_MODEL",
+            "anthropic/claude-sonnet-test",
+        )
+        assert _override_model("pearl", "planning") == "anthropic/claude-sonnet-test"
+
+    def test_global_planning_model_overrides_pearl_tier(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # PLANNING_MODEL wins over the pearl-specific tier when explicitly set.
+        monkeypatch.setattr("src.llm.router.Settings.PLANNING_MODEL", "override-model")
+        monkeypatch.setattr("src.llm.router.Settings.CHAT_MODEL", "")
+        assert _override_model("pearl", "planning") == "override-model"
+
 
 # ---------------------------------------------------------------------------
 # ModelRouter
@@ -142,6 +170,40 @@ class TestModelRouter:
         monkeypatch.setattr("src.llm.router.Settings.CHAT_MODEL", "")
         monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "openai")
         assert ModelRouter().all_same_provider() is False
+
+    def test_all_same_provider_false_when_pearl_has_different_model_tiers(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pearl's default uses Haiku for chat and Sonnet for planning —
+        # these are different models so two separate clients must be built.
+        monkeypatch.setattr("src.llm.router.Settings.PLANNING_PROVIDER", "")
+        monkeypatch.setattr("src.llm.router.Settings.CHAT_PROVIDER", "")
+        monkeypatch.setattr("src.llm.router.Settings.PLANNING_MODEL", "")
+        monkeypatch.setattr("src.llm.router.Settings.CHAT_MODEL", "")
+        monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "pearl")
+        monkeypatch.setattr(
+            "src.llm.router.Settings.PEARL_INFERENCE_CHAT_MODEL", "haiku"
+        )
+        monkeypatch.setattr(
+            "src.llm.router.Settings.PEARL_INFERENCE_PLAN_MODEL", "sonnet"
+        )
+        assert ModelRouter().all_same_provider() is False
+
+    def test_all_same_provider_true_when_pearl_models_are_identical(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("src.llm.router.Settings.PLANNING_PROVIDER", "")
+        monkeypatch.setattr("src.llm.router.Settings.CHAT_PROVIDER", "")
+        monkeypatch.setattr("src.llm.router.Settings.PLANNING_MODEL", "")
+        monkeypatch.setattr("src.llm.router.Settings.CHAT_MODEL", "")
+        monkeypatch.setattr("src.llm.router.Settings.LLM_PROVIDER", "pearl")
+        monkeypatch.setattr(
+            "src.llm.router.Settings.PEARL_INFERENCE_CHAT_MODEL", "same-model"
+        )
+        monkeypatch.setattr(
+            "src.llm.router.Settings.PEARL_INFERENCE_PLAN_MODEL", "same-model"
+        )
+        assert ModelRouter().all_same_provider() is True
 
 
 # ---------------------------------------------------------------------------

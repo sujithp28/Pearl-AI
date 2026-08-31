@@ -67,6 +67,15 @@ def _override_model(provider_name: str, task: TaskKind) -> str | None:
     if task == "chat" and Settings.CHAT_MODEL:
         return Settings.CHAT_MODEL
 
+    # Pearl provider routes each task to a dedicated model tier so that
+    # planning uses a more capable model than chat without any per-user config.
+    if provider_name == "pearl":
+        return (
+            Settings.PEARL_INFERENCE_PLAN_MODEL
+            if task == "planning"
+            else Settings.PEARL_INFERENCE_CHAT_MODEL
+        )
+
     return None
 
 
@@ -138,6 +147,12 @@ class ModelRouter:
         the same provider, so callers that already have one ``LLMClient``
         don't need to build a second one.
         """
-        return _effective_provider("planning") == _effective_provider("chat") and not (
-            Settings.PLANNING_MODEL or Settings.CHAT_MODEL
-        )
+        if _effective_provider("planning") != _effective_provider("chat"):
+            return False
+        if Settings.PLANNING_MODEL or Settings.CHAT_MODEL:
+            return False
+        # Pearl uses different model tiers for planning vs chat — separate clients.
+        if _effective_provider("planning") == "pearl":
+            if Settings.PEARL_INFERENCE_PLAN_MODEL != Settings.PEARL_INFERENCE_CHAT_MODEL:
+                return False
+        return True

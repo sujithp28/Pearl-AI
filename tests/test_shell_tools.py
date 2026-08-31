@@ -44,10 +44,12 @@ def test_execute_shell():
     assert result.stdout.strip() == "hello"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="python3 binary not present on Windows")
 def test_which():
     assert which("python3") is not None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="python3 binary not present on Windows")
 def test_command_exists():
     assert is_command_available("python3")
 
@@ -114,6 +116,7 @@ def test_execute_shell_still_runs_ordinary_commands():
     assert result.stdout.strip() == "hello"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="rm is a POSIX command")
 def test_execute_shell_does_not_false_positive_on_ordinary_rm(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
@@ -280,6 +283,7 @@ def test_execute_shell_refuses_command_substitution():
         execute_shell("echo `whoami`")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="VAR=val prefix syntax is POSIX-only")
 def test_execute_shell_allowlist_skips_env_var_assignment_prefix():
     # "FOO=bar git status" — the base command is "git", not "FOO=bar".
     result = execute_shell("FOO=bar echo hi")
@@ -319,6 +323,7 @@ def test_execute_shell_denylist_still_applies_to_an_allowed_command():
 # ---------------------------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX resource limits only")
 def test_execute_shell_passes_preexec_fn_when_limits_requested(monkeypatch):
     captured = {}
 
@@ -347,6 +352,7 @@ def test_execute_shell_omits_preexec_fn_when_no_limits_requested(monkeypatch):
     assert captured["preexec_fn"] is None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX resource limits only")
 def test_execute_shell_uses_settings_default_resource_limits(monkeypatch):
     monkeypatch.setattr(Settings, "SHELL_DEFAULT_CPU_SECONDS", 5)
     monkeypatch.setattr(Settings, "SHELL_DEFAULT_MEMORY_MB", 256)
@@ -382,6 +388,7 @@ def test_execute_shell_cpu_limit_is_actually_enforced():
         )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX resource limits only")
 def test_run_python_passes_preexec_fn_when_limits_requested(tmp_path, monkeypatch):
     script = tmp_path / "ok.py"
     script.write_text("print('hi')\n")

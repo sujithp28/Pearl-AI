@@ -25,6 +25,7 @@ import os
 import stat
 import time
 from pathlib import Path
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -373,6 +374,7 @@ class TestRepositoryScannerBasic:
         result = RepositoryScanner(tmp_path).scan()
         assert result.root == tmp_path.resolve()
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="timer resolution too coarse for single-file scans on Windows")
     def test_scan_duration_is_positive(self, tmp_path: Path) -> None:
         (tmp_path / "f.py").write_text("x", encoding="utf-8")
         result = RepositoryScanner(tmp_path).scan()

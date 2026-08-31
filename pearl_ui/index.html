@@ -496,7 +496,7 @@ body {
 .result-hd { display: flex; align-items: center; gap: 8px; font-weight: 500; margin-bottom: 8px; }
 .result-steps { display: flex; flex-direction: column; gap: 3px; }
 .rs-item { display: flex; align-items: center; gap: 8px; font-size: 12px; font-family: var(--mono); color: var(--tx2); }
-.rs-ok { color: var(--suc); } .rs-fail { color: var(--err); }
+.rs-ok { color: var(--suc); } .rs-fail { color: var(--err); } .rs-warn { color: var(--warn); }
 .rs-txt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* === Error / info === */
@@ -581,6 +581,22 @@ body {
   color: #fff; font-size: 13px; font-weight: 600; transition: background var(--ease);
 }
 .sd-save:hover { background: var(--acc-l); }
+.prov-tiles { display: flex; gap: 8px; }
+.prov-tile {
+  flex: 1; padding: 10px 9px; border-radius: 10px;
+  border: 1.5px solid var(--b2); background: var(--bg);
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; text-align: left;
+  transition: border-color var(--ease), background var(--ease);
+}
+.prov-tile:hover { border-color: var(--b3); background: var(--surf2); }
+.prov-tile.active { border-color: var(--acc); background: var(--acc-dim); }
+.prov-tile.disabled { opacity: .5; cursor: default; }
+.prov-icon { font-size: 17px; line-height: 1; flex-shrink: 0; width: 22px; text-align: center; }
+.prov-name { font-size: 13px; font-weight: 600; color: var(--tx); line-height: 1.2; }
+.prov-status { font-size: 11px; color: var(--tx3); margin-top: 2px; }
+.prov-status.ok { color: var(--suc); }
+.prov-status.warn { color: var(--warn); }
 
 /* === Animations === */
 @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
@@ -645,6 +661,7 @@ button:focus:not(:focus-visible) { outline: none; }
       <div class="sb-footer-row">
         <div id="conn-dot" role="status" aria-live="polite"></div>
         <span id="conn-label" aria-live="polite">Connecting…</span>
+        <span id="provider-badge" style="font-size:11px;color:var(--tx3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:right;padding-right:4px" aria-live="polite"></span>
         <button id="settings-btn" aria-label="Open settings">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
             <circle cx="8" cy="8" r="2.5"/>
@@ -729,6 +746,26 @@ button:focus:not(:focus-visible) { outline: none; }
 <div id="settings-modal" role="dialog" aria-modal="true" aria-labelledby="sd-ttl-el">
   <div id="settings-dlg">
     <h2 class="sd-ttl" id="sd-ttl-el">Settings</h2>
+    <div class="sd-sec" id="prov-sec">
+      <div class="sd-lbl">Model</div>
+      <div class="prov-tiles">
+        <button class="prov-tile" id="prov-pearl" aria-label="Pearl cloud provider" onclick="selectProvider('pearl')">
+          <div class="prov-icon">☁</div>
+          <div>
+            <div class="prov-name">Pearl</div>
+            <div class="prov-status" id="prov-pearl-status">Checking…</div>
+          </div>
+        </button>
+        <button class="prov-tile" id="prov-advanced" aria-label="Advanced: bring your own key" onclick="selectProvider('advanced')">
+          <div class="prov-icon">⚙</div>
+          <div>
+            <div class="prov-name">Advanced</div>
+            <div class="prov-status">BYOK · .env</div>
+          </div>
+        </button>
+      </div>
+      <p class="sd-note" id="prov-note" style="min-height:16px"></p>
+    </div>
     <div class="sd-sec">
       <div class="sd-lbl">Workspace</div>
       <input class="sd-inp" id="sd-ws" type="text" placeholder="/path/to/project" spellcheck="false" aria-label="Workspace path">
@@ -779,6 +816,7 @@ window.addEventListener('DOMContentLoaded', () => {
   renderSidebar();
   wire();
   pollStatus();
+  loadProvider();
   setInterval(pollStatus, POLL_MS);
   resize();
 });
@@ -876,6 +914,7 @@ async function doChat(message) {
   S.ctrl = new AbortController();
   const { setText } = addPearlBubble();
   let full = '';
+  let errored = false;
   try {
     const resp = await fetch('/api/chat', {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -883,11 +922,10 @@ async function doChat(message) {
     });
     for await (const ev of sse(resp)) {
       if (ev.event === 'chunk') { full += ev.data.text || ''; setText(full, true); }
-      else if (ev.event === 'error') { setText(ev.data.text || 'Error.', false); break; }
+      else if (ev.event === 'error') { errored = true; setText(ev.data.text || 'Error.', false); break; }
       else if (ev.event === 'done') break;
     }
-    setText(full, false);
-    saveMsg('assistant', full);
+    if (!errored) { setText(full, false); saveMsg('assistant', full); }
   } catch (e) { if (e.name !== 'AbortError') addErr(e.message); }
   finally { setStreaming(false); }
 }
@@ -1107,6 +1145,19 @@ function addResultCard(r) {
   const ok = r.succeeded;
   const card = mk('div',`result-card ${ok?'ok':'fail'}`);
   const steps = r.steps || [];
+  const vr = r.verification;
+  const vrHtml = vr ? (() => {
+    const st = vr.status || '';
+    const stCls = st === 'SUCCESS' ? 'rs-ok' : (st === 'FAILED' ? 'rs-fail' : 'rs-warn');
+    const conf = vr.confidence != null ? ` · confidence ${Math.round(vr.confidence*100)}%` : '';
+    const risk = vr.risk ? ` · risk ${vr.risk}` : '';
+    const tests = vr.tests_run ? ` · ${vr.tests_passed}/${vr.tests_run} tests passed` : '';
+    const unexpected = vr.unexpected_files?.length ? `<div class="rs-item"><span class="rs-fail" aria-hidden="true">!</span><span class="rs-txt">Unexpected: ${vr.unexpected_files.map(esc).join(', ')}</span></div>` : '';
+    return `<div class="rs-item" style="border-top:1px solid var(--b1);margin-top:6px;padding-top:6px">
+      <span class="${stCls}" aria-hidden="true">⬡</span>
+      <span class="rs-txt">Verification: ${esc(st)}${conf}${risk}${tests}</span>
+    </div>${unexpected}`;
+  })() : '';
   card.innerHTML = `
     <div class="result-hd">
       <span aria-hidden="true">${ok?'✓':'✕'}</span>
@@ -1117,7 +1168,7 @@ function addResultCard(r) {
       <div class="rs-item">
         <span class="${s.succeeded?'rs-ok':'rs-fail'}" aria-hidden="true">${s.succeeded?'✓':'✕'}</span>
         <span class="rs-txt">${esc(toolLabel(s.tool_name))} — ${esc(s.summary||'')}</span>
-      </div>`).join('')}
+      </div>`).join('')}${vrHtml}
     </div>`;
   msgInner.appendChild(card); scrollBot();
 }
@@ -1223,8 +1274,72 @@ function renderSidebar(filter = '') {
   });
 }
 
+// ─── Provider ─────────────────────────────────────────────────
+let S_prov = { provider: 'pearl', configured: false, ollama_running: false };
+
+async function loadProvider() {
+  try {
+    const p = await get('/api/provider');
+    S_prov = p;
+    const badge = g('provider-badge');
+    if (badge) badge.textContent = p.display || p.provider;
+    renderProviderTiles(p);
+  } catch {}
+}
+
+function renderProviderTiles(p) {
+  ['pearl', 'advanced'].forEach(id => {
+    const t = g('prov-' + id);
+    if (t) t.classList.toggle('active', p.provider === id);
+  });
+
+  const pearlSt = g('prov-pearl-status');
+  if (pearlSt) {
+    if (p.configured && p.provider === 'pearl') {
+      pearlSt.textContent = 'Configured';
+      pearlSt.className = 'prov-status ok';
+    } else if (!p.configured && p.provider === 'pearl') {
+      pearlSt.textContent = 'Setup required';
+      pearlSt.className = 'prov-status warn';
+    } else {
+      pearlSt.textContent = p.configured ? '—' : 'Not configured';
+      pearlSt.className = 'prov-status';
+    }
+  }
+
+  const note = g('prov-note');
+  if (note) {
+    if (!p.configured && p.provider === 'pearl') {
+      note.textContent = 'Add PEARL_INFERENCE_API_KEY=<your-openrouter-key> to .env and restart. Get a key at openrouter.ai/keys';
+    } else {
+      note.textContent = '';
+    }
+  }
+}
+
+async function selectProvider(name) {
+  if (name === 'advanced') {
+    const note = g('prov-note');
+    if (note) note.textContent = 'Set PEARL_LLM_PROVIDER and matching credentials in your .env file, then restart.';
+    const pearlT = g('prov-pearl'); if (pearlT) pearlT.classList.remove('active');
+    const adv = g('prov-advanced'); if (adv) adv.classList.add('active');
+    return;
+  }
+  try {
+    const r = await post('/api/provider', { provider: name });
+    if (r.ok) {
+      addInfo(`Model provider: ${r.display}`);
+      await loadProvider();
+    }
+  } catch (e) { addErr(`Could not switch provider: ${e.message}`); }
+}
+
 // ─── Settings ─────────────────────────────────────────────────
-function openSettings() { g('settings-modal').classList.add('open'); g('sd-ws').focus(); }
+function openSettings() {
+  g('settings-modal').classList.add('open');
+  g('sd-ws').focus();
+  loadProvider();
+}
 function closeSettings() { g('settings-modal').classList.remove('open'); }
 async function saveSettings() {
   const path = g('sd-ws').value.trim(); if (!path) return;

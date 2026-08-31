@@ -10,6 +10,8 @@ from src.llm.providers import (
     GeminiProvider,
     LLMProvider,
     OpenAICompatibleProvider,
+    PearlInferenceNotConfiguredError,
+    PearlInferenceProvider,
     ScriptedProvider,
     create_provider,
 )
@@ -162,6 +164,7 @@ def test_create_provider_rejects_unknown_name():
 
 def test_supported_providers_lists_all_provider_names():
     assert set(SUPPORTED_PROVIDERS) == {
+        "pearl",
         "openai",
         "openrouter",
         "custom",
@@ -171,6 +174,43 @@ def test_supported_providers_lists_all_provider_names():
         # Deterministic/offline; see src/llm/providers/scripted.py.
         "scripted",
     }
+
+
+def test_pearl_provider_constructs_without_key_error_is_deferred(monkeypatch):
+    # PearlInferenceProvider uses the same lazy pattern: construction succeeds
+    # so the server can start and show "Setup required" in the UI.
+    # The error fires on the first actual model call, not at startup.
+    monkeypatch.setattr(Settings, "PEARL_INFERENCE_API_KEY", "")
+
+    provider = create_provider("pearl")
+
+    assert isinstance(provider, PearlInferenceProvider)
+    assert provider._api_key == ""
+
+
+def test_pearl_provider_raises_clear_error_when_called_without_key(monkeypatch):
+    # The error message must be Pearl-branded and actionable — not a raw
+    # OpenAI SDK 401 that would confuse a user who has never heard of OpenRouter.
+    monkeypatch.setattr(Settings, "PEARL_INFERENCE_API_KEY", "")
+
+    provider = create_provider("pearl")
+
+    with pytest.raises(PearlInferenceNotConfiguredError, match="not configured"):
+        provider.complete([{"role": "user", "content": "hi"}], 0.2, 100)
+
+
+def test_pearl_provider_builds_pearl_inference_when_configured(monkeypatch):
+    monkeypatch.setattr(Settings, "PEARL_INFERENCE_API_KEY", "test-key")
+    monkeypatch.setattr(Settings, "PEARL_INFERENCE_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setattr(Settings, "PEARL_INFERENCE_CHAT_MODEL", "anthropic/claude-haiku-4-5-20251001")
+
+    provider = create_provider("pearl")
+
+    assert isinstance(provider, PearlInferenceProvider)
+    assert provider._api_key == "test-key"
+    assert provider.model == "anthropic/claude-haiku-4-5-20251001"
+
+
 
 
 def test_scripted_provider_is_never_reached_without_asking_for_it(monkeypatch):

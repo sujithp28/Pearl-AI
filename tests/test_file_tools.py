@@ -1,4 +1,5 @@
 import shutil
+import sys
 
 import pytest
 
@@ -111,6 +112,7 @@ def test_delete_file_rejects_path_outside_workspace(tmp_path):
         outside.unlink()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks require elevated privileges on Windows")
 def test_write_file_rejects_symlink_escape(tmp_path):
     outside_dir = tmp_path.parent / f"{tmp_path.name}_outside"
     outside_dir.mkdir()

@@ -101,16 +101,32 @@ class ChatRequest(BaseModel):
 @app.post("/api/chat")
 async def chat(req: ChatRequest) -> StreamingResponse:
     session = get_session()
+    event_queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_event_loop()
+
+    def _chat_worker() -> None:
+        try:
+            for event_type, data in session.chat_stream(req.message):
+                asyncio.run_coroutine_threadsafe(
+                    event_queue.put((event_type, data)), loop
+                )
+        finally:
+            asyncio.run_coroutine_threadsafe(event_queue.put(None), loop)
+
+    threading.Thread(target=_chat_worker, daemon=True, name="pearl-chat").start()
 
     async def _generate() -> AsyncIterator[str]:
-        loop = asyncio.get_event_loop()
-        # Run the synchronous generator in a thread pool
-        for event_type, data in await loop.run_in_executor(
-            None,
-            lambda: list(session.chat_stream(req.message)),
-        ):
-            yield _sse("chunk" if event_type == "chunk" else event_type, {"text": data})
-        yield _sse("done", {})
+        while True:
+            item = await event_queue.get()
+            if item is None:
+                yield _sse("done", {})
+                break
+            event_type, data = item
+            if event_type == "chunk":
+                yield _sse("chunk", {"text": data})
+            elif event_type == "error":
+                yield _sse("error", {"text": data})
+            # "done" from session is ignored — we emit our own sentinel above
 
     return StreamingResponse(_generate(), media_type="text/event-stream")
 
@@ -130,23 +146,8 @@ async def run_autonomous(req: RunRequest) -> StreamingResponse:
         raise HTTPException(status_code=409, detail="A run is already in progress.")
 
     event_queue: asyncio.Queue = asyncio.Queue()
-
-    # Run the agent in a background thread
-    def _worker() -> None:
-        session.run_autonomous_stream(req.prompt, event_queue)
-        # Sentinel so SSE knows we're done
-        asyncio.run_coroutine_threadsafe(
-            event_queue.put(None), asyncio.get_event_loop()
-        )
-
     loop = asyncio.get_event_loop()
 
-    def _start() -> None:
-        asyncio.run_coroutine_threadsafe(
-            event_queue.put(None), loop  # will be replaced below
-        )
-
-    # Actually start the thread properly
     threading.Thread(
         target=lambda: _run_worker(session, req.prompt, event_queue, loop),
         daemon=True,
@@ -241,6 +242,94 @@ async def set_workspace(req: WorkspaceRequest) -> JSONResponse:
         raise HTTPException(status_code=400, detail=f"Not a directory: {req.path}")
     _session = PearlSession(p)
     return JSONResponse({"ok": True, "workspace": _session.workspace_info()})
+
+
+# ------------------------------------------------------------------ provider
+
+
+_PROVIDER_DISPLAY: dict[str, str] = {
+    "pearl": "Pearl",
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "claude": "Anthropic",
+    "openrouter": "OpenRouter",
+    "gemini": "Google AI",
+    "custom": "Custom endpoint",
+    "scripted": "Scripted (testing)",
+}
+
+
+def _provider_display(name: str) -> str:
+    return _PROVIDER_DISPLAY.get(name, name.title())
+
+
+def _provider_configured(name: str) -> bool:
+    from src.config.settings import Settings
+    if name == "pearl":
+        return bool(Settings.PEARL_INFERENCE_API_KEY)
+    if name == "openai":
+        return bool(Settings.OPENAI_API_KEY)
+    if name in ("anthropic", "claude"):
+        return bool(Settings.ANTHROPIC_API_KEY)
+    if name == "openrouter":
+        return bool(Settings.OPENROUTER_API_KEY)
+    if name == "gemini":
+        return bool(Settings.GEMINI_API_KEY)
+    if name == "custom":
+        return bool(Settings.CUSTOM_API_KEY and Settings.CUSTOM_BASE_URL)
+    return False
+
+
+def _provider_model(name: str) -> str | None:
+    from src.config.settings import Settings
+    return {
+        "pearl": Settings.PEARL_INFERENCE_CHAT_MODEL,
+        "openai": Settings.OPENAI_MODEL,
+        "anthropic": Settings.ANTHROPIC_MODEL,
+        "claude": Settings.ANTHROPIC_MODEL,
+        "openrouter": Settings.OPENROUTER_MODEL,
+        "gemini": Settings.GEMINI_MODEL,
+        "custom": Settings.CUSTOM_MODEL,
+    }.get(name)
+
+
+@app.get("/api/provider")
+async def provider_info() -> JSONResponse:
+    from src.config.settings import Settings
+    name = Settings.LLM_PROVIDER.lower()
+    return JSONResponse({
+        "provider": name,
+        "display": _provider_display(name),
+        "configured": _provider_configured(name),
+        "model": _provider_model(name),
+    })
+
+
+class ProviderRequest(BaseModel):
+    provider: str
+
+
+@app.post("/api/provider")
+async def set_provider(req: ProviderRequest) -> JSONResponse:
+    from src.config.settings import Settings, write_env_key
+    from src.llm.providers.factory import SUPPORTED_PROVIDERS
+
+    name = req.provider.strip().lower()
+    if name not in SUPPORTED_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {name!r}")
+
+    Settings.LLM_PROVIDER = name
+    write_env_key("PEARL_LLM_PROVIDER", name)
+
+    global _session
+    if _session is not None:
+        _session = PearlSession(_session.workspace)
+
+    return JSONResponse({
+        "ok": True,
+        "provider": name,
+        "display": _provider_display(name),
+    })
 
 
 # ------------------------------------------------------------------ tools

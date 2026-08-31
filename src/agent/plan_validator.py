@@ -37,12 +37,25 @@ MAX_STEPS = 25
 # coding agent operating inside a developer workspace. Referencing these
 # is always either a planning mistake or a prompt-injection attempt.
 FORBIDDEN_PATH_PREFIXES: tuple[str, ...] = (
+    # Linux/macOS system paths
     "/etc/",
     "/sys/",
     "/proc/",
     "/root/",
     "/boot/",
     "/dev/",
+    # Windows system paths (forward-slash form the LLM tends to use)
+    "C:/Windows/",
+    "C:/Program Files/",
+    "C:/Program Files (x86)/",
+    # Windows system paths (backslash form)
+    "C:\\Windows\\",
+    "C:\\Program Files\\",
+    "C:\\Program Files (x86)\\",
+    # Windows registry (sometimes appears in plans)
+    "HKEY_",
+    "HKLM\\",
+    "HKCU\\",
 )
 
 # Tools that destructively modify file content require a read_file step

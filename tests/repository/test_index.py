@@ -31,6 +31,7 @@ import ast
 import time
 import tempfile
 from dataclasses import dataclass
+import sys
 from pathlib import Path
 
 import pytest
@@ -640,6 +641,7 @@ class TestStats:
         )
         assert index.stats().error_file_count == 1
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="timer resolution too coarse for fast in-memory builds on Windows")
     def test_build_duration_positive(self) -> None:
         index = _build(_pr("a.py", symbols=[_sym("x")] * 100))
         assert index.stats().build_duration_ms > 0

@@ -67,7 +67,38 @@ def load_env_file(path: Path) -> None:
 # cwd to be found — otherwise every provider setting silently falls
 # back to its hardcoded default (e.g. the wrong Ollama model) when
 # Pearl is pointed at an external project.
-load_env_file(Path(__file__).resolve().parents[2] / ".env")
+_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+
+load_env_file(_ENV_PATH)
+
+
+def write_env_key(key: str, value: str) -> None:
+    """
+    Write or update a single KEY=value pair in the project .env file.
+
+    Called by the API layer when the user switches providers at runtime.
+    Existing variables are updated in place; new ones are appended.
+    """
+
+    try:
+        lines: list[str] = []
+        found = False
+
+        if _ENV_PATH.is_file():
+            for raw in _ENV_PATH.read_text(encoding="utf-8").splitlines():
+                stripped = raw.strip().lstrip("export").strip()
+                if stripped.startswith(f"{key}="):
+                    lines.append(f"{key}={value}")
+                    found = True
+                else:
+                    lines.append(raw)
+
+        if not found:
+            lines.append(f"{key}={value}")
+
+        _ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError:
+        pass  # non-fatal — in-memory change already applied
 
 
 def _int_or_none(value: str | None) -> int | None:
@@ -87,10 +118,46 @@ class Settings:
     # ==================================================
 
     # Which provider LLMClient() connects to by default.
-    # One of: openai, openrouter, custom, claude, anthropic, gemini.
-    # "custom" is the right choice for any local OpenAI-compatible endpoint
-    # (LM Studio, llama.cpp, vLLM, etc.) — set CUSTOM_BASE_URL and CUSTOM_MODEL.
-    LLM_PROVIDER = os.getenv("PEARL_LLM_PROVIDER", "openai")
+    # "pearl"  — Pearl hosted service (default; requires PEARL_API_KEY)
+    # "openai" / "anthropic" / "openrouter" / "gemini" / "custom" — BYOK
+    LLM_PROVIDER = os.getenv("PEARL_LLM_PROVIDER", "pearl")
+
+    # -- Pearl inference service --
+    #
+    # Pearl is the default provider and the branded user-facing identity.
+    # The credentials here drive whatever is behind Pearl's inference layer.
+    #
+    # Development: set PEARL_INFERENCE_API_KEY to an OpenRouter key.
+    #   OpenRouter routes to Claude models (and 100+ others) through an
+    #   OpenAI-compatible API — no extra SDK required.
+    #   Get a key at: https://openrouter.ai/keys
+    #
+    # Production Pearl gateway (future hosted service):
+    #   PEARL_INFERENCE_API_KEY=prl_free_...
+    #   PEARL_INFERENCE_BASE_URL=https://api.pearl.ai/v1
+    #   PEARL_INFERENCE_CHAT_MODEL=pearl-chat
+    #   PEARL_INFERENCE_PLAN_MODEL=pearl-plan
+    #
+    # BYOK providers (Advanced settings) use their own env vars below.
+
+    PEARL_INFERENCE_API_KEY = os.getenv("PEARL_INFERENCE_API_KEY", "")
+
+    PEARL_INFERENCE_BASE_URL = os.getenv(
+        "PEARL_INFERENCE_BASE_URL", "https://openrouter.ai/api/v1"
+    )
+
+    PEARL_INFERENCE_CHAT_MODEL = os.getenv(
+        "PEARL_INFERENCE_CHAT_MODEL", "anthropic/claude-haiku-4-5-20251001"
+    )
+
+    PEARL_INFERENCE_PLAN_MODEL = os.getenv(
+        "PEARL_INFERENCE_PLAN_MODEL", "anthropic/claude-sonnet-4-5-20251001"
+    )
+
+    # Kept for backwards compatibility — previously used for the Pearl provider.
+    PEARL_API_KEY = os.getenv("PEARL_API_KEY", "")
+    PEARL_API_URL = os.getenv("PEARL_API_URL", "https://api.pearl.ai/v1")
+    PEARL_MODEL = os.getenv("PEARL_MODEL", "")
 
     # -- OpenAI --
 

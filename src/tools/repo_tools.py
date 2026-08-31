@@ -169,7 +169,7 @@ def _build_index(root: Path) -> RepositoryIndex:
         if tree is None:
             continue
 
-        rel = str(file_path.relative_to(root))
+        rel = file_path.relative_to(root).as_posix()
         definitions, file_imports = _extract_definitions_and_imports(tree)
 
         for name, line, kind in definitions:
@@ -182,7 +182,7 @@ def _build_index(root: Path) -> RepositoryIndex:
 
     return RepositoryIndex(
         root=root,
-        files=[str(file_path.relative_to(root)) for file_path in files],
+        files=[file_path.relative_to(root).as_posix() for file_path in files],
         symbols=symbols,
         imports=imports,
     )
@@ -252,7 +252,7 @@ def refresh_indexed_file(path: str) -> None:
 
     for root, index in _INDEX_CACHE.items():
         try:
-            rel = str(file_path.relative_to(root))
+            rel = file_path.relative_to(root).as_posix()
         except ValueError:
             continue
 
@@ -338,7 +338,7 @@ def _search(
 
                 matches.append(
                     {
-                        "file": str(file_path.relative_to(root)),
+                        "file": file_path.relative_to(root).as_posix(),
                         "line": line_number,
                         "text": line.strip(),
                     }
