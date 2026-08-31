@@ -263,10 +263,21 @@ def _provider_display(name: str) -> str:
     return _PROVIDER_DISPLAY.get(name, name.title())
 
 
+def _local_inference_available() -> bool:
+    """True when llama-cpp-python is importable (local model can run)."""
+    try:
+        import llama_cpp  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def _provider_configured(name: str) -> bool:
     from src.config.settings import Settings
     if name == "pearl":
-        return bool(Settings.PEARL_INFERENCE_API_KEY)
+        # Pearl is always "configured": either via explicit key (remote)
+        # or via local inference (auto-downloaded model, no key needed).
+        return bool(Settings.PEARL_INFERENCE_API_KEY) or _local_inference_available()
     if name == "openai":
         return bool(Settings.OPENAI_API_KEY)
     if name in ("anthropic", "claude"):
@@ -282,8 +293,11 @@ def _provider_configured(name: str) -> bool:
 
 def _provider_model(name: str) -> str | None:
     from src.config.settings import Settings
+    if name == "pearl":
+        if Settings.PEARL_INFERENCE_API_KEY:
+            return Settings.PEARL_INFERENCE_CHAT_MODEL
+        return Settings.LOCAL_MODEL_FILE  # local model filename shown as the model
     return {
-        "pearl": Settings.PEARL_INFERENCE_CHAT_MODEL,
         "openai": Settings.OPENAI_MODEL,
         "anthropic": Settings.ANTHROPIC_MODEL,
         "claude": Settings.ANTHROPIC_MODEL,

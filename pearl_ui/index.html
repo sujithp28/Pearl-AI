@@ -1299,7 +1299,7 @@ function renderProviderTiles(p) {
       pearlSt.textContent = 'Configured';
       pearlSt.className = 'prov-status ok';
     } else if (!p.configured && p.provider === 'pearl') {
-      pearlSt.textContent = 'Setup required';
+      pearlSt.textContent = 'llama-cpp-python not installed';
       pearlSt.className = 'prov-status warn';
     } else {
       pearlSt.textContent = p.configured ? '—' : 'Not configured';
@@ -1310,7 +1310,7 @@ function renderProviderTiles(p) {
   const note = g('prov-note');
   if (note) {
     if (!p.configured && p.provider === 'pearl') {
-      note.textContent = 'Add PEARL_INFERENCE_API_KEY=<your-openrouter-key> to .env and restart. Get a key at openrouter.ai/keys';
+      note.textContent = 'Install llama-cpp-python to enable local AI (no API key needed). See docs/PEARL_INFERENCE_CONTRACT.md.';
     } else {
       note.textContent = '';
     }

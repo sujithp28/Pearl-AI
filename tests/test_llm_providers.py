@@ -176,27 +176,47 @@ def test_supported_providers_lists_all_provider_names():
     }
 
 
-def test_pearl_provider_constructs_without_key_error_is_deferred(monkeypatch):
-    # PearlInferenceProvider uses the same lazy pattern: construction succeeds
-    # so the server can start and show "Setup required" in the UI.
-    # The error fires on the first actual model call, not at startup.
+def test_pearl_without_key_creates_local_inference_provider(monkeypatch, tmp_path):
+    # No API key → zero-config local inference. The factory returns
+    # LocalInferenceProvider (not PearlInferenceProvider) so Pearl works
+    # out of the box without any user-supplied credentials.
+    from src.llm.providers.local_inference import LocalInferenceProvider
     monkeypatch.setattr(Settings, "PEARL_INFERENCE_API_KEY", "")
+    monkeypatch.setattr(Settings, "LOCAL_MODEL_DIR", str(tmp_path))
+    monkeypatch.setattr(Settings, "LOCAL_MODEL_FILE", "model.gguf")
+    monkeypatch.setattr(Settings, "LOCAL_MODEL_REPO", "r/r")
+    (tmp_path / "model.gguf").write_bytes(b"fake-gguf")  # model already cached
 
     provider = create_provider("pearl")
 
-    assert isinstance(provider, PearlInferenceProvider)
-    assert provider._api_key == ""
+    assert isinstance(provider, LocalInferenceProvider)
+    assert provider._ready.is_set()  # no download needed
 
 
-def test_pearl_provider_raises_clear_error_when_called_without_key(monkeypatch):
-    # The error message must be Pearl-branded and actionable — not a raw
-    # OpenAI SDK 401 that would confuse a user who has never heard of OpenRouter.
+def test_pearl_local_inference_raises_import_error_without_llama_cpp(monkeypatch, tmp_path):
+    # If llama-cpp-python is not installed, the first model call must raise
+    # a clear ImportError with install instructions, not a confusing AttributeError.
+    from src.llm.providers.local_inference import LocalInferenceProvider
     monkeypatch.setattr(Settings, "PEARL_INFERENCE_API_KEY", "")
+    monkeypatch.setattr(Settings, "LOCAL_MODEL_DIR", str(tmp_path))
+    monkeypatch.setattr(Settings, "LOCAL_MODEL_FILE", "model.gguf")
+    monkeypatch.setattr(Settings, "LOCAL_MODEL_REPO", "r/r")
+    (tmp_path / "model.gguf").write_bytes(b"fake-gguf")
 
     provider = create_provider("pearl")
 
-    with pytest.raises(PearlInferenceNotConfiguredError, match="not configured"):
-        provider.complete([{"role": "user", "content": "hi"}], 0.2, 100)
+    # Simulate llama_cpp not being importable
+    with pytest.raises(ImportError, match="llama-cpp-python"):
+        with pytest.MonkeyPatch().context() as mp:
+            mp.setitem(__import__("sys").modules, "llama_cpp", None)
+            # Reset the shared singleton so it tries to import again
+            import src.llm.providers.local_inference as _m
+            orig = _m._llm
+            _m._llm = None
+            try:
+                provider.complete([{"role": "user", "content": "hi"}], 0.2, 100)
+            finally:
+                _m._llm = orig
 
 
 def test_pearl_provider_builds_pearl_inference_when_configured(monkeypatch):

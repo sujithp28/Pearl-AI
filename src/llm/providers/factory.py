@@ -7,10 +7,14 @@ LLMProvider instance, reading each provider's own settings.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from src.config.settings import Settings
 from src.llm.providers.base import LLMProvider
 from src.llm.providers.claude import ClaudeProvider
 from src.llm.providers.gemini import GeminiProvider
+from src.llm.providers.local_inference import LocalInferenceProvider
 from src.llm.providers.openai_compatible import OpenAICompatibleProvider
 from src.llm.providers.pearl_inference import PearlInferenceProvider
 from src.llm.providers.scripted import ScriptedProvider
@@ -35,15 +39,27 @@ def create_provider(name: str) -> LLMProvider:
     normalized = name.strip().lower()
 
     if normalized == "pearl":
-        # Routes through Pearl's inference contract (OpenAI-compatible wire protocol).
-        # Dev:  PEARL_INFERENCE_BASE_URL=https://openrouter.ai/api/v1
-        # Prod: PEARL_INFERENCE_BASE_URL=https://api.pearl.ai/v1  [REQUIRES DEPLOYMENT]
-        # ModelRouter overrides `model` per task (chat vs planning).
-        return PearlInferenceProvider(
-            api_key=Settings.PEARL_INFERENCE_API_KEY,
-            base_url=Settings.PEARL_INFERENCE_BASE_URL,
-            model=Settings.PEARL_INFERENCE_CHAT_MODEL,
-        )
+        if Settings.PEARL_INFERENCE_API_KEY:
+            # Explicit key → use remote inference (OpenRouter in dev, api.pearl.ai in prod).
+            # ModelRouter overrides `model` per task (chat vs planning).
+            return PearlInferenceProvider(
+                api_key=Settings.PEARL_INFERENCE_API_KEY,
+                base_url=Settings.PEARL_INFERENCE_BASE_URL,
+                model=Settings.PEARL_INFERENCE_CHAT_MODEL,
+            )
+        else:
+            # No key → zero-configuration local inference.
+            # Model auto-downloads from HuggingFace on first run (~491 MB).
+            model_path = str(
+                Path(Settings.LOCAL_MODEL_DIR) / Settings.LOCAL_MODEL_FILE
+            )
+            return LocalInferenceProvider(
+                model_path=model_path,
+                repo_id=Settings.LOCAL_MODEL_REPO,
+                filename=Settings.LOCAL_MODEL_FILE,
+                n_ctx=Settings.LOCAL_MODEL_CTX,
+                n_threads=Settings.LOCAL_MODEL_THREADS or None,
+            )
 
     if normalized == "openai":
         return OpenAICompatibleProvider(

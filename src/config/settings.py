@@ -159,6 +159,34 @@ class Settings:
     PEARL_API_URL = os.getenv("PEARL_API_URL", "https://api.pearl.ai/v1")
     PEARL_MODEL = os.getenv("PEARL_MODEL", "")
 
+    # -- Local inference (zero-configuration default) --
+    #
+    # When PEARL_INFERENCE_API_KEY is not set, Pearl runs inference locally
+    # using a small open-weight model downloaded on first run.
+    #
+    # Default: Qwen2.5-0.5B-Instruct Q4_K_M (~491 MB, Apache 2.0)
+    #   ~18-30 tok/s on a modern CPU (i5-10300H with AVX2)
+    #
+    # Requires: pip install llama-cpp-python
+    #   --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+    #
+    # Override model:
+    #   LOCAL_MODEL_REPO=Qwen/Qwen2.5-1.5B-Instruct-GGUF
+    #   LOCAL_MODEL_FILE=qwen2.5-1.5b-instruct-q4_k_m.gguf  (1.1 GB, better quality)
+
+    LOCAL_MODEL_REPO = os.getenv(
+        "LOCAL_MODEL_REPO", "Qwen/Qwen2.5-0.5B-Instruct-GGUF"
+    )
+    LOCAL_MODEL_FILE = os.getenv(
+        "LOCAL_MODEL_FILE", "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    )
+    LOCAL_MODEL_DIR = os.getenv(
+        "LOCAL_MODEL_DIR",
+        str(Path.home() / ".pearl" / "models"),
+    )
+    LOCAL_MODEL_CTX = int(os.getenv("LOCAL_MODEL_CTX", "2048"))
+    LOCAL_MODEL_THREADS = int(os.getenv("LOCAL_MODEL_THREADS", "0"))  # 0 = auto
+
     # -- OpenAI --
 
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
