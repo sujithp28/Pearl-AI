@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
 from src.agent.retry import classify_error, is_transient_error
+from src.agent.verification import VerificationEngine, VerificationStatus
 from src.llm.client import LLMCancelled
 from src.llm.parser import ToolCall
 from src.personality import EventKind, PersonalityManager
@@ -307,6 +308,7 @@ class AutonomousExecutor:
         checkpoints: CheckpointManager | None = None,
         context_builder: "SemanticContextBuilder | None" = None,
         context_service: "RepositoryService | None" = None,
+        verifier: VerificationEngine | None = None,
     ) -> None:
         self.planner = planner
         self.dispatcher = dispatcher
@@ -339,6 +341,10 @@ class AutonomousExecutor:
         # graph-aware workspace_context string before every planner call.
         self._context_builder = context_builder
         self._context_service = context_service
+        # Optional post-apply verification engine — when present, runs
+        # tests after approve() and replans on test failures (bounded by
+        # max_replans like any other replan).
+        self._verifier = verifier
 
     def _log_structured(self, event: str, **fields: Any) -> None:
         """
@@ -566,6 +572,33 @@ class AutonomousExecutor:
                     exc_info=True,
                 )
 
+    def _warn_if_dirty_workspace(self) -> None:
+        """
+        Log a warning when there are uncommitted workspace changes before
+        an autonomous run starts.
+
+        This mirrors Aider's dirty-commit detection: existing changes
+        are NOT part of this task and should not be confused with the
+        ones Pearl is about to propose. Non-fatal — never blocks the run.
+        """
+        try:
+            result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                logger.warning(
+                    "Autonomous run started with uncommitted workspace changes. "
+                    "These pre-existing changes will not be affected by this task "
+                    "unless the task explicitly stages them. "
+                    "Consider committing or stashing them first.\n%s",
+                    result.stdout.strip()[:400],
+                )
+        except Exception:
+            pass  # Not a git repo, or git unavailable — non-fatal
+
     def run(self, prompt: str) -> ExecutionReport:
         """
         Plan `prompt`, then execute steps one at a time until the
@@ -587,6 +620,8 @@ class AutonomousExecutor:
         steps: list[ExecutionStep] = []
         events: list[ProgressEvent] = []
         completed_for_replan: list[dict[str, Any]] = []
+
+        self._warn_if_dirty_workspace()
 
         set_active_patch_manager(self.patch_manager)
         set_active_command_approver(self.command_approver)
@@ -723,6 +758,57 @@ class AutonomousExecutor:
                 if cmd_result is not None:
                     entry["result"] = (
                         cmd_result.stdout.strip() or f"(exit {cmd_result.returncode})"
+                    )
+
+        # Verification replan: if tests fail after applying, feed the
+        # failure back to the planner so remaining steps can be revised.
+        # Bounded by max_replans like any other recovery path.
+        if self._verifier is not None and applied:
+            vr = self._verifier.verify(applied)
+            if (
+                vr.tests_failed > 0
+                and state.replans_used < self.max_replans
+                and not self.is_cancelled()
+            ):
+                self._emit(
+                    state.events,
+                    "replanning",
+                    current_step=state.iteration,
+                    total_steps=state.iteration + len(state.pending),
+                    current_action=self._personality.format(EventKind.REPLANNING),
+                )
+                test_summary = "\n".join(str(e) for e in vr.evidence[-5:])
+                try:
+                    revised = self.planner.replan(
+                        state.prompt,
+                        completed=state.completed_for_replan,
+                        failed={
+                            "tool": "run_tests",
+                            "error": (
+                                f"{vr.tests_failed} test(s) failed after applying "
+                                f"changes.\n{test_summary[:600]}"
+                            ),
+                            "error_type": "test_failure",
+                            "suggestion": (
+                                "Fix the failing tests. Do not repeat steps already "
+                                "completed."
+                            ),
+                        },
+                        cancel_check=self.is_cancelled,
+                    )
+                    state.pending = list(revised)
+                    state.replans_used += 1
+                    logger.info(
+                        "Verification replan: %d test(s) failed; "
+                        "replanned with %d new step(s).",
+                        vr.tests_failed,
+                        len(state.pending),
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Verification replan failed (%s); proceeding with "
+                        "original pending steps.",
+                        exc,
                     )
 
         set_active_patch_manager(self.patch_manager)

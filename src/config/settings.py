@@ -266,6 +266,19 @@ class Settings:
     CHAT_HISTORY_TURNS = int(os.getenv("PEARL_CHAT_HISTORY_TURNS", "10"))
 
     # ==================================================
+    # Token Budget (src/llm/token_budget.py)
+    # ==================================================
+    #
+    # Maximum tokens allocated to the workspace context block in the
+    # planning prompt. Set to 80% of LOCAL_MODEL_CTX by default so
+    # there is headroom for tool definitions, the user prompt, and the
+    # model's response. Increase for hosted models with larger windows.
+    # Set to 0 to disable truncation entirely (not recommended).
+    TOKEN_BUDGET_MAX_CONTEXT_TOKENS = int(
+        os.getenv("PEARL_MAX_CONTEXT_TOKENS", "6400")
+    )
+
+    # ==================================================
     # Checkpoints (src/tools/checkpoints.py)
     # ==================================================
 

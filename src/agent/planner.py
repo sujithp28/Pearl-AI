@@ -16,8 +16,10 @@ from src.agent.confidence import score_plan
 from src.agent.dependency_graph import topological_sort
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.plan_validator import validate_plan
+from src.config.settings import Settings
 from src.llm.client import LLMClient
 from src.llm.parser import ToolCall, ToolParser
+from src.llm.token_budget import truncate_to_tokens
 from src.llm.validation import validate_tool_call
 from src.tools.registry import ToolRegistry
 
@@ -112,6 +114,11 @@ class Planner:
         )
 
         if workspace_context:
+            workspace_context = truncate_to_tokens(
+                workspace_context,
+                Settings.TOKEN_BUDGET_MAX_CONTEXT_TOKENS,
+                label="workspace_context",
+            )
             prompt = (
                 "Current workspace context (recent activity in this "
                 "session):\n\n"
