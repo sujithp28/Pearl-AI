@@ -1153,11 +1153,13 @@ function addResultCard(r) {
     const conf = vr.confidence != null ? ` · confidence ${Math.round(vr.confidence*100)}%` : '';
     const risk = vr.risk ? ` · risk ${vr.risk}` : '';
     const tests = vr.tests_run ? ` · ${vr.tests_passed}/${vr.tests_run} tests passed` : '';
-    const unexpected = vr.unexpected_files?.length ? `<div class="rs-item"><span class="rs-fail" aria-hidden="true">!</span><span class="rs-txt">Unexpected: ${vr.unexpected_files.map(esc).join(', ')}</span></div>` : '';
+    const unexpected = vr.unexpected_files?.length ? `<div class="rs-item"><span class="rs-fail" aria-hidden="true">!</span><span class="rs-txt">Unexpected files: ${vr.unexpected_files.map(esc).join(', ')}</span></div>` : '';
+    const changed = vr.changed_files?.length ? `<div class="rs-item"><span class="rs-ok" aria-hidden="true">↑</span><span class="rs-txt">Changed: ${vr.changed_files.map(esc).join(', ')}</span></div>` : '';
+    const evidence = (vr.evidence?.length && st !== 'SUCCESS') ? vr.evidence.slice(0,3).map(e => `<div class="rs-item"><span class="rs-warn" aria-hidden="true">·</span><span class="rs-txt" style="color:var(--tx2)">${esc(String(e))}</span></div>`).join('') : '';
     return `<div class="rs-item" style="border-top:1px solid var(--b1);margin-top:6px;padding-top:6px">
       <span class="${stCls}" aria-hidden="true">⬡</span>
       <span class="rs-txt">Verification: ${esc(st)}${conf}${risk}${tests}</span>
-    </div>${unexpected}`;
+    </div>${changed}${unexpected}${evidence}`;
   })() : '';
   card.innerHTML = `
     <div class="result-hd">

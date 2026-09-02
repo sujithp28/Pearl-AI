@@ -79,11 +79,7 @@ class PearlSession:
 
     def _build_index(self) -> None:
         try:
-            import os
-            old = os.getcwd()
-            os.chdir(self.workspace)
             build_startup_index(str(self.workspace))
-            os.chdir(old)
         except Exception:
             logger.warning("Startup index failed (non-fatal)", exc_info=True)
 

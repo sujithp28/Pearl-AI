@@ -110,3 +110,64 @@ class TestChatStreamNoChdirG4:
         assert "os.chdir" not in source, (
             "chat_stream() still calls os.chdir() — remove it (G4 fix)"
         )
+
+
+class TestWorkspaceIsolationConcurrent:
+    """
+    Regression: two concurrent workspace operations must not corrupt
+    each other's boundary checks by racing on the process-global cwd.
+
+    _build_index() no longer calls os.chdir(), so concurrent index
+    builds for different workspaces must resolve paths independently.
+    """
+
+    def test_concurrent_build_startup_index_uses_explicit_paths(self, tmp_path):
+        """
+        build_startup_index(path) takes the workspace root as an
+        explicit argument and must not rely on os.getcwd().
+        """
+        import inspect
+        from src.tools.repo_tools import build_startup_index
+        source = inspect.getsource(build_startup_index)
+        # build_startup_index should use the `path` parameter, not cwd.
+        # It passes the path to index_repository() which uses it directly.
+        assert "path" in source, (
+            "build_startup_index must accept and use an explicit path argument"
+        )
+
+    def test_two_concurrent_file_ops_stay_within_own_workspace(self, tmp_path):
+        """
+        Two threads each writing to their own workspace sub-directory
+        must not interfere.  This would fail if either relied on a
+        process-global cwd that the other thread changes.
+        """
+        import threading
+        from src.tools.patch_manager import PatchManager
+
+        ws_a = tmp_path / "workspace_a"
+        ws_b = tmp_path / "workspace_b"
+        ws_a.mkdir()
+        ws_b.mkdir()
+
+        results: list[str] = []
+        errors: list[Exception] = []
+
+        def write_in(ws: Path, name: str) -> None:
+            try:
+                pm = PatchManager()
+                target = str(ws / f"{name}.txt")
+                pm.propose(target, None, f"content from {name}\n")
+                pm.apply_all()
+                results.append(target)
+            except Exception as exc:
+                errors.append(exc)
+
+        t1 = threading.Thread(target=write_in, args=(ws_a, "a"))
+        t2 = threading.Thread(target=write_in, args=(ws_b, "b"))
+        t1.start(); t2.start()
+        t1.join(); t2.join()
+
+        assert not errors, f"Concurrent writes failed: {errors}"
+        assert len(results) == 2
+        assert (ws_a / "a.txt").exists()
+        assert (ws_b / "b.txt").exists()

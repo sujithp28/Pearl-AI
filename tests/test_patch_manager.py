@@ -1,3 +1,8 @@
+import unittest.mock as mock
+from pathlib import Path
+
+import pytest
+
 from src.tools.patch_manager import PatchManager, unified_diff
 
 # ---------------------------------------------------------------------
@@ -141,3 +146,102 @@ def test_discard_all_on_empty_pending_returns_empty():
     manager = PatchManager()
 
     assert manager.discard_all() == []
+
+
+# ---------------------------------------------------------------------
+# Atomicity: apply_all rollback on partial failure
+# ---------------------------------------------------------------------
+
+
+def test_apply_all_succeeds_all_or_none_on_success(tmp_path):
+    """All files written when no error occurs."""
+    manager = PatchManager()
+    a = tmp_path / "a.txt"
+    b = tmp_path / "b.txt"
+    manager.propose(str(a), None, "alpha\n")
+    manager.propose(str(b), None, "beta\n")
+
+    applied = manager.apply_all()
+
+    assert set(applied) == {str(a), str(b)}
+    assert a.read_text() == "alpha\n"
+    assert b.read_text() == "beta\n"
+    assert not manager.has_pending()
+
+
+def test_apply_all_rollback_restores_existing_file_on_failure(tmp_path, monkeypatch):
+    """If the second write fails, the first write is rolled back."""
+    manager = PatchManager()
+    a = tmp_path / "a.txt"
+    b = tmp_path / "b.txt"
+    a.write_text("original\n")
+
+    manager.propose(str(a), "original\n", "modified\n")
+    manager.propose(str(b), None, "new\n")
+
+    call_count = {"n": 0}
+    real_write = Path.write_text
+
+    def _fail_second(self, text, **kw):
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            raise OSError("simulated disk full")
+        return real_write(self, text, **kw)
+
+    monkeypatch.setattr(Path, "write_text", _fail_second)
+
+    with pytest.raises(OSError, match="simulated disk full"):
+        manager.apply_all()
+
+    # a.txt must be restored to its original content.
+    assert a.read_text() == "original\n"
+    # b.txt must not exist (it was the failing write, and rollback removes it).
+    assert not b.exists()
+    # Pending list must remain intact so the caller can inspect.
+    assert manager.has_pending()
+
+
+def test_apply_all_rollback_deletes_new_file_on_failure(tmp_path, monkeypatch):
+    """A new file that was written before the failure is deleted on rollback."""
+    manager = PatchManager()
+    a = tmp_path / "new_a.txt"
+    b = tmp_path / "new_b.txt"
+
+    manager.propose(str(a), None, "aaa\n")
+    manager.propose(str(b), None, "bbb\n")
+
+    call_count = {"n": 0}
+    real_write = Path.write_text
+
+    def _fail_second(self, text, **kw):
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            raise OSError("disk error")
+        return real_write(self, text, **kw)
+
+    monkeypatch.setattr(Path, "write_text", _fail_second)
+
+    with pytest.raises(OSError):
+        manager.apply_all()
+
+    # First new file was written then rolled back (deleted).
+    assert not a.exists()
+    assert not b.exists()
+
+
+def test_apply_all_pending_cleared_only_on_success(tmp_path):
+    """Pending list is NOT cleared when apply_all() raises."""
+    manager = PatchManager()
+    manager.propose(str(tmp_path / "x.txt"), None, "x\n")
+
+    with mock.patch.object(Path, "write_text", side_effect=OSError("fail")):
+        with pytest.raises(OSError):
+            manager.apply_all()
+
+    assert manager.has_pending()
+
+
+def test_apply_all_empty_returns_empty_list(tmp_path):
+    """Calling apply_all() with no pending edits is a no-op."""
+    manager = PatchManager()
+    assert manager.apply_all() == []

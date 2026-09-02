@@ -13,8 +13,11 @@ module) has no dependency on `src/agent/`.
 from __future__ import annotations
 
 import difflib
+import logging
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def unified_diff(path: str, original: str | None, updated: str) -> str:
@@ -138,27 +141,53 @@ class PatchManager:
 
     def apply_all(self) -> list[str]:
         """
-        Write every staged edit to disk, then clear the pending
-        batch. Returns the list of files written, in proposal order.
+        Write every staged edit to disk atomically, then clear the
+        pending batch. Returns the list of files written, in proposal order.
+
+        If any write fails, every successfully written file is restored
+        to its pre-apply state (new files are deleted; modified files
+        are written back to their original content) before the exception
+        propagates. The pending list is NOT cleared on failure so the
+        caller can inspect or retry.
 
         Never called implicitly: only an explicit approval (via the
         executor's `approve()`) triggers this.
         """
+        if not self._pending:
+            return []
+
+        # Snapshot existing content before touching anything.
+        # None means the file does not yet exist (new file).
+        snapshots: dict[str, str | None] = {}
+        for edit in self._pending:
+            p = Path(edit.path)
+            snapshots[edit.path] = p.read_text(encoding="utf-8") if p.exists() else None
 
         applied: list[str] = []
-
-        for edit in self._pending:
-            file_path = Path(edit.path)
-
-            if file_path.parent:
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-
-            file_path.write_text(edit.updated_content, encoding="utf-8")
-
-            applied.append(edit.path)
+        try:
+            for edit in self._pending:
+                file_path = Path(edit.path)
+                if file_path.parent:
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text(edit.updated_content, encoding="utf-8")
+                applied.append(edit.path)
+        except Exception:
+            # Rollback every file already written in this batch.
+            for path_str in applied:
+                prior = snapshots.get(path_str)
+                try:
+                    p = Path(path_str)
+                    if prior is None:
+                        p.unlink(missing_ok=True)
+                    else:
+                        p.write_text(prior, encoding="utf-8")
+                except Exception as roll_exc:
+                    logger.error(
+                        "Rollback failed for %s: %s", path_str, roll_exc
+                    )
+            raise
 
         self._pending.clear()
-
         return applied
 
     def __len__(self) -> int:
