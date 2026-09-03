@@ -311,12 +311,22 @@ def _provider_model(name: str) -> str | None:
 async def provider_info() -> JSONResponse:
     from src.config.settings import Settings
     name = Settings.LLM_PROVIDER.lower()
-    return JSONResponse({
+    payload = {
         "provider": name,
         "display": _provider_display(name),
         "configured": _provider_configured(name),
         "model": _provider_model(name),
-    })
+    }
+    # Per-role routing, so the UI can show what actually runs each task
+    # rather than one global provider name. Names only — never keys.
+    try:
+        from src.llm.router import ModelRouter
+        roles = ModelRouter().describe()
+        payload["profile"] = roles.pop("profile", "")
+        payload["roles"] = roles
+    except Exception as exc:
+        logger.warning("Could not describe model routing: %s", exc)
+    return JSONResponse(payload)
 
 
 class ProviderRequest(BaseModel):

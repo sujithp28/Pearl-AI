@@ -29,8 +29,8 @@ def _warm_up_llm(llm: LLMClient) -> None:
 
     Runs in a daemon thread: it never blocks server startup, and it
     dies automatically when the process exits. A failure here (e.g.
-    Ollama not running, model not pulled) is logged but never raises —
-    the user will just see the normal cold-start latency.
+    model file missing, provider not configured) is logged but never
+    raises — the user will just see the normal cold-start latency.
     """
     try:
         logger.info("Warming up LLM model in background...")

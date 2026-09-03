@@ -16,22 +16,45 @@ import pytest
 
 
 class TestInferenceLock:
-    def test_inference_lock_is_module_level_threading_lock(self):
-        """_inference_lock must be a real threading.Lock, not a no-op."""
+    """
+    Inference on a single Llama object must be serialized —
+    llama_cpp is not thread-safe for concurrent calls on one model.
+
+    The lock is per-model (keyed by model path + n_ctx) rather than one
+    global lock, so a fast autocomplete on a small model is not queued
+    behind a slow planning call on a large one.  The serialization
+    guarantee below is unchanged; only its granularity is.
+    """
+
+    def test_inference_lock_is_a_real_lock(self):
+        """The per-model lock must be a real lock, not a no-op."""
         import src.llm.providers.local_inference as mod
-        assert hasattr(mod, "_inference_lock"), (
-            "_inference_lock missing from local_inference module"
-        )
-        lock = mod._inference_lock
-        # threading.Lock() returns a _thread.lock; both Lock and RLock are fine.
+        lock = mod._get_inference_lock("fake.gguf", 512)
         assert hasattr(lock, "acquire") and hasattr(lock, "release"), (
-            "_inference_lock must be a lock-like object with acquire/release"
+            "per-model inference lock must have acquire/release"
         )
 
-    def test_inference_lock_is_reentrant_safe(self):
-        """Acquiring _inference_lock from a different thread must block, not deadlock."""
+    def test_same_model_returns_the_same_lock(self):
+        """Two providers on one model must share a lock, or they'd race."""
         import src.llm.providers.local_inference as mod
-        lock = mod._inference_lock
+        a = mod._get_inference_lock("same.gguf", 512)
+        b = mod._get_inference_lock("same.gguf", 512)
+        assert a is b, "the same model must map to the same lock object"
+
+    def test_different_models_get_different_locks(self):
+        """Distinct models must not serialize against each other."""
+        import src.llm.providers.local_inference as mod
+        a = mod._get_inference_lock("small.gguf", 512)
+        b = mod._get_inference_lock("large.gguf", 512)
+        assert a is not b, (
+            "distinct models sharing one lock would make autocomplete "
+            "queue behind planning"
+        )
+
+    def test_inference_lock_blocks_a_second_thread(self):
+        """A held lock must block another thread, not deadlock or pass."""
+        import src.llm.providers.local_inference as mod
+        lock = mod._get_inference_lock("blocking.gguf", 512)
         results: list[str] = []
 
         def _try_acquire() -> None:
@@ -47,11 +70,11 @@ class TestInferenceLock:
             t.join(timeout=2.0)
 
         assert results == ["blocked"], (
-            "Another thread should not acquire _inference_lock while it is held"
+            "Another thread should not acquire the lock while it is held"
         )
 
     def test_complete_acquires_inference_lock(self):
-        """complete() must hold _inference_lock around create_chat_completion()."""
+        """complete() must hold its model's lock around the model call."""
         import src.llm.providers.local_inference as mod
 
         fake_llm = MagicMock()
@@ -63,15 +86,18 @@ class TestInferenceLock:
 
         original_ccc = fake_llm.create_chat_completion.side_effect
 
+        # The lock this provider's model maps to.
+        model_lock = mod._get_inference_lock("fake.gguf", 512)
+
         def _check_lock(*args, **kwargs):
             # While inside create_chat_completion, the lock must be held
             # (non-blocking acquire from this same thread would fail for a
             # non-reentrant Lock, but we can check the locked() status).
-            locked = not mod._inference_lock.acquire(blocking=False)
+            locked = not model_lock.acquire(blocking=False)
             lock_acquired_during_call.append(locked)
             if not locked:
                 # We accidentally acquired it — release so lock isn't stuck.
-                mod._inference_lock.release()
+                model_lock.release()
             return {"choices": [{"message": {"content": "hello"}}]}
 
         fake_llm.create_chat_completion.side_effect = _check_lock
@@ -95,7 +121,8 @@ class TestInferenceLock:
 
         assert lock_acquired_during_call, "check did not run"
         assert lock_acquired_during_call[0], (
-            "_inference_lock was NOT held during create_chat_completion()"
+            "the model's inference lock was NOT held during "
+            "create_chat_completion()"
         )
 
 

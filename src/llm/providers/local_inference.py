@@ -38,6 +38,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from collections import OrderedDict
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -47,43 +48,113 @@ from src.llm.providers.base import LLMProvider
 
 logger = logging.getLogger(__name__)
 
-# ── Shared Llama singleton ────────────────────────────────────────────────────
+# ── Shared Llama cache ────────────────────────────────────────────────────────
+#
+# Keyed by (model_path, n_ctx) rather than being a single global object.
+#
+# The original design was one global Llama so that two ModelRouter clients
+# (chat + planning) could not double-load the same weights into RAM. That
+# intent is preserved — identical (path, n_ctx) still returns one shared
+# instance — but keying makes it possible to hold a *different* model at
+# the same time, which inline autocomplete requires: it needs a small,
+# fast model while planning uses the large one.
+#
+# The cost is real: two models means two models' worth of RAM (a 1.5B and
+# a 0.5B is roughly 1.6 GB). LOCAL_MAX_LOADED_MODELS bounds it, evicting
+# least-recently-used, so a misconfiguration cannot exhaust memory.
 
-_llm_lock = threading.Lock()
-_llm: Any = None  # llama_cpp.Llama, set on first use
+_cache_lock = threading.Lock()
+_llms: "OrderedDict[tuple[str, int], Any]" = OrderedDict()
 
-# ponytail: global lock — llama_cpp.Llama is not thread-safe for concurrent
-# inference calls. This serializes all complete()/complete_stream() calls so
-# planning and chat never overlap on the same object. Upgrade to per-session
-# locks if multi-user throughput ever matters.
-_inference_lock = threading.Lock()
+# Per-model inference locks. llama_cpp.Llama is not thread-safe for
+# concurrent calls *on one object*, but two distinct objects are
+# independent — so locking per model, rather than globally, lets a fast
+# autocomplete run while a slow planning call is still in flight. A single
+# global lock would make autocomplete queue behind planning and feel dead.
+_inference_locks: dict[tuple[str, int], threading.Lock] = {}
+
+
+def _model_key(model_path: str, n_ctx: int) -> tuple[str, int]:
+    return (str(Path(model_path).resolve()), n_ctx)
+
+
+def _get_inference_lock(model_path: str, n_ctx: int) -> threading.Lock:
+    """Return the lock guarding inference on one specific model."""
+    key = _model_key(model_path, n_ctx)
+    with _cache_lock:
+        if key not in _inference_locks:
+            _inference_locks[key] = threading.Lock()
+        return _inference_locks[key]
 
 
 def _get_shared_llm(model_path: str, n_ctx: int, n_threads: int) -> Any:
-    global _llm
-    with _llm_lock:
-        if _llm is None:
-            try:
-                from llama_cpp import Llama
-            except ImportError as exc:
-                raise ImportError(
-                    "llama-cpp-python is required for local inference.\n"
-                    "Install it with:\n"
-                    "  pip install llama-cpp-python "
-                    "--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu"
-                ) from exc
+    """
+    Return the shared ``Llama`` for (model_path, n_ctx), loading it once.
 
-            logger.info("Loading local model: %s (requested n_ctx=%d)", model_path, n_ctx)
-            _llm = Llama(
-                model_path=model_path,
-                n_ctx=n_ctx,
-                n_threads=n_threads,
-                verbose=False,
-            )
-            # Report the n_ctx the runtime actually allocated — authoritative value.
-            actual_ctx = _llm.n_ctx() if hasattr(_llm, "n_ctx") else n_ctx
-            logger.info("Local model ready (actual n_ctx=%d).", actual_ctx)
-        return _llm
+    Repeated calls with the same key return the same object, so weights
+    are never loaded twice.
+    """
+    from src.config.settings import Settings
+
+    key = _model_key(model_path, n_ctx)
+
+    with _cache_lock:
+        if key in _llms:
+            _llms.move_to_end(key)  # mark most-recently-used
+            return _llms[key]
+
+        try:
+            from llama_cpp import Llama
+        except ImportError as exc:
+            raise ImportError(
+                "llama-cpp-python is required for local inference.\n"
+                "Install it with:\n"
+                "  pip install llama-cpp-python "
+                "--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu"
+            ) from exc
+
+        logger.info("Loading local model: %s (requested n_ctx=%d)", model_path, n_ctx)
+        llm = Llama(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_threads=n_threads,
+            verbose=False,
+        )
+        # Report the n_ctx the runtime actually allocated — authoritative value.
+        actual_ctx = llm.n_ctx() if hasattr(llm, "n_ctx") else n_ctx
+        logger.info("Local model ready (actual n_ctx=%d).", actual_ctx)
+
+        _llms[key] = llm
+
+        # Evict least-recently-used beyond the cap so a bad config cannot
+        # keep loading models until the machine runs out of memory.
+        max_loaded = max(1, Settings.LOCAL_MAX_LOADED_MODELS)
+        while len(_llms) > max_loaded:
+            evicted_key, evicted = _llms.popitem(last=False)
+            logger.info("Evicting local model from cache: %s", evicted_key[0])
+            try:
+                evicted.close()
+            except Exception:
+                # Not all llama_cpp builds expose close(); dropping the
+                # reference is enough for GC to reclaim the weights.
+                pass
+            _inference_locks.pop(evicted_key, None)
+
+        return llm
+
+
+def reset_model_cache() -> None:
+    """
+    Drop every cached model. Test hook — never called in production.
+    """
+    with _cache_lock:
+        for _key, llm in _llms.items():
+            try:
+                llm.close()
+            except Exception:
+                pass
+        _llms.clear()
+        _inference_locks.clear()
 
 
 # ── Model download ────────────────────────────────────────────────────────────
@@ -222,6 +293,16 @@ class LocalInferenceProvider(LLMProvider):
             ) from self._error
         return _get_shared_llm(self._model_path, self._n_ctx, self._n_threads)
 
+    def _lock(self) -> threading.Lock:
+        """
+        Return the inference lock for *this* provider's model.
+
+        Per-model rather than global so a fast autocomplete on the small
+        model is not serialized behind a slow planning call on the large
+        one — which is the whole reason two models can be resident.
+        """
+        return _get_inference_lock(self._model_path, self._n_ctx)
+
     def complete(
         self,
         messages: list[dict[str, Any]],
@@ -230,7 +311,7 @@ class LocalInferenceProvider(LLMProvider):
     ) -> str:
         llm = self._get_llm()
         try:
-            with _inference_lock:
+            with self._lock():
                 result = llm.create_chat_completion(
                     messages=messages,
                     max_tokens=max_tokens,
@@ -253,7 +334,7 @@ class LocalInferenceProvider(LLMProvider):
     ) -> Iterator[str]:
         llm = self._get_llm()
         try:
-            with _inference_lock:
+            with self._lock():
                 for chunk in llm.create_chat_completion(
                     messages=messages,
                     max_tokens=max_tokens,

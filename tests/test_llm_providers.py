@@ -209,14 +209,15 @@ def test_pearl_local_inference_raises_import_error_without_llama_cpp(monkeypatch
     with pytest.raises(ImportError, match="llama-cpp-python"):
         with pytest.MonkeyPatch().context() as mp:
             mp.setitem(__import__("sys").modules, "llama_cpp", None)
-            # Reset the shared singleton so it tries to import again
+            # Clear the model cache so loading is attempted again (and so
+            # this test cannot evict a model a later test depends on).
             import src.llm.providers.local_inference as _m
-            orig = _m._llm
-            _m._llm = None
+            saved = dict(_m._llms)
+            _m._llms.clear()
             try:
                 provider.complete([{"role": "user", "content": "hi"}], 0.2, 100)
             finally:
-                _m._llm = orig
+                _m._llms.update(saved)
 
 
 def test_pearl_provider_builds_pearl_inference_when_configured(monkeypatch):

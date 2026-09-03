@@ -65,7 +65,7 @@ def load_env_file(path: Path) -> None:
 # workspace root is wherever the *target* project lives (never
 # guaranteed to be Pearl's own repo), so `.env` must not depend on
 # cwd to be found — otherwise every provider setting silently falls
-# back to its hardcoded default (e.g. the wrong Ollama model) when
+# back to its hardcoded default (e.g. the wrong local model file) when
 # Pearl is pointed at an external project.
 _ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
@@ -187,6 +187,12 @@ class Settings:
         str(Path.home() / ".pearl" / "models"),
     )
     LOCAL_MODEL_CTX = int(os.getenv("LOCAL_MODEL_CTX", "8192"))
+
+    # How many distinct local GGUFs may be resident at once.  Two is the
+    # useful default: a large model for reasoning plus a small one for
+    # autocomplete.  Each loaded model costs its full weights in RAM, so
+    # this is a memory ceiling, not a performance knob.
+    LOCAL_MAX_LOADED_MODELS = int(os.getenv("PEARL_LOCAL_MAX_LOADED_MODELS", "2"))
     LOCAL_MODEL_THREADS = int(os.getenv("LOCAL_MODEL_THREADS", "0"))  # 0 = auto
 
     # -- OpenAI --
@@ -236,18 +242,76 @@ class Settings:
     # from speed). Each falls back to LLM_PROVIDER / the provider's
     # default model when unset.
     #
-    # Example: use a large local model for planning and a fast remote
-    # one for chat:
-    #   PEARL_PLANNING_PROVIDER=ollama
-    #   PEARL_PLANNING_MODEL=llama3:70b
-    #   PEARL_CHAT_PROVIDER=openai
-    #   PEARL_CHAT_MODEL=gpt-4o-mini
+    # Example: a strong remote model for planning, the fast local one
+    # for chat:
+    #   PEARL_PLANNING_PROVIDER=anthropic
+    #   PEARL_PLANNING_MODEL=claude-sonnet-4-6
+    #   PEARL_CHAT_PROVIDER=pearl
+    #
+    # Prefer PEARL_MODEL_PROFILE (below) over setting these by hand —
+    # it configures every role coherently in one setting.
 
     PLANNING_PROVIDER = os.getenv("PEARL_PLANNING_PROVIDER", "")
     PLANNING_MODEL = os.getenv("PEARL_PLANNING_MODEL", "")
 
     CHAT_PROVIDER = os.getenv("PEARL_CHAT_PROVIDER", "")
     CHAT_MODEL = os.getenv("PEARL_CHAT_MODEL", "")
+
+    # ==================================================
+    # Model profile — one setting configures every role
+    # ==================================================
+    #
+    # Roles differ in what they need.  Autocomplete must answer in
+    # milliseconds and can be small; planning needs real reasoning;
+    # vision needs a multimodal model.  Rather than making users wire
+    # six roles by hand, a profile assigns each role a sensible tier.
+    #
+    #   local  — everything on the local GGUF.  No API key, no network,
+    #            no cost.  Planning quality is limited by model size.
+    #   hybrid — local for fast/cheap roles (autocomplete, condensation),
+    #            remote for reasoning (planning, reflection).  Default
+    #            when a remote key is present.
+    #   cloud  — everything remote except autocomplete, which stays
+    #            local because network latency makes it unusable.
+    #
+    # Explicit per-role settings above always win over the profile, so
+    # a profile is a starting point rather than a constraint.
+    #
+    # "auto" resolves to "local" with no key configured and "hybrid"
+    # with one, which keeps zero-config working out of the box.
+
+    MODEL_PROFILE = os.getenv("PEARL_MODEL_PROFILE", "auto").strip().lower()
+
+    # Autocomplete: latency-critical, always local unless overridden.
+    # A remote round-trip cannot meet the sub-200ms budget inline
+    # completion needs, so this role does not follow the profile.
+    AUTOCOMPLETE_PROVIDER = os.getenv("PEARL_AUTOCOMPLETE_PROVIDER", "")
+    AUTOCOMPLETE_MODEL = os.getenv("PEARL_AUTOCOMPLETE_MODEL", "")
+    # Small + fast beats large + accurate for completion; 0.5B is enough.
+    AUTOCOMPLETE_LOCAL_MODEL_FILE = os.getenv(
+        "PEARL_AUTOCOMPLETE_LOCAL_MODEL_FILE",
+        "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+    )
+    AUTOCOMPLETE_MAX_TOKENS = int(os.getenv("PEARL_AUTOCOMPLETE_MAX_TOKENS", "64"))
+    AUTOCOMPLETE_TIMEOUT_MS = int(os.getenv("PEARL_AUTOCOMPLETE_TIMEOUT_MS", "1500"))
+
+    # Vision: multimodal input (screenshots, mockups).  No local GGUF
+    # here is multimodal, so this role has no local fallback — when it
+    # is unconfigured, image input is refused rather than silently
+    # degraded to a text-only model that would hallucinate.
+    VISION_PROVIDER = os.getenv("PEARL_VISION_PROVIDER", "")
+    VISION_MODEL = os.getenv("PEARL_VISION_MODEL", "")
+
+    # Reflection: judges task completion.  Defaults to the chat tier.
+    REFLECTION_PROVIDER = os.getenv("PEARL_REFLECTION_PROVIDER", "")
+    REFLECTION_MODEL = os.getenv("PEARL_REFLECTION_MODEL", "")
+
+    # When a remote role fails (network down, key revoked, rate limit),
+    # fall back to the local model rather than failing the request.
+    # Zero-config must never break because a cloud provider is down.
+    MODEL_FALLBACK_TO_LOCAL = os.getenv(
+        "PEARL_MODEL_FALLBACK_TO_LOCAL", "true"
+    ).lower() in ("1", "true", "yes")
 
     # ==================================================
     # Generation
