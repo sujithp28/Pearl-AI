@@ -270,6 +270,182 @@ test("approving resumes execution via pearl/approvePatches and reports completio
   assert.match(last?.text ?? "", /1\/1 step\(s\) completed successfully/);
 });
 
+test("a completed run with verification and reflection shows both in the summary", async () => {
+  const { sender } = fakeSender({
+    "pearl/runAutonomous": () => ({
+      stopReason: "awaiting_approval",
+      steps: [
+        { tool: "create_file", arguments: {}, succeeded: true, summary: "" },
+      ],
+      patches: singleFilePatch(),
+    }),
+    "pearl/approvePatches": () => ({
+      stopReason: "completed",
+      steps: [
+        { tool: "create_file", arguments: {}, succeeded: true, summary: "" },
+      ],
+      patches: [],
+      verification: {
+        status: "SUCCESS",
+        testsRun: 5,
+        testsPassed: 5,
+        testsFailed: 0,
+        changedFiles: ["src/auth.py"],
+        unexpectedFiles: [],
+      },
+      reflection: {
+        status: "complete",
+        confidence: 0.92,
+        reason: "The login function was added and all tests pass.",
+        missingRequirements: [],
+      },
+    }),
+  });
+
+  const { approvePatch } = fixedPatchApprover("approve");
+  const { post, messages } = collectingPost();
+
+  const controller = new ChatController(
+    sender,
+    post,
+    unusedToolApprover,
+    unusedPlanApprover,
+    approvePatch
+  );
+
+  await controller.runAutonomous("create a.py");
+
+  const last = strip(messages).at(-1);
+  assert.equal(last?.role, "assistant");
+  assert.match(last?.text ?? "", /Verification:\*\*\s*SUCCESS/);
+  assert.match(last?.text ?? "", /5\/5 passed/);
+  assert.match(last?.text ?? "", /Reflection:\*\*\s*✓ complete/);
+  assert.match(last?.text ?? "", /92% confidence/);
+  assert.match(last?.text ?? "", /login function was added/);
+});
+
+test("a blocked reflection is shown as unfinished, not dressed up as success", async () => {
+  const { sender } = fakeSender({
+    "pearl/runAutonomous": () => ({
+      stopReason: "awaiting_approval",
+      steps: [],
+      patches: singleFilePatch(),
+    }),
+    "pearl/approvePatches": () => ({
+      stopReason: "completed",
+      steps: [
+        { tool: "replace_in_file", arguments: {}, succeeded: true, summary: "" },
+      ],
+      patches: [],
+      verification: {
+        status: "FAILED",
+        testsRun: 8,
+        testsPassed: 6,
+        testsFailed: 2,
+        changedFiles: ["src/auth.py"],
+        unexpectedFiles: ["src/config.py"],
+      },
+      reflection: {
+        status: "blocked",
+        confidence: 0.25,
+        reason: "Tests still fail and an unrelated file was modified.",
+        missingRequirements: ["revert src/config.py", "fix test_auth failures"],
+      },
+    }),
+  });
+
+  const { approvePatch } = fixedPatchApprover("approve");
+  const { post, messages } = collectingPost();
+
+  const controller = new ChatController(
+    sender,
+    post,
+    unusedToolApprover,
+    unusedPlanApprover,
+    approvePatch
+  );
+
+  await controller.runAutonomous("fix the bug");
+
+  const last = strip(messages).at(-1);
+  // A tool succeeding must not be conflated with the task succeeding —
+  // this is the exact failure mode reflection exists to catch.
+  assert.match(last?.text ?? "", /Reflection:\*\*\s*✗ blocked/);
+  assert.match(last?.text ?? "", /Still needed:.*revert src\/config\.py/);
+  assert.match(last?.text ?? "", /Unexpected changes:.*src\/config\.py/);
+  assert.doesNotMatch(last?.text ?? "", /✓ complete/);
+});
+
+test("a run without verification or reflection shows neither section (never faked)", async () => {
+  const { sender } = fakeSender({
+    "pearl/runAutonomous": () => ({
+      stopReason: "awaiting_approval",
+      steps: [],
+      patches: singleFilePatch(),
+    }),
+    "pearl/approvePatches": () => ({
+      stopReason: "completed",
+      steps: [
+        { tool: "create_file", arguments: {}, succeeded: true, summary: "" },
+      ],
+      patches: [],
+      // No verification/reflection fields — mirrors an MCP server run
+      // without those components wired in.
+    }),
+  });
+
+  const { approvePatch } = fixedPatchApprover("approve");
+  const { post, messages } = collectingPost();
+
+  const controller = new ChatController(
+    sender,
+    post,
+    unusedToolApprover,
+    unusedPlanApprover,
+    approvePatch
+  );
+
+  await controller.runAutonomous("create a.py");
+
+  const last = strip(messages).at(-1);
+  assert.doesNotMatch(last?.text ?? "", /Verification:/);
+  assert.doesNotMatch(last?.text ?? "", /Reflection:/);
+});
+
+test("a replan count is shown in the completion summary", async () => {
+  const { sender } = fakeSender({
+    "pearl/runAutonomous": () => ({
+      stopReason: "awaiting_approval",
+      steps: [],
+      patches: singleFilePatch(),
+    }),
+    "pearl/approvePatches": () => ({
+      stopReason: "completed",
+      steps: [
+        { tool: "create_file", arguments: {}, succeeded: true, summary: "" },
+      ],
+      patches: [],
+      replansUsed: 2,
+    }),
+  });
+
+  const { approvePatch } = fixedPatchApprover("approve");
+  const { post, messages } = collectingPost();
+
+  const controller = new ChatController(
+    sender,
+    post,
+    unusedToolApprover,
+    unusedPlanApprover,
+    approvePatch
+  );
+
+  await controller.runAutonomous("create a.py");
+
+  const last = strip(messages).at(-1);
+  assert.match(last?.text ?? "", /Replanned 2 times/);
+});
+
 test("approval decision is never sent as a tool call or plan approval", async () => {
   const { sender } = fakeSender({
     "pearl/runAutonomous": () => ({

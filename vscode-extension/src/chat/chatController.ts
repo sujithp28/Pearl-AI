@@ -39,6 +39,8 @@
 import { sendChatMessageStream } from "../mcp/chatClient";
 import {
   ExecutionReportResult,
+  ReflectionSummary,
+  VerificationSummary,
   approvePatches,
   rejectPatches,
   runAutonomous as requestAutonomousRun,
@@ -436,7 +438,89 @@ export class ChatController {
 
   private formatExecutionSummary(report: ExecutionReportResult): string {
     const succeeded = report.steps.filter((step) => step.succeeded).length;
-    return `Done. ${succeeded}/${report.steps.length} step(s) completed successfully.`;
+    const lines = [
+      `Done. ${succeeded}/${report.steps.length} step(s) completed successfully.`,
+    ];
+
+    if (report.replansUsed) {
+      lines.push(
+        `Replanned ${report.replansUsed} time${report.replansUsed === 1 ? "" : "s"}.`
+      );
+    }
+
+    lines.push(...this.formatVerification(report.verification));
+    lines.push(...this.formatReflection(report.reflection));
+
+    return lines.join("\n");
+  }
+
+  /**
+   * Render the post-apply verification block, or nothing when
+   * verification did not run — never claiming success for an
+   * unverified change.
+   */
+  private formatVerification(verification?: VerificationSummary): string[] {
+    if (!verification) {
+      return [];
+    }
+
+    const lines = [`\n**Verification:** ${verification.status}`];
+
+    if (verification.testsRun > 0) {
+      lines.push(
+        `- Tests: ${verification.testsPassed}/${verification.testsRun} passed`
+      );
+    } else {
+      lines.push(`- Tests: none selected for the changed files`);
+    }
+
+    if (verification.changedFiles.length > 0) {
+      lines.push(`- Changed: ${verification.changedFiles.join(", ")}`);
+    }
+
+    // A file changed but never planned is a correctness signal worth
+    // surfacing, not noise to hide.
+    if (verification.unexpectedFiles.length > 0) {
+      lines.push(
+        `- ⚠️ Unexpected changes: ${verification.unexpectedFiles.join(", ")}`
+      );
+    }
+
+    return lines;
+  }
+
+  /**
+   * Render the agent's own completion judgement. A "blocked" or
+   * "replan" verdict must read as unfinished, not be dressed up as
+   * success just because the tools themselves ran without error.
+   */
+  private formatReflection(reflection?: ReflectionSummary): string[] {
+    if (!reflection) {
+      return [];
+    }
+
+    const badge =
+      reflection.status === "complete"
+        ? "✓ complete"
+        : reflection.status === "blocked"
+          ? "✗ blocked"
+          : `⚠ ${reflection.status}`;
+
+    const lines = [
+      `\n**Reflection:** ${badge} (${Math.round(reflection.confidence * 100)}% confidence)`,
+    ];
+
+    if (reflection.reason) {
+      lines.push(`- ${reflection.reason}`);
+    }
+
+    if (reflection.missingRequirements.length > 0) {
+      lines.push(
+        `- Still needed: ${reflection.missingRequirements.join(", ")}`
+      );
+    }
+
+    return lines;
   }
 
   private postExecutionState(state: ExecutionState | null): void {

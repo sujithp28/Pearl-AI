@@ -42,11 +42,41 @@ export interface ExecutionStepResult {
   summary: string;
 }
 
+/**
+ * Post-apply test verification (`VerificationEngine.verify()` in
+ * `src/agent/verification.py`). Present only when files were actually
+ * applied and verification could run — absent (not faked as "clean")
+ * whenever nothing was checked, e.g. a run that never reached approval.
+ */
+export interface VerificationSummary {
+  status: string;
+  testsRun: number;
+  testsPassed: number;
+  testsFailed: number;
+  changedFiles: string[];
+  unexpectedFiles: string[];
+}
+
+/**
+ * The agent's own judgement of whether the task actually completed
+ * (`ReflectionEngine.reflect()` in `src/agent/reflection.py`), derived
+ * from verification evidence rather than tool-success alone. Present
+ * only on a natural completion, matching the executor's own gating.
+ */
+export interface ReflectionSummary {
+  status: "complete" | "retry" | "replan" | "blocked";
+  confidence: number;
+  reason: string;
+  missingRequirements: string[];
+}
+
 export interface ExecutionReportResult {
   stopReason: ExecutionStopReason;
   steps: ExecutionStepResult[];
   patches: PatchFileSummary[];
   replansUsed?: number;
+  verification?: VerificationSummary;
+  reflection?: ReflectionSummary;
 }
 
 function isPatchFileSummary(value: unknown): value is PatchFileSummary {

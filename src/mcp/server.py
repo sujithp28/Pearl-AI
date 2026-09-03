@@ -160,13 +160,39 @@ def _execution_report_to_dict(
             for pending in executor.command_approver.pending
         ]
 
-    return {
+    result: dict[str, Any] = {
         "stopReason": report.stop_reason,
         "steps": [_execution_step_to_dict(step) for step in report.steps],
         "patches": patches,
         "commands": commands,
         "replansUsed": report.replans_used,
     }
+
+    # Additive, like `commands` above: clients that ignore these fields
+    # are unaffected. Both are absent rather than faked when they did
+    # not run, so a client can distinguish "verified clean" from
+    # "never checked".
+    verification = getattr(executor, "_last_verification", None)
+    if verification is not None:
+        result["verification"] = {
+            "status": verification.get("status"),
+            "testsRun": verification.get("tests_run", 0),
+            "testsPassed": verification.get("tests_passed", 0),
+            "testsFailed": verification.get("tests_failed", 0),
+            "changedFiles": verification.get("changed_files", []),
+            "unexpectedFiles": verification.get("unexpected_files", []),
+        }
+
+    reflection = report.llm_reflection
+    if reflection is not None:
+        result["reflection"] = {
+            "status": reflection.status,
+            "confidence": reflection.confidence,
+            "reason": reflection.reason,
+            "missingRequirements": list(reflection.missing_requirements),
+        }
+
+    return result
 
 
 class MCPServer:
@@ -206,6 +232,45 @@ class MCPServer:
         # list.
         self.checkpoints = checkpoints or CheckpointManager()
         self._autonomous_executor: AutonomousExecutor | None = None
+
+    # -- V2 loop components -------------------------------------------------
+
+    def _build_verifier(self) -> "VerificationEngine | None":
+        """
+        Verification engine for the current workspace, or None if it
+        cannot be constructed.
+
+        Best-effort: a workspace where verification cannot run (no git,
+        no tests) must still be able to execute tasks — losing the
+        post-apply check is a degradation, refusing to run is a
+        regression.
+        """
+        try:
+            from src.agent.verification import VerificationEngine
+            from src.config.workspace import get_workspace_root
+
+            return VerificationEngine(workspace_root=get_workspace_root())
+        except Exception:
+            logger.warning("Verification unavailable for this run.", exc_info=True)
+            return None
+
+    def _build_reflection_engine(self) -> "ReflectionEngine | None":
+        """
+        Reflection engine, or None when no LLM is available.
+
+        Reflection needs a model; without one the executor falls back to
+        its heuristic reflection rather than failing.
+        """
+        try:
+            from src.agent.reflection import ReflectionEngine
+
+            client = self._chat_llm or self.llm
+            if client is None:
+                return None
+            return ReflectionEngine(client)
+        except Exception:
+            logger.warning("Reflection unavailable for this run.", exc_info=True)
+            return None
 
     # -- Request handling ---------------------------------------------------
 
@@ -481,6 +546,11 @@ class MCPServer:
             self.dispatcher,
             on_progress=self._make_progress_forwarder(notify),
             checkpoints=self.checkpoints,
+            # Same V2 wiring the HTTP session uses: without these the
+            # extension can only report that tools ran, never whether
+            # the task actually succeeded.
+            verifier=self._build_verifier(),
+            reflection_engine=self._build_reflection_engine(),
         )
         self._autonomous_executor = executor
 

@@ -95,6 +95,16 @@ class MCPProcess:
         self._reader = threading.Thread(target=self._drain_stdout, daemon=True)
         self._reader.start()
 
+        # stderr needs the same treatment for the same reason. The
+        # server logs every step there, and once the pipe buffer fills
+        # the subprocess blocks *inside a logging call* — which looks
+        # exactly like a hung server, but is really this harness failing
+        # to consume. Accumulated here so failure messages can still
+        # show the log without a blocking read at teardown.
+        self._err_lines: list[str] = []
+        self._err_reader = threading.Thread(target=self._drain_stderr_thread, daemon=True)
+        self._err_reader.start()
+
     def _drain_stdout(self) -> None:
         assert self.process.stdout is not None
 
@@ -103,6 +113,17 @@ class MCPProcess:
 
         # Sentinel: stdout closed, so no further lines are coming.
         self._lines.put(None)
+
+    def _drain_stderr_thread(self) -> None:
+        if self.process.stderr is None:
+            return
+        try:
+            for line in self.process.stderr:
+                # Bounded so a pathological log cannot grow without limit.
+                if len(self._err_lines) < 2000:
+                    self._err_lines.append(line)
+        except Exception:
+            pass  # Pipe closed during teardown — nothing to report.
 
     def _next_line(self) -> str:
         """
@@ -126,18 +147,18 @@ class MCPProcess:
 
     def _drain_stderr(self) -> str:
         """
-        Best-effort stderr capture for failure messages. The server
-        logs there, so it usually explains what went wrong.
+        Return the stderr collected so far, for failure messages.
+
+        Reads from the buffer the reader thread has been filling rather
+        than from the pipe: a blocking read here would hang whenever the
+        server is still running, which is exactly when a failure message
+        is needed most.
         """
 
-        if self.process.stderr is None:
+        if not self._err_lines:
             return "(no stderr captured)"
-
-        try:
-            self.process.kill()
-            return self.process.stderr.read() or "(empty)"
-        except Exception:
-            return "(stderr unavailable)"
+        # Tail only — the interesting part of a hang is always the end.
+        return "".join(self._err_lines[-60:])
 
     def request(self, method: str, params: dict | None = None) -> dict:
         """
