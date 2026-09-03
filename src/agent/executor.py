@@ -39,6 +39,7 @@ from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
 from src.agent.retry import classify_error, is_transient_error
 from src.agent.verification import VerificationEngine, VerificationStatus
+from src.config.workspace import get_workspace_root
 from src.llm.client import LLMCancelled
 from src.llm.parser import ToolCall
 from src.personality import EventKind, PersonalityManager
@@ -50,6 +51,9 @@ from src.tools.repo_tools import refresh_indexed_file
 from src.tools.shell_tools import _run_shell_command, set_active_command_approver
 
 if TYPE_CHECKING:
+    from src.agent.context_engine import ContextEngine
+    from src.agent.reflection import ReflectionEngine as LLMReflectionEngine
+    from src.agent.reflection import ReflectionResult as LLMReflectionResult
     from src.repository.context import SemanticContextBuilder
     from src.repository.service import RepositoryService
 
@@ -227,6 +231,9 @@ class ExecutionReport:
     events: list[ProgressEvent] = field(default_factory=list)
     reflection: ReflectionResult | None = None
     confidence_score: float | None = None
+    # LLM-based structured reflection — richer than the heuristic `reflection`
+    # above; only populated when a ReflectionEngine is wired into the executor.
+    llm_reflection: "LLMReflectionResult | None" = None
 
     @property
     def succeeded(self) -> bool:
@@ -271,6 +278,79 @@ class _PausedState:
     iteration: int
 
 
+class CheckpointCoordinator:
+    """
+    Manages checkpoint creation around approval writes.
+
+    Extracted from AutonomousExecutor to group checkpoint-related
+    logic as a named concern. All checkpoint creation goes through
+    here so the policy (best-effort, swallow failures) is defined once.
+    """
+
+    def __init__(self, checkpoints: CheckpointManager | None) -> None:
+        self.checkpoints = checkpoints
+
+    def create_before_write(self, prompt: str) -> Any:
+        """
+        Record a restore point before a write batch reaches disk.
+
+        Returns the created checkpoint object, or None if checkpointing
+        is disabled, nothing new to capture, or creation failed.
+        Swallows failures — a broken checkpoint must never block a write.
+        """
+        if self.checkpoints is None:
+            return None
+        try:
+            return self.checkpoints.create(f"Before: {prompt[:72]}")
+        except Exception:
+            logger.warning(
+                "Could not create a checkpoint; proceeding without undo "
+                "for this change.",
+                exc_info=True,
+            )
+            return None
+
+
+class ApprovalCoordinator:
+    """
+    Manages the approval gate: patch staging, command staging, and
+    the pause/resume lifecycle.
+
+    Extracted from AutonomousExecutor to group all approval-related
+    state as a named concern. AutonomousExecutor delegates to this
+    for all PatchManager / CommandApprovalManager interactions.
+    """
+
+    def __init__(
+        self,
+        patch_manager: PatchManager,
+        command_approver: CommandApprovalManager,
+    ) -> None:
+        self.patch_manager = patch_manager
+        self.command_approver = command_approver
+        self._paused: _PausedState | None = None
+
+    def is_awaiting_approval(self) -> bool:
+        return self._paused is not None
+
+    def pause(self, state: _PausedState) -> None:
+        self._paused = state
+
+    def take_paused(self) -> _PausedState:
+        """Pop and return the paused state (raises if not paused)."""
+        if self._paused is None:
+            raise RuntimeError("No execution is currently awaiting approval.")
+        state = self._paused
+        self._paused = None
+        return state
+
+    def discard_all(self) -> tuple[list[str], list[str]]:
+        """Discard all staged patches and commands; return (files, cmds)."""
+        files = self.patch_manager.discard_all()
+        cmds = self.command_approver.discard_all()
+        return files, cmds
+
+
 class AutonomousExecutor:
     """
     Executes a Planner-produced plan one step at a time, evaluating
@@ -308,7 +388,9 @@ class AutonomousExecutor:
         checkpoints: CheckpointManager | None = None,
         context_builder: "SemanticContextBuilder | None" = None,
         context_service: "RepositoryService | None" = None,
+        context_engine: "ContextEngine | None" = None,
         verifier: VerificationEngine | None = None,
+        reflection_engine: "LLMReflectionEngine | None" = None,
     ) -> None:
         self.planner = planner
         self.dispatcher = dispatcher
@@ -316,35 +398,51 @@ class AutonomousExecutor:
         self.max_replans = max_replans
         self.max_retries = max_retries
         self.on_progress = on_progress
-        self.patch_manager = (
-            patch_manager if patch_manager is not None else PatchManager()
-        )
-        self.command_approver = (
+
+        # Build concrete PatchManager / CommandApprovalManager instances first
+        # so coordinators and backward-compat attributes point to the same objects.
+        _pm = patch_manager if patch_manager is not None else PatchManager()
+        _ca = (
             command_approver
             if command_approver is not None
             else CommandApprovalManager(runner=_run_shell_command)
         )
+        _ck = checkpoints if checkpoints is not None else CheckpointManager()
+
+        # Coordinator layer: named concerns extracted from the executor body.
+        self.approval_coordinator = ApprovalCoordinator(_pm, _ca)
+        self.checkpoint_coordinator = CheckpointCoordinator(_ck)
+
+        # Backward-compat direct attributes — same objects as coordinators hold.
+        self.patch_manager = _pm
+        self.command_approver = _ca
+        self.checkpoints = _ck
+
         # Only ever shapes the wording of ProgressEvent.current_action
         # below — never anything the planner, dispatcher, or any tool
         # sees or acts on.
         self._personality = personality or PersonalityManager()
-        # Snapshots the workspace before an approved batch is written,
-        # so the change can be undone. Pass `checkpoints=None`
-        # explicitly to opt out.
-        self.checkpoints = (
-            checkpoints if checkpoints is not None else CheckpointManager()
-        )
         self._cancel_event = threading.Event()
-        self._paused: _PausedState | None = None
         self._initial_confidence_score: float | None = None
-        # Optional semantic context builder — when present, builds a
-        # graph-aware workspace_context string before every planner call.
+        self._current_prompt: str = ""  # set by run(); used by _finish_or_pause for LLM reflection
+        # ContextEngine is preferred — builds token-budgeted workspace context.
+        # Falls back to the legacy SemanticContextBuilder when not provided.
+        self._context_engine = context_engine
         self._context_builder = context_builder
         self._context_service = context_service
         # Optional post-apply verification engine — when present, runs
         # tests after approve() and replans on test failures (bounded by
         # max_replans like any other replan).
         self._verifier = verifier
+        self._reflection_engine = reflection_engine
+        # Verification evidence from the most recent approve(), fed to the
+        # reflection engine so reflection judges from test results rather
+        # than tool-success alone. None until a verified approve() happens.
+        self._last_verification: dict[str, Any] | None = None
+        # Live replan history of the in-flight _execute() call, so a
+        # reflection-driven replan can tell the planner what is already done
+        # (with arguments intact, which ExecutionStep alone would not give).
+        self._last_completed_for_replan: list[dict[str, Any]] = []
 
     def _log_structured(self, event: str, **fields: Any) -> None:
         """
@@ -385,14 +483,34 @@ class AutonomousExecutor:
         to `approve()` or `reject()`.
         """
 
-        return self._paused is not None
+        return self.approval_coordinator.is_awaiting_approval()
+
+    # Backward-compat proxy so tests and external code that read/write
+    # executor._paused directly still work after the coordinator refactor.
+    @property
+    def _paused(self) -> "_PausedState | None":
+        return self.approval_coordinator._paused
+
+    @_paused.setter
+    def _paused(self, value: "_PausedState | None") -> None:
+        self.approval_coordinator._paused = value
 
     def _build_workspace_context(self, prompt: str) -> str:
         """
-        Return a semantic context string for `prompt` when a
-        `SemanticContextBuilder` and `RepositoryService` are available.
+        Return a semantic context string for `prompt`.
+
+        Prefers ContextEngine (token-budgeted, history-aware) when available.
+        Falls back to the legacy SemanticContextBuilder path.
         Returns "" on any error so a context failure never blocks planning.
         """
+        if self._context_engine is not None:
+            try:
+                return self._context_engine.build(task=prompt).context_block
+            except Exception:
+                logger.warning(
+                    "ContextEngine.build failed; falling back to legacy builder.",
+                    exc_info=True,
+                )
 
         if self._context_builder is None or self._context_service is None:
             return ""
@@ -472,7 +590,7 @@ class AutonomousExecutor:
             affected_commands,
         )
 
-        self._paused = _PausedState(
+        self.approval_coordinator.pause(_PausedState(
             prompt=prompt,
             pending=pending,
             steps=steps,
@@ -480,7 +598,7 @@ class AutonomousExecutor:
             completed_for_replan=completed_for_replan,
             replans_used=replans_used,
             iteration=iteration,
-        )
+        ))
 
         self._emit(
             events,
@@ -582,11 +700,15 @@ class AutonomousExecutor:
         ones Pearl is about to propose. Non-fatal — never blocks the run.
         """
         try:
+            # Pin to the active workspace: without cwd this reports the
+            # *process* directory's repo, which is a different project
+            # entirely whenever Pearl runs against an external workspace.
             result = subprocess.run(
                 ["git", "status", "--porcelain"],
                 capture_output=True,
                 text=True,
                 timeout=10,
+                cwd=str(get_workspace_root()),
             )
             if result.returncode == 0 and result.stdout.strip():
                 logger.warning(
@@ -608,12 +730,13 @@ class AutonomousExecutor:
         approval.
         """
 
-        if self._paused is not None:
+        if self.approval_coordinator.is_awaiting_approval():
             raise RuntimeError(
                 "Execution is already awaiting approval; call "
                 "approve() or reject() first."
             )
 
+        self._current_prompt = prompt
         logger.info("Starting autonomous execution for: %s", prompt)
         self._log_structured("run_start", prompt=prompt[:200])
 
@@ -698,11 +821,7 @@ class AutonomousExecutor:
         instead of resuming.
         """
 
-        if self._paused is None:
-            raise RuntimeError("No execution is currently awaiting approval.")
-
-        state = self._paused
-        self._paused = None
+        state = self.approval_coordinator.take_paused()
 
         if self.is_cancelled():
             return self._finalize_cancelled_while_paused(state)
@@ -712,7 +831,15 @@ class AutonomousExecutor:
         # work (no git binary, unwritable directory) must still be able
         # to approve changes — losing undo is a degradation, refusing
         # the write would be a regression.
-        self._checkpoint_before_writing(state)
+        checkpoint = self.checkpoint_coordinator.create_before_write(state.prompt)
+        if checkpoint is not None:
+            self._emit(
+                state.events,
+                "checkpoint_created",
+                current_step=state.iteration,
+                total_steps=state.iteration + len(state.pending),
+                current_action=self._personality.format(EventKind.CHECKPOINT),
+            )
 
         applied = self.patch_manager.apply_all()
 
@@ -765,6 +892,22 @@ class AutonomousExecutor:
         # Bounded by max_replans like any other recovery path.
         if self._verifier is not None and applied:
             vr = self._verifier.verify(applied)
+            # Retain as reflection evidence: reflection must judge from test
+            # results and unexpected changes, not from tool success alone.
+            # Full shape so callers can surface it without re-running tests.
+            self._last_verification = {
+                "status": getattr(vr.status, "value", str(vr.status)),
+                "risk": getattr(vr.risk, "value", str(vr.risk)),
+                "confidence": round(vr.confidence, 2),
+                "planned_files": list(vr.planned_files),
+                "changed_files": list(vr.changed_files),
+                "unexpected_files": list(vr.unexpected_files),
+                "tests_run": vr.tests_run,
+                "tests_passed": vr.tests_passed,
+                "tests_failed": vr.tests_failed,
+                "diff_summary": vr.diff_summary,
+                "evidence": [str(e) for e in vr.evidence],
+            }
             if (
                 vr.tests_failed > 0
                 and state.replans_used < self.max_replans
@@ -836,17 +979,12 @@ class AutonomousExecutor:
         is written or run).
         """
 
-        if self._paused is None:
-            raise RuntimeError("No execution is currently awaiting approval.")
-
-        state = self._paused
-        self._paused = None
+        state = self.approval_coordinator.take_paused()
 
         if self.is_cancelled():
             return self._finalize_cancelled_while_paused(state)
 
-        discarded = self.patch_manager.discard_all()
-        discarded_commands = self.command_approver.discard_all()
+        discarded, discarded_commands = self.approval_coordinator.discard_all()
 
         logger.info(
             "Rejected %d file(s) and %d command(s): %s | %s",
@@ -875,43 +1013,6 @@ class AutonomousExecutor:
             confidence_score=self._initial_confidence_score,
         )
 
-    def _checkpoint_before_writing(self, state: _PausedState) -> None:
-        """
-        Record a restore point covering everything about to be
-        written, and emit a progress event when one is actually taken
-        (Sprint 1: Checkpoint System timeline integration) — not when
-        there was nothing new to capture (`create()` returns `None`),
-        and not on failure, both of which already have their own
-        signal (silence, and the warning log below, respectively).
-
-        Deliberately swallows every failure: checkpointing is a safety
-        net, and a net that refuses to let you proceed when it can't
-        be strung up is worse than no net. The user is told via the
-        log, and the write goes ahead.
-        """
-
-        if self.checkpoints is None:
-            return
-
-        try:
-            checkpoint = self.checkpoints.create(f"Before: {state.prompt[:72]}")
-        except Exception:
-            logger.warning(
-                "Could not create a checkpoint; proceeding without undo "
-                "for this change.",
-                exc_info=True,
-            )
-            return
-
-        if checkpoint is not None:
-            self._emit(
-                state.events,
-                "checkpoint_created",
-                current_step=state.iteration,
-                total_steps=state.iteration + len(state.pending),
-                current_action=self._personality.format(EventKind.CHECKPOINT),
-            )
-
     def _finish_or_pause(self, report: ExecutionReport) -> ExecutionReport:
         """
         Deactivate preview/approval mode unless the report represents
@@ -926,16 +1027,124 @@ class AutonomousExecutor:
 
         report.confidence_score = self._initial_confidence_score
 
-        if report.stop_reason != "awaiting_approval":
-            self.patch_manager.discard_all()
-            self.command_approver.discard_all()
-            set_active_patch_manager(None)
-            set_active_command_approver(None)
-            report.reflection = _reflect(
-                report.steps, report.stop_reason, report.replans_used
-            )
+        if report.stop_reason == "awaiting_approval":
+            return report
+
+        # LLM-based structured reflection — only on natural completion so
+        # cancelled/fatal runs don't waste a model call.  Runs BEFORE teardown
+        # so a "replan" verdict can resume execution with staging still active.
+        if (
+            self._reflection_engine is not None
+            and report.stop_reason in ("completed", "max_iterations")
+            and not self.is_cancelled()
+        ):
+            try:
+                report.llm_reflection = self._reflection_engine.reflect(
+                    self._current_prompt,
+                    report.steps,
+                    verification=self._last_verification,
+                )
+                logger.info(
+                    "LLM reflection: status=%s confidence=%.2f",
+                    report.llm_reflection.status,
+                    report.llm_reflection.confidence,
+                )
+            except Exception as exc:
+                logger.warning("LLM reflection failed (non-fatal): %s", exc)
+
+            # REFLECT → REPLAN edge.  Bounded three ways: the replan budget,
+            # the reflection engine's own iteration cap, and cancellation.
+            refl = report.llm_reflection
+            if (
+                refl is not None
+                and refl.should_replan
+                and report.replans_used < self.max_replans
+                and not self._reflection_engine.exhausted
+                and not self.is_cancelled()
+            ):
+                resumed = self._replan_from_reflection(report, refl)
+                if resumed is not None:
+                    return self._finish_or_pause(resumed)
+
+        # Terminal path — tear down staging and record heuristic reflection.
+        self.patch_manager.discard_all()
+        self.command_approver.discard_all()
+        set_active_patch_manager(None)
+        set_active_command_approver(None)
+        report.reflection = _reflect(
+            report.steps, report.stop_reason, report.replans_used
+        )
 
         return report
+
+    def _replan_from_reflection(
+        self,
+        report: ExecutionReport,
+        refl: "LLMReflectionResult",
+    ) -> ExecutionReport | None:
+        """
+        Replan from a reflection verdict of "replan" and resume execution.
+
+        Returns the resumed report, or None when replanning could not
+        produce a revised plan — the caller then finalizes `report` as-is
+        rather than looping.
+        """
+
+        missing = "; ".join(refl.missing_requirements) or refl.reason
+
+        self._emit(
+            report.events,
+            "replanning",
+            current_step=len(report.steps),
+            total_steps=len(report.steps),
+            current_action=self._personality.format(EventKind.REPLANNING),
+        )
+
+        completed = self._last_completed_for_replan
+
+        try:
+            revised = list(self.planner.replan(
+                self._current_prompt,
+                completed=completed,
+                failed={
+                    "tool": "reflection",
+                    "error": f"Task judged incomplete: {refl.reason}",
+                    "error_type": "incomplete_task",
+                    "suggestion": (
+                        f"Address the remaining requirements: {missing}. "
+                        "Do not repeat steps already completed."
+                    ),
+                },
+                cancel_check=self.is_cancelled,
+            ))
+        except Exception as exc:
+            logger.warning(
+                "Reflection-driven replan failed (%s); finalizing as-is.", exc
+            )
+            return None
+
+        if not revised:
+            logger.info("Reflection replan produced no steps; finalizing as-is.")
+            return None
+
+        logger.info(
+            "Reflection replan: %d new step(s) for remaining work: %s",
+            len(revised),
+            missing[:120],
+        )
+
+        set_active_patch_manager(self.patch_manager)
+        set_active_command_approver(self.command_approver)
+
+        return self._execute(
+            self._current_prompt,
+            revised,
+            report.steps,
+            report.events,
+            completed,
+            report.replans_used + 1,
+            len(report.steps),
+        )
 
     def _plan_with_retry(
         self,
@@ -1044,6 +1253,10 @@ class AutonomousExecutor:
         approves staged changes we start fresh on retries for the
         remaining steps, which have not yet been attempted.
         """
+
+        # Expose the live replan history so _finish_or_pause() can hand it to
+        # the planner on a reflection-driven replan.
+        self._last_completed_for_replan = completed_for_replan
 
         # Per-step transient retry counter, keyed by id() of the ToolCall
         # object. id() is safe here because we re-insert the exact same

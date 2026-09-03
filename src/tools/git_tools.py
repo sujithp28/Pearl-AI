@@ -1,20 +1,35 @@
 """
-Git intelligence and safe-commit tools for Pearl.
+Safe Git integration for Pearl V2.
 
-These tools give Pearl first-class Git awareness (status, diff, log)
-and the ability to make safe changes (branch, commit, restore) — all
-as ordinary tools registered with the existing `ToolRegistry` /
-`ToolDispatcher`, exactly like the file, shell, and repository tools.
-No separate Git subsystem exists: the Planner can select these tools
-the same way it selects any other.
+Design principles:
+- NEVER automatically commit unless explicitly called with the correct args.
+- NEVER destroy unrelated user changes.
+- NEVER run destructive operations without explicit user request.
+- Fail closed: if a Git operation fails, raise GitError — don't silently continue.
+- All paths validated within workspace.
 
-Every destructive or history-changing operation here is deliberately
-narrow: `git_commit` only ever commits what's already staged (and
-refuses to run if there's nothing to commit), `git_restore` only ever
-discards working-tree changes when explicitly asked, and neither this
-module nor any tool in it force-pushes or deletes a branch.
+All functions raise GitError when the workspace is not a git repository.
+
+Core tools (defined by test_git_tools.py interface):
+  git_status()        — structured workspace status dict
+  git_diff()          — current unstaged diff as a string
+  git_log(limit)      — list of commit dicts {hash, author, message}
+  git_commit(msg)     — explicit commit (raises if nothing staged)
+  git_create_branch() — create + checkout a new branch
+  git_restore()       — discard unstaged changes
+
+M5 additions (defined by test_git_m5_tools.py interface):
+  git_blame(path)     — list of blame records {commit, author, date, line_number, content}
+  git_stage(files)    — stage files for next commit
+
+Utilities (internal, used by other Pearl modules):
+  summarize_changes()         — structured change summary dict
+  git_is_repo()               — bool check
+  git_branch()                — current branch name string
+  git_stash_list()            — stash list string
+  git_undo_last()             — soft reset HEAD~1
+  get_git_status_summary()    — dict used by VerificationEngine/ContextEngine
 """
-
 from __future__ import annotations
 
 import logging
@@ -23,135 +38,142 @@ from pathlib import Path
 from typing import Any
 
 from src.tools.metadata import tool
+from src.config.workspace import get_workspace_root
 
 logger = logging.getLogger(__name__)
 
-GIT_TIMEOUT = 30
-
-_LOG_FIELD_SEPARATOR = "\x1f"
+_GIT_TIMEOUT = 30
 
 
 class GitError(RuntimeError):
-    """
-    Raised for invalid or unsafe Git states (not a repository, a
-    failed Git command, nothing to commit, nothing staged, ...).
-    """
+    """Raised when a git command fails or the workspace is not a git repo."""
 
 
-def _run_git(*args: str) -> subprocess.CompletedProcess:
-    """
-    Run a `git` subcommand in the current working directory.
+# ── Internal helpers ─────────────────────────────────────────────────────────
 
-    Never raises on a non-zero exit: callers inspect `returncode` /
-    `stderr` themselves so they can surface clear, Git-specific error
-    messages instead of a raw `CalledProcessError` traceback.
-    """
 
-    return subprocess.run(
+def _cwd() -> Path:
+    """Active workspace root (falls back to Path.cwd() in test contexts)."""
+    return get_workspace_root()
+
+
+def _run(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
+    """Run a git command in the active workspace. Never uses shell=True."""
+    result = subprocess.run(
         ["git", *args],
+        cwd=str(_cwd()),
         capture_output=True,
         text=True,
-        timeout=GIT_TIMEOUT,
+        timeout=_GIT_TIMEOUT,
     )
+    if check and result.returncode != 0:
+        raise GitError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
+    return result
 
 
 def _ensure_git_repo() -> None:
-    """
-    Raise `GitError` if the current directory isn't inside a Git
-    working tree.
-    """
-
-    result = _run_git("rev-parse", "--is-inside-work-tree")
-
-    if result.returncode != 0 or result.stdout.strip() != "true":
-        raise GitError(f"Not a git repository: {Path.cwd()}")
-
-
-def _parse_branch_header(line: str) -> str:
-    """
-    Parse the `## ...` header line from `git status --porcelain
-    --branch` into a short, human-readable branch label.
-    """
-
-    header = line[3:] if line.startswith("## ") else line[2:]
-
-    if header.startswith("HEAD"):
-        return "HEAD (detached)"
-
-    return header.split("...", 1)[0]
-
-
-@tool(
-    description="Show unstaged changes in the working tree as a unified diff.",
-    returns="str",
-)
-def git_diff() -> str:
-    """
-    Return the output of `git diff` (working tree vs. the index).
-    """
-
-    _ensure_git_repo()
-
-    logger.info("Running git diff.")
-
-    result = _run_git("diff")
-
+    """Raise GitError if the active workspace is not a git repository."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--git-dir"],
+        cwd=str(_cwd()),
+        capture_output=True,
+        timeout=_GIT_TIMEOUT,
+    )
     if result.returncode != 0:
-        raise GitError(f"git diff failed: {result.stderr.strip()}")
+        raise GitError("Not a git repository.")
 
-    return result.stdout
+
+def _is_repo_bool() -> bool:
+    """Return True if the active workspace is inside a git repository."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--git-dir"],
+        cwd=str(_cwd()),
+        capture_output=True,
+        timeout=_GIT_TIMEOUT,
+    )
+    return result.returncode == 0
+
+
+def _parse_blame_porcelain(text: str) -> list[dict]:
+    """Parse `git blame --porcelain` output into structured records."""
+    if not text:
+        return []
+    records: list[dict] = []
+    current: dict = {}
+    for line in text.splitlines():
+        if not line:
+            continue
+        if line[0] == "\t":
+            current.setdefault("commit", "")
+            current.setdefault("author", "")
+            current.setdefault("date", "")
+            current.setdefault("line_number", 0)
+            current["content"] = line[1:]
+            records.append(current)
+            current = {}
+        elif len(line) >= 40 and all(c in "0123456789abcdefABCDEF" for c in line[:40]):
+            parts = line.split()
+            current["commit"] = parts[0]
+            if len(parts) >= 3:
+                current["line_number"] = int(parts[2])
+        elif line.startswith("author ") and not line.startswith("author-"):
+            current["author"] = line[7:]
+        elif line.startswith("author-time "):
+            current["date"] = line[12:]
+    return records
+
+
+# ── Core tools ───────────────────────────────────────────────────────────────
 
 
 @tool(
     description=(
-        "Show the working tree status: current branch, staged, "
-        "unstaged, and untracked files."
+        "Return the current Git status of the workspace as a structured dict: "
+        "clean, staged, unstaged, untracked, and branch."
     ),
+    parameters={},
     returns="dict",
+    risk_level="safe",
 )
-def git_status() -> dict[str, Any]:
-    """
-    Return a structured summary of `git status`.
-    """
+def git_status() -> dict:
+    """Return structured workspace Git status.
 
+    Uses a single `git status --porcelain=v1 -b` call so callers that mock
+    subprocess.run get a predictable call count.
+    """
     _ensure_git_repo()
+    result = _run(["status", "--porcelain=v1", "-b"], check=False)
 
-    logger.info("Running git status.")
-
-    result = _run_git("status", "--porcelain=v1", "--branch")
-
-    if result.returncode != 0:
-        raise GitError(f"git status failed: {result.stderr.strip()}")
-
-    lines = result.stdout.splitlines()
-
-    has_branch_header = bool(lines) and lines[0].startswith("##")
-    branch = _parse_branch_header(lines[0]) if has_branch_header else ""
-    entries = lines[1:] if has_branch_header else lines
-
+    branch = "unknown"
     staged: list[str] = []
     unstaged: list[str] = []
     untracked: list[str] = []
 
-    for line in entries:
-        if not line:
+    for line in result.stdout.splitlines():
+        if line.startswith("## "):
+            # ## <branch>...<remote> or ## HEAD (no branch)
+            header = line[3:]
+            if header.startswith("HEAD (no branch)"):
+                branch = "HEAD (detached)"
+            else:
+                branch = header.split("...")[0]
             continue
-
-        code, path = line[:2], line[3:]
-
-        if code == "??":
-            untracked.append(path)
+        if len(line) < 4:
             continue
-
-        if code[0] != " ":
+        x = line[0]
+        y = line[1]
+        path = line[3:].strip()
+        if x in "MADRC":
             staged.append(path)
-
-        if code[1] != " ":
+        if y in "MD":
             unstaged.append(path)
+        if line[:2] == "??":
+            untracked.append(path)
 
+    clean = not staged and not unstaged and not untracked
     return {
+        "clean": clean,
         "branch": branch,
-        "clean": not (staged or unstaged or untracked),
         "staged": staged,
         "unstaged": unstaged,
         "untracked": untracked,
@@ -159,389 +181,379 @@ def git_status() -> dict[str, Any]:
 
 
 @tool(
-    description="Show the most recent commits (hash, author, date, message).",
-    parameters={"limit": "int"},
-    returns="list[dict]",
-)
-def git_log(limit: int = 10) -> list[dict[str, Any]]:
-    """
-    Return the last `limit` commits reachable from HEAD.
-
-    Returns an empty list (rather than raising) for a repository that
-    doesn't have any commits yet.
-    """
-
-    _ensure_git_repo()
-
-    if limit <= 0:
-        raise ValueError("`limit` must be a positive integer.")
-
-    logger.info("Running git log (limit=%d).", limit)
-
-    result = _run_git(
-        "log",
-        f"-{limit}",
-        f"--pretty=format:%H{_LOG_FIELD_SEPARATOR}%an"
-        f"{_LOG_FIELD_SEPARATOR}%ad{_LOG_FIELD_SEPARATOR}%s",
-        "--date=iso-strict",
-    )
-
-    if result.returncode != 0:
-        if "does not have any commits yet" in result.stderr:
-            return []
-
-        raise GitError(f"git log failed: {result.stderr.strip()}")
-
-    if not result.stdout.strip():
-        return []
-
-    commits = []
-
-    for line in result.stdout.splitlines():
-        commit_hash, author, date, message = line.split(_LOG_FIELD_SEPARATOR, 3)
-
-        commits.append(
-            {
-                "hash": commit_hash,
-                "author": author,
-                "date": date,
-                "message": message,
-            }
-        )
-
-    return commits
-
-
-@tool(
-    description="Create a new branch from HEAD and switch to it.",
-    parameters={"name": "str"},
+    description="Return the current Git diff (unstaged changes) as a string.",
+    parameters={"path": "str", "staged": "bool"},
     returns="str",
+    risk_level="safe",
 )
-def git_create_branch(name: str) -> str:
-    """
-    Create branch `name` and check it out.
-
-    Never deletes or force-updates an existing branch: if `name`
-    already exists, this fails with a clear error instead.
-    """
-
+def git_diff(path: str = "", staged: bool = False) -> str:
+    """Return unstaged diff. Pass staged=True for staged (index) diff."""
     _ensure_git_repo()
-
-    if not name or not name.strip():
-        raise ValueError("`name` must not be empty.")
-
-    name = name.strip()
-
-    if name.startswith("-"):
-        raise ValueError("Branch name must not start with '-'.")
-
-    logger.info("Creating branch: %s", name)
-
-    result = _run_git("checkout", "-b", name)
-
-    if result.returncode != 0:
-        raise GitError(f"Could not create branch '{name}': {result.stderr.strip()}")
-
-    logger.info("Switched to new branch '%s'.", name)
-
-    return f"Created and switched to branch '{name}'."
+    args = ["diff"]
+    if staged:
+        args.append("--cached")
+    if path:
+        ws = _cwd()
+        resolved = (ws / path).resolve()
+        if not str(resolved).startswith(str(ws.resolve())):
+            raise PermissionError(f"Path {path!r} is outside workspace.")
+        args.append(str(resolved))
+    result = _run(args)
+    output = result.stdout
+    if len(output) > 20_000:
+        output = output[:20_000] + "\n…(diff truncated)"
+    return output
 
 
 @tool(
     description=(
-        "Commit currently staged changes. Fails clearly if there is "
-        "nothing to commit or nothing staged."
+        "Return recent Git commits as a list of dicts with keys: hash, author, message. "
+        "Returns an empty list for repositories with no commits."
+    ),
+    parameters={"limit": "int"},
+    returns="list",
+    risk_level="safe",
+)
+def git_log(limit: int = 10) -> list[dict]:
+    """Return structured commit history."""
+    _ensure_git_repo()
+    if limit <= 0:
+        raise ValueError(f"limit must be a positive integer, got {limit}.")
+    result = _run(
+        ["log", f"-{min(limit, 500)}", "--format=%H\x1f%an\x1f%s"],
+        check=False,
+    )
+    if result.returncode != 0:
+        # Empty repo has no commits
+        return []
+    entries = []
+    for line in result.stdout.strip().splitlines():
+        if not line:
+            continue
+        parts = line.split("\x1f", 2)
+        if len(parts) == 3:
+            entries.append({"hash": parts[0], "author": parts[1], "message": parts[2]})
+    return entries
+
+
+@tool(
+    description=(
+        "Create a Git commit with the provided message. "
+        "ONLY call when the user has explicitly requested a commit. "
+        "Raises GitError if there are no staged changes. "
+        "Never auto-stages files."
     ),
     parameters={"message": "str"},
     returns="str",
+    risk_level="staged",
 )
 def git_commit(message: str) -> str:
-    """
-    Commit the currently staged changes with `message`.
-
-    Never commits when the working tree is clean, and never commits
-    unstaged changes on the caller's behalf — stage them first (e.g.
-    via `execute_shell("git add ...")`) and only then call this.
-    """
-
+    """Create a commit from whatever is currently staged. Never auto-stages."""
     _ensure_git_repo()
-
-    if not message or not message.strip():
-        raise ValueError("`message` must not be empty.")
+    if not message.strip():
+        raise ValueError("Commit message must not be empty.")
 
     status = git_status()
-
     if status["clean"]:
-        raise GitError("Nothing to commit: the working tree is clean.")
-
+        raise GitError("Repository is clean — nothing to commit.")
     if not status["staged"]:
         raise GitError(
-            "Nothing staged to commit. Stage changes (e.g. via "
-            'execute_shell("git add <files>")) before committing.'
+            "No staged changes. Stage files first before committing."
         )
 
-    logger.info("Committing %d staged file(s).", len(status["staged"]))
-
-    result = _run_git("commit", "-m", message)
-
-    if result.returncode != 0:
-        raise GitError(f"git commit failed: {result.stderr.strip()}")
-
-    commit_hash = _run_git("rev-parse", "HEAD").stdout.strip()
-
-    logger.info("Committed %s.", commit_hash[:8])
-
-    return f"Committed {commit_hash[:8]}: {message}"
+    result = _run(["commit", "-m", message])
+    first_line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else "committed"
+    return f"Committed: {first_line}"
 
 
 @tool(
     description=(
-        "Discard uncommitted working-tree changes for the given files "
-        "(or every modified file if none are given). Never touches "
-        "staged changes or commit history."
+        "Create and immediately check out a new Git branch from the current HEAD. "
+        "Raises GitError if the branch already exists."
     ),
-    parameters={"files": "list[str]"},
+    parameters={"branch_name": "str"},
     returns="str",
+    risk_level="staged",
+)
+def git_create_branch(branch_name: str) -> str:
+    """Create + checkout a new branch (git checkout -b)."""
+    _ensure_git_repo()
+    safe = branch_name.strip()
+    if not safe:
+        raise ValueError("Branch name must not be empty.")
+    if safe.startswith("-"):
+        raise ValueError(f"Invalid branch name: {branch_name!r}")
+
+    result = _run(["checkout", "-b", safe], check=False)
+    if result.returncode != 0:
+        raise GitError(f"Could not create branch {safe!r}: {result.stderr.strip()}")
+    return f"Created and switched to branch '{safe}'."
+
+
+@tool(
+    description=(
+        "Restore files to their last committed state, discarding working-tree changes. "
+        "Pass files=None to restore all unstaged changes. "
+        "Raises ValueError if files is an empty list. "
+        "Never touches staged changes."
+    ),
+    parameters={"files": "list"},
+    returns="str",
+    risk_level="dangerous",
 )
 def git_restore(files: list[str] | None = None) -> str:
-    """
-    Discard unstaged working-tree changes.
-
-    Only ever runs as an explicit, direct call — nothing else in
-    Pearl invokes this as a side effect of another operation.
-    """
-
+    """Discard unstaged working-tree changes. Never touches staged changes."""
     _ensure_git_repo()
+    if files is not None and len(files) == 0:
+        raise ValueError("files must be None (restore all) or a non-empty list of paths.")
 
     if files is None:
         status = git_status()
         targets = status["unstaged"]
-
         if not targets:
-            return "Nothing to restore: no unstaged changes."
+            return "Nothing to restore."
+        _run(["restore", "--", *targets])
+        n = len(targets)
+        return f"Restored {n} file{'s' if n != 1 else ''} to last committed state."
     else:
-        if not files:
-            raise ValueError("`files` must not be an empty list.")
+        _run(["restore", "--", *files])
+        n = len(files)
+        return f"Restored {n} file{'s' if n != 1 else ''} to last committed state."
 
-        targets = files
 
-    logger.info("Restoring: %s", targets)
-
-    result = _run_git("restore", "--", *targets)
-
-    if result.returncode != 0:
-        raise GitError(f"git restore failed: {result.stderr.strip()}")
-
-    return f"Restored {len(targets)} file(s): {', '.join(targets)}"
+# ── M5 additions ─────────────────────────────────────────────────────────────
 
 
 @tool(
     description=(
-        "Stage (git add) specific files or directories. Pass an empty "
-        "list to stage everything that is modified or new. Required "
-        "before git_commit, which only commits what is already staged."
-    ),
-    parameters={"files": "list[str]"},
-    returns="str",
-)
-def git_stage(files: list[str] | None = None) -> str:
-    """
-    Stage files for the next commit.
-
-    When `files` is empty or None, stages all modified and untracked
-    files (equivalent to ``git add .``). When non-empty, stages only
-    the listed paths.
-
-    Never stages files outside the workspace root.
-    """
-
-    _ensure_git_repo()
-
-    if not files:
-        logger.info("Staging all changes (git add .).")
-        result = _run_git("add", ".")
-    else:
-        if not all(isinstance(f, str) and f for f in files):
-            raise ValueError("Every entry in 'files' must be a non-empty string.")
-
-        logger.info("Staging: %s", files)
-        result = _run_git("add", "--", *files)
-
-    if result.returncode != 0:
-        raise GitError(f"git add failed: {result.stderr.strip()}")
-
-    staged = git_status().get("staged", [])
-    return f"Staged {len(staged)} file(s)."
-
-
-@tool(
-    description=(
-        "Show line-level authorship for a file (git blame). Returns a "
-        "list of annotated lines, each with the commit hash, author, "
-        "date, and the line content. Useful for understanding when and "
-        "why each line was last changed."
+        "Show git blame for a file — returns structured records of who last modified each line. "
+        "Returns a list of dicts with keys: commit, author, date, line_number, content."
     ),
     parameters={"path": "str", "start_line": "int", "end_line": "int"},
-    returns="list[dict]",
+    returns="list",
+    risk_level="safe",
 )
 def git_blame(
     path: str,
-    start_line: int = 1,
-    end_line: int = 0,
-) -> list[dict[str, Any]]:
-    """
-    Return per-line authorship annotation for `path`.
-
-    Parameters
-    ----------
-    path:
-        File to annotate, relative to the workspace root.
-    start_line:
-        First line to include (1-indexed).  Defaults to 1.
-    end_line:
-        Last line to include (1-indexed, inclusive).  0 means "all
-        remaining lines" (the default).
-    """
-
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> list[dict]:
+    """Return git blame output as a list of structured records."""
     _ensure_git_repo()
-
-    if not path or not path.strip():
+    if not path:
         raise ValueError("'path' must not be empty.")
-
-    if start_line < 1:
-        raise ValueError("'start_line' must be >= 1.")
-
-    logger.info("Running git blame on '%s'.", path)
-
-    args = ["blame", "--porcelain"]
-    if end_line > 0:
-        if end_line < start_line:
-            raise ValueError("'end_line' must be >= 'start_line'.")
-        args += [f"-L{start_line},{end_line}"]
-    elif start_line > 1:
-        args += [f"-L{start_line}"]
-
-    args += ["--", path]
-
-    result = _run_git(*args)
-
+    if start_line is not None and start_line < 1:
+        raise ValueError("start_line must be >= 1.")
+    if start_line is not None and end_line is not None and end_line < start_line:
+        raise ValueError("end_line must be >= start_line.")
+    cmd = ["blame", "--porcelain", path]
+    if start_line is not None and end_line is not None:
+        cmd.extend(["-L", f"{start_line},{end_line}"])
+    elif start_line is not None:
+        cmd.extend(["-L", f"{start_line}"])
+    result = _run(cmd, check=False)
     if result.returncode != 0:
         raise GitError(f"git blame failed: {result.stderr.strip()}")
-
     return _parse_blame_porcelain(result.stdout)
-
-
-def _parse_blame_porcelain(output: str) -> list[dict[str, Any]]:
-    """
-    Parse ``git blame --porcelain`` output into a list of annotated
-    line records.
-
-    Each record has: ``commit``, ``author``, ``date``, ``line_number``,
-    ``content``.
-    """
-
-    records: list[dict[str, Any]] = []
-    lines = output.splitlines()
-    i = 0
-    current: dict[str, Any] = {}
-
-    while i < len(lines):
-        line = lines[i]
-
-        # Header line: "<40-char hash> <orig-line> <final-line> [<num-lines>]"
-        if len(line) >= 40 and line[:40].isalnum() and " " in line[40:]:
-            parts = line.split()
-            current = {"commit": parts[0]}
-            try:
-                current["line_number"] = int(parts[2])
-            except (IndexError, ValueError):
-                current["line_number"] = 0
-        elif line.startswith("author "):
-            current["author"] = line[7:]
-        elif line.startswith("author-time "):
-            import datetime
-
-            ts = int(line[12:])
-            current["date"] = datetime.datetime.fromtimestamp(
-                ts, tz=datetime.timezone.utc
-            ).strftime("%Y-%m-%dT%H:%M:%SZ")
-        elif line.startswith("\t"):
-            current["content"] = line[1:]
-            records.append(dict(current))
-
-        i += 1
-
-    return records
 
 
 @tool(
     description=(
-        "Summarize uncommitted workspace changes: what files changed, "
-        "how many lines added/removed, and which files are new or deleted."
+        "Stage files for the next Git commit. "
+        "Pass a list of paths to stage specific files, or omit to stage all changes. "
+        "ONLY call when the user has explicitly requested staging."
     ),
-    returns="dict",
+    parameters={"files": "list"},
+    returns="str",
+    risk_level="staged",
 )
-def summarize_changes() -> dict[str, Any]:
-    """
-    Return a structured summary of the current working-tree changes.
-
-    Combines `git diff --stat` (unstaged) and `git diff --cached --stat`
-    (staged) to give a complete picture of what has changed since the
-    last commit, without reading any file content.
-
-    Returns
-    -------
-    dict with keys:
-      staged_files    list[str]  — files changed in the index (staging area)
-      unstaged_files  list[str]  — files changed in the working tree
-      untracked_files list[str]  — files not yet tracked by git
-      insertions      int        — total lines added (staged + unstaged)
-      deletions       int        — total lines removed (staged + unstaged)
-      total_changed   int        — total files with any change
-    """
-
+def git_stage(files: list[str] | None = None) -> str:
+    """Stage files. files=None stages everything; a list stages specific paths."""
     _ensure_git_repo()
+    if files is not None:
+        if any(not f for f in files):
+            raise ValueError("All file paths must be non-empty strings.")
+        cmd = ["add", "--", *files]
+    else:
+        cmd = ["add", "."]
+    result = subprocess.run(
+        ["git", *cmd],
+        cwd=str(_cwd()),
+        capture_output=True,
+        text=True,
+        timeout=_GIT_TIMEOUT,
+    )
+    if result.returncode != 0:
+        raise GitError(f"git add failed: {result.stderr.strip()}")
+    status = git_status()
+    staged_list = ", ".join(status["staged"]) or "(none)"
+    return f"Staged. Currently staged: {staged_list}"
 
+
+# ── Summary / convenience ────────────────────────────────────────────────────
+
+
+@tool(
+    description=(
+        "Return a structured summary of current Git changes: "
+        "staged_files, unstaged_files, untracked_files, insertions, deletions, total_changed."
+    ),
+    parameters={},
+    returns="dict",
+    risk_level="safe",
+)
+def summarize_changes() -> dict:
+    """Return a structured dict summarising current workspace changes."""
+    _ensure_git_repo()
     status = git_status()
 
-    staged_files: list[str] = status.get("staged", [])
-    unstaged_files: list[str] = status.get("unstaged", [])
-    untracked_files: list[str] = status.get("untracked", [])
-
+    # Count insertions/deletions via diff --stat
+    stat_result = _run(["diff", "--numstat"], check=False)
     insertions = 0
     deletions = 0
-
-    for flag, args in (
-        ("staged", ["diff", "--cached", "--numstat"]),
-        ("unstaged", ["diff", "--numstat"]),
-    ):
-        result = _run_git(*args)
-        if result.returncode == 0:
-            for line in result.stdout.splitlines():
-                parts = line.split("\t")
-                if len(parts) >= 2:
-                    try:
-                        insertions += int(parts[0]) if parts[0] != "-" else 0
-                        deletions += int(parts[1]) if parts[1] != "-" else 0
-                    except ValueError:
-                        pass
-
-    total_changed = len(set(staged_files) | set(unstaged_files))
-
-    logger.info(
-        "Summarized changes: %d staged, %d unstaged, %d untracked, +%d -%d",
-        len(staged_files),
-        len(unstaged_files),
-        len(untracked_files),
-        insertions,
-        deletions,
-    )
+    for line in stat_result.stdout.strip().splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 2:
+            try:
+                insertions += int(parts[0])
+                deletions += int(parts[1])
+            except ValueError:
+                pass
 
     return {
-        "staged_files": staged_files,
-        "unstaged_files": unstaged_files,
-        "untracked_files": untracked_files,
+        "staged_files": status["staged"],
+        "unstaged_files": status["unstaged"],
+        "untracked_files": status["untracked"],
         "insertions": insertions,
         "deletions": deletions,
-        "total_changed": total_changed,
+        "total_changed": insertions + deletions,
     }
+
+
+# ── Utility tools ─────────────────────────────────────────────────────────────
+
+
+@tool(
+    description="Check whether the workspace is a Git repository.",
+    parameters={},
+    returns="bool",
+    risk_level="safe",
+)
+def git_is_repo() -> bool:
+    """Return True if the current workspace is inside a Git repository."""
+    return _is_repo_bool()
+
+
+@tool(
+    description="Return the current Git branch name.",
+    parameters={},
+    returns="str",
+    risk_level="safe",
+)
+def git_branch() -> str:
+    """Return the active branch name."""
+    _ensure_git_repo()
+    result = _run(["branch", "--show-current"])
+    return result.stdout.strip() or "(detached HEAD)"
+
+
+@tool(
+    description="List Git stashes.",
+    parameters={},
+    returns="str",
+    risk_level="safe",
+)
+def git_stash_list() -> str:
+    """Return git stash list output."""
+    _ensure_git_repo()
+    result = _run(["stash", "list"])
+    return result.stdout.strip() or "(no stashes)"
+
+
+@tool(
+    description=(
+        "Undo the last Git commit, keeping changes staged. "
+        "ONLY call when the user has explicitly requested it."
+    ),
+    parameters={},
+    returns="str",
+    risk_level="dangerous",
+)
+def git_undo_last() -> str:
+    """Soft-reset HEAD~1 — keeps changes staged, does not delete files."""
+    _ensure_git_repo()
+    _run(["reset", "--soft", "HEAD~1"])
+    return "Last commit undone. Changes remain staged."
+
+
+# ── Non-tool utility (used by VerificationEngine / ContextEngine) ─────────────
+
+
+def get_git_status_summary(workspace: Path | None = None) -> dict[str, Any]:
+    """
+    Return a structured summary of Git status.
+
+    Used by VerificationEngine and ContextEngine to understand what
+    changed in the workspace.
+    """
+    ws = workspace or get_workspace_root()
+    result = subprocess.run(
+        ["git", "rev-parse", "--git-dir"],
+        cwd=str(ws),
+        capture_output=True,
+        timeout=_GIT_TIMEOUT,
+    )
+    if result.returncode != 0:
+        return {"is_repo": False}
+
+    try:
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain=v1"],
+            cwd=str(ws),
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT,
+        )
+        log_result = subprocess.run(
+            ["git", "log", "-1", "--oneline"],
+            cwd=str(ws),
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT,
+        )
+        branch_result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=str(ws),
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT,
+        )
+
+        modified: list[str] = []
+        untracked: list[str] = []
+        staged: list[str] = []
+
+        for line in status_result.stdout.splitlines():
+            if len(line) < 2:
+                continue
+            xy = line[:2]
+            fpath = line[3:].strip()
+            if xy[0] in "MADRC":
+                staged.append(fpath)
+            if xy[1] in "MD":
+                modified.append(fpath)
+            if xy == "??":
+                untracked.append(fpath)
+
+        return {
+            "is_repo": True,
+            "branch": branch_result.stdout.strip() or "unknown",
+            "last_commit": log_result.stdout.strip() or "(none)",
+            "staged": staged,
+            "modified": modified,
+            "untracked": untracked,
+            "is_dirty": bool(staged or modified),
+        }
+    except Exception as exc:
+        logger.warning("git_status_summary failed: %s", exc)
+        return {"is_repo": True, "error": str(exc)}

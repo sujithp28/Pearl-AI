@@ -17,6 +17,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from src.config.workspace import get_workspace_root
 from src.tools.edit_tools import get_active_patch_manager
 from src.tools.file_tools import _ensure_within_workspace
 from src.tools.metadata import tool
@@ -28,8 +29,8 @@ MAX_FILES_PER_BATCH = 50
 
 
 def _workspace_root() -> Path:
-    """Return the current working directory as the workspace root."""
-    return Path.cwd().resolve()
+    """Return the active workspace root for the current thread."""
+    return get_workspace_root()
 
 
 def _python_files(root: Path) -> list[Path]:

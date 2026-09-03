@@ -99,6 +99,38 @@ def test_write_file_rejects_path_traversal(tmp_path):
     assert not outside.exists()
 
 
+def test_ensure_within_workspace_fails_closed_on_null_byte(tmp_path):
+    # A null-byte path can't resolve cleanly; must raise PermissionError, not
+    # propagate an unexpected ValueError (fail-closed, not fail-open).
+    from src.tools.file_tools import _ensure_within_workspace
+    from src.config.workspace import clear_workspace_root, set_workspace_root
+    set_workspace_root(tmp_path)
+    try:
+        with pytest.raises(PermissionError):
+            _ensure_within_workspace("foo\x00bar")
+    finally:
+        clear_workspace_root()
+
+
+def test_prefix_collision_blocked(tmp_path):
+    # /workspace_evil should NOT pass a startswith("/workspace") check.
+    # is_relative_to() uses path segments so /workspace_evil is blocked.
+    sibling = tmp_path.parent / (tmp_path.name + "_evil")
+    sibling.mkdir(exist_ok=True)
+    evil = sibling / "secret.txt"
+    evil.write_text("top secret")
+    from src.tools.file_tools import _ensure_within_workspace
+    from src.config.workspace import clear_workspace_root, set_workspace_root
+    set_workspace_root(tmp_path)
+    try:
+        with pytest.raises(PermissionError):
+            _ensure_within_workspace(str(evil))
+    finally:
+        evil.unlink(missing_ok=True)
+        sibling.rmdir()
+        clear_workspace_root()
+
+
 def test_delete_file_rejects_path_outside_workspace(tmp_path):
     outside = tmp_path.parent / "outside.txt"
     outside.write_text("data")

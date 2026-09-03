@@ -81,12 +81,15 @@ class TestPlannerTokenBudgetIntegration:
     """
 
     def test_build_prompt_truncates_large_context(self, monkeypatch):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from src.agent.planner import Planner
         from src.config.settings import Settings
 
-        monkeypatch.setattr(Settings, "TOKEN_BUDGET_MAX_CONTEXT_TOKENS", 10, raising=True)
+        # n_ctx=2048, response=1024 → usable=1024.  Tiny base prompt (~12 tok)
+        # + margin (~102) leaves ~910 tok for workspace context — far less than
+        # the 2 500-token big_context, so truncation must occur.
+        monkeypatch.setattr(Settings, "LOCAL_MODEL_CTX", 2048, raising=True)
 
         registry = MagicMock()
         registry.get_tools.return_value = []
@@ -96,14 +99,14 @@ class TestPlannerTokenBudgetIntegration:
 
         planner = Planner(registry, dispatcher, client)
 
-        # workspace_context that far exceeds the 10-token budget
+        # workspace_context that far exceeds any budget derived from n_ctx=512
         big_context = "w" * 10_000
 
         prompt = planner.build_prompt("fix bug", workspace_context=big_context)
 
         # The prompt should contain the truncation notice, not the full context
         assert _TRUNCATION_NOTICE in prompt
-        assert len(big_context) not in [len(prompt)]  # original full context absent
+        assert big_context not in prompt
 
     def test_build_prompt_leaves_small_context_intact(self, monkeypatch):
         from unittest.mock import MagicMock
@@ -111,7 +114,8 @@ class TestPlannerTokenBudgetIntegration:
         from src.agent.planner import Planner
         from src.config.settings import Settings
 
-        monkeypatch.setattr(Settings, "TOKEN_BUDGET_MAX_CONTEXT_TOKENS", 10_000, raising=True)
+        # Large context window → ContextBudget gives plenty of room for "tiny context"
+        monkeypatch.setattr(Settings, "LOCAL_MODEL_CTX", 32_768, raising=True)
 
         registry = MagicMock()
         registry.get_tools.return_value = []

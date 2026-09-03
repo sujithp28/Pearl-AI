@@ -37,7 +37,7 @@ from src.llm.providers.factory import create_provider
 
 logger = logging.getLogger(__name__)
 
-TaskKind = str  # "planning" | "chat"
+TaskKind = str  # "planning" | "chat" | "edit" | "condenser"
 
 
 def _effective_provider(task: TaskKind) -> str:
@@ -50,6 +50,16 @@ def _effective_provider(task: TaskKind) -> str:
         return Settings.PLANNING_PROVIDER
 
     if task == "chat" and Settings.CHAT_PROVIDER:
+        return Settings.CHAT_PROVIDER
+
+    if task == "edit" and Settings.EDIT_PROVIDER:
+        return Settings.EDIT_PROVIDER
+
+    if task == "condenser" and Settings.CONDENSER_PROVIDER:
+        return Settings.CONDENSER_PROVIDER
+
+    # edit and condenser fall back to chat, then global
+    if task in ("edit", "condenser") and Settings.CHAT_PROVIDER:
         return Settings.CHAT_PROVIDER
 
     return Settings.LLM_PROVIDER
@@ -66,6 +76,12 @@ def _override_model(provider_name: str, task: TaskKind) -> str | None:
 
     if task == "chat" and Settings.CHAT_MODEL:
         return Settings.CHAT_MODEL
+
+    if task == "edit" and Settings.EDIT_MODEL:
+        return Settings.EDIT_MODEL
+
+    if task == "condenser" and Settings.CONDENSER_MODEL_NAME:
+        return Settings.CONDENSER_MODEL_NAME
 
     # Pearl provider routes each task to a dedicated model tier so that
     # planning uses a more capable model than chat without any per-user config.
@@ -140,6 +156,29 @@ class ModelRouter:
     def chat_client(self) -> LLMClient:
         """Return the ``LLMClient`` configured for chat tasks."""
         return self.client_for("chat")
+
+    def edit_client(self) -> LLMClient:
+        """
+        Return the ``LLMClient`` for code editing (editor model).
+
+        Falls back to chat_client() when no separate edit provider is configured,
+        ensuring zero-config behavior is preserved.
+        """
+        # Only allocate a separate client when edit is distinctly configured.
+        if Settings.EDIT_PROVIDER or Settings.EDIT_MODEL:
+            return self.client_for("edit")
+        return self.chat_client()
+
+    def condenser_client(self) -> LLMClient:
+        """
+        Return the ``LLMClient`` for conversation condensation.
+
+        Falls back to chat_client() when no separate condenser provider is
+        configured.  The condenser should use a cheap/fast model.
+        """
+        if Settings.CONDENSER_PROVIDER or Settings.CONDENSER_MODEL_NAME:
+            return self.client_for("condenser")
+        return self.chat_client()
 
     def all_same_provider(self) -> bool:
         """

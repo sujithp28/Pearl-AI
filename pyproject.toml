@@ -55,6 +55,13 @@ include = ["src*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Real-model tests load a multi-GB GGUF and take minutes; they are opt-in.
+#   run them with:  pytest -m real_model
+#   skip them with: pytest -m "not real_model"   (the default below)
+addopts = "-m 'not real_model'"
+markers = [
+    "real_model: end-to-end test against the real local Qwen model (slow, opt-in)",
+]
 
 [tool.ruff]
 line-length = 88

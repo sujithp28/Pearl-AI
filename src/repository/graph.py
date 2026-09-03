@@ -790,6 +790,97 @@ class RepositoryGraph:
         )
 
     # ------------------------------------------------------------------
+    # PageRank
+    # ------------------------------------------------------------------
+
+    def pagerank(
+        self,
+        personalization: dict[str, float] | None = None,
+        alpha: float = 0.85,
+    ) -> dict[str, float]:
+        """
+        Compute PageRank scores for all FILE nodes in the import graph.
+
+        Uses NetworkX under the hood. The base DiGraph is built and
+        cached on the first call; subsequent calls only re-run the
+        PageRank solver (which varies with `personalization`).
+
+        Parameters
+        ----------
+        personalization:
+            ``{file_id: weight}`` bias map. Files not present get the
+            baseline weight (1.0). Higher-weight files attract more
+            random-teleportation probability, biasing the stationary
+            distribution toward them and their importers.
+            Pass ``None`` for an unbiased run.
+        alpha:
+            Damping factor (default 0.85 — the standard value).
+
+        Returns
+        -------
+        dict[str, float]
+            File ID → normalized PageRank score. Only FILE nodes are
+            included. Files absent from the graph return 0.0 implicitly.
+        """
+        try:
+            import networkx as nx
+        except ImportError:
+            # NetworkX is not available — return equal weights so callers
+            # degrade gracefully to term-match-only ranking.
+            file_nodes = self.nodes(kind=NodeKind.FILE)
+            n = len(file_nodes)
+            score = 1.0 / n if n else 0.0
+            return {node.id: score for node in file_nodes}
+
+        # Build or reuse the cached base graph (FILE nodes + IMPORTS edges).
+        if not hasattr(self, "_nx_import_graph"):
+            g: nx.DiGraph = nx.DiGraph()
+            for node in self.nodes(kind=NodeKind.FILE):
+                g.add_node(node.id)
+            for edge in self.edges(kind=EdgeKind.IMPORTS):
+                g.add_edge(edge.source, edge.target)
+            # ponytail: caches on the instance — safe because the graph
+            # is read-only after build().
+            object.__setattr__(self, "_nx_import_graph", g)  # type: ignore[call-arg]
+
+        g = self._nx_import_graph  # type: ignore[attr-defined]
+
+        if g.number_of_nodes() == 0:
+            return {}
+
+        nx_personalization: dict[str, float] | None = None
+        if personalization:
+            # Normalise so all weights sum to 1.0 (nx.pagerank requirement).
+            baseline = 1.0
+            weighted = {
+                nid: personalization.get(nid, baseline) for nid in g.nodes()
+            }
+            total = sum(weighted.values())
+            if total > 0:
+                nx_personalization = {k: v / total for k, v in weighted.items()}
+
+        try:
+            # Use the pure-Python power-iteration implementation so that
+            # scipy is not required (nx.pagerank dispatches to scipy when
+            # it is installed, raising ModuleNotFoundError otherwise).
+            from networkx.algorithms.link_analysis.pagerank_alg import (
+                _pagerank_python,
+            )
+            scores: dict[str, float] = _pagerank_python(
+                g,
+                alpha=alpha,
+                personalization=nx_personalization,
+                max_iter=100,
+                tol=1.0e-6,
+            )
+        except nx.PowerIterationFailedConvergence:
+            logger.warning("PageRank did not converge; falling back to equal weights.")
+            n = g.number_of_nodes()
+            scores = {nid: 1.0 / n for nid in g.nodes()}
+
+        return scores
+
+    # ------------------------------------------------------------------
     # Statistics
     # ------------------------------------------------------------------
 

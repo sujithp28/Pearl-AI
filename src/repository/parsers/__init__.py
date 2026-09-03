@@ -451,19 +451,35 @@ class ParserRegistry:
 
         Built-in parsers registered by this method:
 
-        * :class:`~src.repository.parsers.python_parser.PythonParser`
-          for ``.py``, ``.pyi``, ``.pyx`` (Phase 3)
+        * Python (.py, .pyi, .pyx) — AST-based
+        * JavaScript (.js, .mjs, .cjs, .jsx) — regex-based
+        * TypeScript (.ts, .tsx, .mts, .cts) — regex-based
+        * Go (.go) — regex-based
+        * Rust (.rs) — regex-based
+        * Java (.java) — regex-based
+
+        All non-Python parsers gracefully degrade — they never raise
+        and return partial results on malformed input.
 
         To extend with extra parsers::
 
             registry = ParserRegistry.default()
             registry.register(MyCustomParser())
         """
-        # Import here to avoid a circular import at module load time.
+        # Import here to avoid circular imports at module load time.
         from src.repository.parsers.python_parser import PythonParser  # noqa: PLC0415
+        from src.repository.parsers.js_ts_parser import JavaScriptParser, TypeScriptParser  # noqa: PLC0415
+        from src.repository.parsers.go_parser import GoParser  # noqa: PLC0415
+        from src.repository.parsers.rust_parser import RustParser  # noqa: PLC0415
+        from src.repository.parsers.java_parser import JavaParser  # noqa: PLC0415
 
         registry = cls()
         registry.register(PythonParser())
+        registry.register(JavaScriptParser())
+        registry.register(TypeScriptParser())
+        registry.register(GoParser())
+        registry.register(RustParser())
+        registry.register(JavaParser())
         return registry
 
     # ------------------------------------------------------------------

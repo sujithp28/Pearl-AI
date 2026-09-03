@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Pearl AI",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "src.api", "--workspace", ".", "--no-browser"],
+      "port": 7474
+    }
+  ]
+}

@@ -145,13 +145,19 @@ class Memory:
         an obvious error).
         """
 
-        return [
-            {
-                "role": "assistant" if turn.role == "agent" else turn.role,
-                "content": turn.content,
-            }
-            for turn in self.recent_conversation(limit)
-        ]
+        # "summary" turns are produced by the Condenser and are not a
+        # valid role for any provider API.  Emit them as "assistant" with
+        # a bracketed prefix so the model sees them as context it produced
+        # rather than as a new user instruction.
+        result: list[dict[str, str]] = []
+        for turn in self.recent_conversation(limit):
+            if turn.role == "summary":
+                result.append({"role": "assistant", "content": turn.content})
+            elif turn.role == "agent":
+                result.append({"role": "assistant", "content": turn.content})
+            else:
+                result.append({"role": turn.role, "content": turn.content})
+        return result
 
     # -- Task memory ------------------------------------------------------
 

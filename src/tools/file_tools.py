@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from src.config.workspace import get_workspace_root
 from src.tools.metadata import tool
 
 logger = logging.getLogger(__name__)
@@ -16,14 +17,21 @@ logger = logging.getLogger(__name__)
 
 def _ensure_within_workspace(path: str) -> Path:
     """
-    Resolve `path` and ensure it stays inside the current workspace root.
+    Resolve `path` and ensure it stays inside the active workspace root.
 
     Prevents path traversal ("..") and symlink escapes outside the
-    current working directory.
-    """
+    workspace.  Uses the thread-local workspace root set by the session,
+    falling back to ``Path.cwd()`` in non-session contexts.
 
-    workspace_root = Path.cwd().resolve()
-    resolved = Path(path).resolve()
+    Fails closed: any exception during resolution (e.g. embedded null bytes)
+    is re-raised as ``PermissionError`` so callers never accidentally proceed
+    on an un-validated path.
+    """
+    workspace_root = get_workspace_root()
+    try:
+        resolved = Path(path).resolve()
+    except Exception as exc:
+        raise PermissionError(f"Cannot resolve path {path!r}: {exc}") from exc
 
     if not resolved.is_relative_to(workspace_root):
         raise PermissionError(f"Path escapes workspace: {path}")
@@ -51,6 +59,7 @@ def _refresh_repo_index(file_path: Path) -> None:
         "path": "str",
     },
     returns="str",
+    risk_level="safe",
 )
 def read_file(path: str) -> str:
     """
@@ -137,6 +146,7 @@ def append_file(path: str, content: str) -> None:
         "path": "str",
     },
     returns="bool",
+    risk_level="safe",
 )
 def file_exists(path: str) -> bool:
     """
@@ -157,6 +167,7 @@ def file_exists(path: str) -> bool:
         "path": "str",
     },
     returns="list[str]",
+    risk_level="safe",
 )
 def list_directory(path: str = ".") -> list[str]:
     """
@@ -204,6 +215,7 @@ def make_directory(path: str) -> None:
         "path": "str",
     },
     returns="None",
+    risk_level="dangerous",
 )
 def delete_file(path: str) -> None:
     """

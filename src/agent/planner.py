@@ -16,8 +16,11 @@ from src.agent.confidence import score_plan
 from src.agent.dependency_graph import topological_sort
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.plan_validator import validate_plan
+from src.agent.tool_filter import relevant_tools
 from src.config.settings import Settings
+from src.config.workspace import get_workspace_root
 from src.llm.client import LLMClient
+from src.llm.context_budget import ContextBudget
 from src.llm.parser import ToolCall, ToolParser
 from src.llm.token_budget import truncate_to_tokens
 from src.llm.validation import validate_tool_call
@@ -55,19 +58,14 @@ class Planner:
 
     @staticmethod
     def _workspace_root() -> str:
-        """
-        The directory every planned path must stay inside — the same
-        root `file_tools._ensure_within_workspace` enforces against,
-        read the same way (the process's cwd, which the MCP server is
-        launched with set to the user's project).
+        """Return the workspace root the LLM should see in the planning prompt.
 
-        Resolved per call rather than cached at import: the enforcing
-        side reads `Path.cwd()` per call too, so caching here could
-        silently tell the model one boundary while a different one is
-        actually enforced.
+        Reads from the thread-local set by session.run_autonomous_stream() so
+        both the prompt text and _ensure_within_workspace() agree on the same
+        boundary when running in an autonomous thread.  Falls back to cwd when
+        no root is set (CLI / test contexts that never call set_workspace_root).
         """
-
-        return str(Path.cwd().resolve())
+        return str(get_workspace_root())
 
     def _generate_json(
         self, prompt: str, cancel_check: Callable[[], bool] | None
@@ -93,38 +91,50 @@ class Planner:
         """
         Build the planning prompt from the external prompt template.
 
-        `workspace_context` is an opaque, already-formatted block of
-        text (e.g. from `WorkspaceMemory.generate_context()`)
-        prepended as extra context when non-empty. The Planner
-        doesn't know or care what produced it — this keeps Planner
-        decoupled from any specific context source.
+        Tools are filtered to those relevant for `user_prompt` to reduce
+        token usage and improve tool-selection accuracy on small models.
+        Workspace context is trimmed to the actual remaining budget after
+        the base prompt (template + filtered tools + user request) is built.
+
+        `workspace_context` is an opaque, already-formatted block of text
+        prepended when non-empty. The Planner doesn't care what produced it.
         """
 
         prompt_template = self.client.load_prompt(self.PROMPT_FILE)
 
-        tools = json.dumps(
-            self.registry.get_tools(),
-            indent=4,
+        filtered = relevant_tools(user_prompt, self.registry.get_tools())
+        tools_json = json.dumps(filtered, indent=4)
+
+        logger.debug(
+            "Tool filter: %d/%d tools selected for prompt",
+            len(filtered),
+            len(self.registry.get_tools()),
         )
 
         prompt = prompt_template.format(
-            tools=tools,
+            tools=tools_json,
             user_prompt=user_prompt,
             workspace_root=self._workspace_root(),
         )
 
         if workspace_context:
+            budget = ContextBudget(
+                n_ctx=Settings.LOCAL_MODEL_CTX,
+                response_tokens=Settings.MAX_NEW_TOKENS,
+            )
+            allowance = budget.context_token_allowance(prompt)
             workspace_context = truncate_to_tokens(
                 workspace_context,
-                Settings.TOKEN_BUDGET_MAX_CONTEXT_TOKENS,
+                allowance,
                 label="workspace_context",
             )
-            prompt = (
-                "Current workspace context (recent activity in this "
-                "session):\n\n"
-                f"{workspace_context}\n\n"
-                f"{prompt}"
-            )
+            if workspace_context:
+                prompt = (
+                    "Current workspace context (recent activity in this "
+                    "session):\n\n"
+                    f"{workspace_context}\n\n"
+                    f"{prompt}"
+                )
 
         return prompt
 
@@ -180,22 +190,19 @@ class Planner:
         failed: dict[str, Any],
     ) -> str:
         """
-        Build the replanning prompt from the external prompt
-        template, given what's already completed and the step that
-        just failed.
+        Build the replanning prompt, filtering tools to the same subset
+        used in the original plan to keep the token budget consistent.
         """
 
         prompt_template = self.client.load_prompt(self.REPLAN_PROMPT_FILE)
 
-        tools = json.dumps(
-            self.registry.get_tools(),
-            indent=4,
-        )
+        filtered = relevant_tools(user_prompt, self.registry.get_tools())
+        tools_json = json.dumps(filtered, indent=4)
 
         recovery_hint = failed.get("suggestion", "") if isinstance(failed, dict) else ""
 
         return prompt_template.format(
-            tools=tools,
+            tools=tools_json,
             user_prompt=user_prompt,
             completed_steps=json.dumps(completed, indent=4, default=str),
             failed_step=json.dumps(failed, indent=4, default=str),

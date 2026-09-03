@@ -186,7 +186,7 @@ class Settings:
         "LOCAL_MODEL_DIR",
         str(Path.home() / ".pearl" / "models"),
     )
-    LOCAL_MODEL_CTX = int(os.getenv("LOCAL_MODEL_CTX", "2048"))
+    LOCAL_MODEL_CTX = int(os.getenv("LOCAL_MODEL_CTX", "8192"))
     LOCAL_MODEL_THREADS = int(os.getenv("LOCAL_MODEL_THREADS", "0"))  # 0 = auto
 
     # -- OpenAI --
@@ -269,13 +269,20 @@ class Settings:
     # Token Budget (src/llm/token_budget.py)
     # ==================================================
     #
-    # Maximum tokens allocated to the workspace context block in the
-    # planning prompt. Set to 80% of LOCAL_MODEL_CTX by default so
-    # there is headroom for tool definitions, the user prompt, and the
-    # model's response. Increase for hosted models with larger windows.
-    # Set to 0 to disable truncation entirely (not recommended).
+    # Maximum tokens for the workspace context block in the planning prompt.
+    #
+    # Must leave headroom for the base planning prompt (~4 500 Qwen tokens for
+    # 48 tools + template) and the model response (MAX_NEW_TOKENS = 1 024).
+    # Formula: LOCAL_MODEL_CTX − 4 500 (base) − 1 024 (response) − 500 (margin)
+    # clamped to [500, 6 400].  Hosted models should override via env var.
+    #
+    # Examples:
+    #   LOCAL_MODEL_CTX = 8 192  → default 2 168  (~8.7 KB of workspace text)
+    #   LOCAL_MODEL_CTX = 32 768 → capped at 6 400
+    #   Hosted model (200 K ctx) → set PEARL_MAX_CONTEXT_TOKENS=16000 in .env
     TOKEN_BUDGET_MAX_CONTEXT_TOKENS = int(
-        os.getenv("PEARL_MAX_CONTEXT_TOKENS", "6400")
+        os.getenv("PEARL_MAX_CONTEXT_TOKENS",
+                  str(min(6400, max(500, LOCAL_MODEL_CTX - 6024))))
     )
 
     # ==================================================
@@ -331,6 +338,75 @@ class Settings:
     # One of: none, minimal, normal, fun. An unrecognized value falls
     # back to "minimal".
     EMOJI_MODE = os.getenv("EMOJI_MODE", "minimal")
+
+    # ==================================================
+    # Conversation Condenser (P0-A)
+    # ==================================================
+    #
+    # The condenser compresses the MIDDLE of Memory.conversation when
+    # the session grows long, preserving head (original task) and tail
+    # (recent context).  Two independent triggers:
+    #
+    #   1. Token pressure:  conversation_tokens > n_ctx * PRESSURE_THRESHOLD
+    #   2. Turn count:      len(conversation) > MAX_TURNS
+    #
+    # For n_ctx=8192 and PRESSURE_THRESHOLD=0.50:
+    #   trigger at ~4 096 conversation tokens (~8-16 typical turns).
+    # A 10-turn session with 500-token tool results (5 000 tokens)
+    # triggers pressure-based condensation even though MAX_TURNS=40
+    # is not yet reached.
+
+    # Fraction of n_ctx that conversation tokens may occupy before condensing.
+    CONDENSER_PRESSURE_THRESHOLD = float(
+        os.getenv("PEARL_CONDENSER_PRESSURE_THRESHOLD", "0.5")
+    )
+
+    # Hard turn-count ceiling — always condense above this regardless of tokens.
+    CONDENSER_MAX_TURNS = int(os.getenv("PEARL_CONDENSER_MAX_TURNS", "40"))
+
+    # Turns preserved at the start (original task / initial instructions).
+    CONDENSER_KEEP_HEAD = int(os.getenv("PEARL_CONDENSER_KEEP_HEAD", "3"))
+
+    # Turns preserved at the end (most recent active context).
+    CONDENSER_KEEP_TAIL = int(os.getenv("PEARL_CONDENSER_KEEP_TAIL", "5"))
+
+    # Maximum retries when ContextLengthError triggers emergency condensation.
+    # Bounded so a pathologically large prompt cannot loop forever.
+    CONDENSER_MAX_RETRIES = int(os.getenv("PEARL_CONDENSER_MAX_RETRIES", "2"))
+
+    # ==================================================
+    # Reflection Engine (V2)
+    # ==================================================
+
+    REFLECTION_MAX_ITERATIONS = int(os.getenv("PEARL_REFLECTION_MAX_ITERATIONS", "3"))
+
+    # ==================================================
+    # Model Routing — role-specific (V2)
+    # ==================================================
+    #
+    # Architect/planner model: understands task, creates plan (uses PLANNING_*)
+    # Editor model: produces code changes
+    # Condenser model: summarizes conversation history
+
+    EDIT_PROVIDER = os.getenv("PEARL_EDIT_PROVIDER", "")
+    EDIT_MODEL = os.getenv("PEARL_EDIT_MODEL", "")
+
+    CONDENSER_PROVIDER = os.getenv("PEARL_CONDENSER_PROVIDER", "")
+    CONDENSER_MODEL_NAME = os.getenv("PEARL_CONDENSER_MODEL", "")
+
+    # ==================================================
+    # Headless / CI mode (V2)
+    # ==================================================
+    #
+    # PEARL_EXECUTION_MODE: interactive | headless | ci
+    #   interactive (default): approval prompts, UI-driven
+    #   headless: safe tools auto-approved, staged tools follow policy
+    #   ci: safe tools auto-approved, staged ops blocked unless configured
+
+    EXECUTION_MODE = os.getenv("PEARL_EXECUTION_MODE", "interactive")
+
+    # Policy for staged (write) ops in headless/CI: "approve" | "block"
+    HEADLESS_STAGED_POLICY = os.getenv("PEARL_HEADLESS_STAGED_POLICY", "block")
 
     # ==================================================
     # Web Intelligence (M7)

@@ -324,12 +324,29 @@ body {
 }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
+/* pearl bubble action row */
+.pearl-acts {
+  display: flex; align-items: center; gap: 4px;
+  margin-top: 4px; padding: 0 1px; opacity: 0;
+  transition: opacity var(--ease);
+}
+.msg-pearl:hover .pearl-acts,
+.msg-pearl:focus-within .pearl-acts { opacity: 1; }
+.pa-btn {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 7px; border-radius: 5px; font-size: 11px;
+  color: var(--tx3); transition: background var(--ease), color var(--ease);
+}
+.pa-btn:hover { background: var(--surf2); color: var(--tx); }
+.pa-btn.copied { color: var(--suc); }
+
 /* === Markdown === */
 .md p { margin: 0 0 10px; }
 .md p:last-child { margin-bottom: 0; }
 .md h1,.md h2,.md h3,.md h4 { font-weight: 600; margin: 14px 0 6px; line-height: 1.3; text-wrap: balance; }
 .md h1 { font-size: 18px; } .md h2 { font-size: 16px; } .md h3 { font-size: 15px; } .md h4 { font-size: 14px; font-weight: 700; }
 .md ul,.md ol { padding-left: 20px; margin: 6px 0; }
+.md ul { list-style: disc; } .md ol { list-style: decimal; }
 .md li { margin: 4px 0; } .md li::marker { color: var(--tx3); }
 .md blockquote { border-left: 3px solid var(--b3); padding: 4px 0 4px 14px; color: var(--tx2); margin: 8px 0; }
 .md hr { border: none; border-top: 1px solid var(--b2); margin: 14px 0; }
@@ -811,8 +828,8 @@ const wsName   = g('ws-name');
 const chatTtl  = g('chat-title');
 
 // ─── Boot ─────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
-  loadStore();
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadStore();
   renderSidebar();
   wire();
   pollStatus();
@@ -946,6 +963,9 @@ async function doRun(prompt) {
       if (ev.event === 'progress') onProgress(ev.data, groupEl, stepMap);
       else if (ev.event === 'result') await onResult(ev.data, groupEl, stepMap);
       else if (ev.event === 'error') addErr(ev.data.message || 'Run failed.');
+      else if (ev.event === 'context_condensed') onContextCondensed(ev.data);
+      else if (ev.event === 'run_failed') { /* handled by error event */ }
+      else if (ev.event === 'run_complete') { /* handled by result event */ }
       else if (ev.event === 'done') break;
     }
   } catch (e) { if (e.name !== 'AbortError') addErr(e.message); groupHdr(groupEl,'err','✕ Stopped',null,null); }
@@ -983,6 +1003,13 @@ async function onResult(d, grp, map) {
     const txt = r.final_answer || bestOutput(r.steps);
     if (txt) { const { setText } = addPearlBubble(); setText(txt, false); saveMsg('assistant', txt); }
   }
+}
+
+function onContextCondensed(d) {
+  const saved = d.tokens_before && d.tokens_after
+    ? ` (~${Math.round((1 - d.tokens_after / d.tokens_before) * 100)}% tokens freed)`
+    : '';
+  addInfo(`Session history condensed${saved} to fit within context window.`);
 }
 
 function bestOutput(steps) {
@@ -1109,14 +1136,43 @@ function addPearlBubble() {
   r.innerHTML = `
     <div class="pearl-label"><span class="pearl-dot" aria-hidden="true"></span>Pearl</div>
     <div class="pearl-bub md"><span class="cursor" aria-hidden="true"></span></div>
+    <div class="pearl-acts">
+      <button class="pa-btn pa-copy" aria-label="Copy response">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M4 11H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v1"/></svg>
+        Copy
+      </button>
+      <button class="pa-btn pa-regen" aria-label="Regenerate response">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2 8a6 6 0 1 1 1.5 4"/><path d="M2 13V9h4" stroke-linejoin="round"/></svg>
+        Regenerate
+      </button>
+    </div>
     <div class="msg-meta">${now()}</div>`;
   msgInner.appendChild(r); scrollBot();
   const bub = r.querySelector('.pearl-bub');
+  let _rawMd = '';
   function setText(md, streaming) {
+    _rawMd = md || '';
     bub.innerHTML = md ? renderMd(md) : '';
     if (streaming) { const c = mk('span','cursor'); c.setAttribute('aria-hidden','true'); bub.appendChild(c); }
     scrollBot();
   }
+  r.querySelector('.pa-copy').addEventListener('click', e => {
+    const btn = e.currentTarget;
+    navigator.clipboard.writeText(_rawMd).then(() => {
+      btn.classList.add('copied'); btn.childNodes[btn.childNodes.length-1].textContent = ' Copied!';
+      setTimeout(() => { btn.classList.remove('copied'); btn.childNodes[btn.childNodes.length-1].textContent = ' Copy'; }, 2000);
+    }).catch(() => {});
+  });
+  r.querySelector('.pa-regen').addEventListener('click', () => {
+    const c = S.convs.find(x => x.id === S.id);
+    if (!c || S.streaming) return;
+    const lastUser = [...c.msgs].reverse().find(m => m.role === 'user');
+    if (!lastUser) return;
+    // Remove this bubble from DOM and re-run
+    r.remove();
+    if (S.mode === 'chat') doChat(lastUser.content);
+    else doRun(lastUser.content);
+  });
   return { setText };
 }
 function addDiffCard(diff, files) {
@@ -1161,6 +1217,25 @@ function addResultCard(r) {
       <span class="rs-txt">Verification: ${esc(st)}${conf}${risk}${tests}</span>
     </div>${changed}${unexpected}${evidence}`;
   })() : '';
+  // Reflection — the agent's own judgement of whether the task actually
+  // completed, based on verification evidence rather than tool success.
+  const rf = r.reflection;
+  const rfHtml = rf ? (() => {
+    const st = rf.status || '';
+    const stCls = st === 'complete' ? 'rs-ok' : (st === 'blocked' ? 'rs-fail' : 'rs-warn');
+    const conf = rf.confidence != null ? ` · confidence ${Math.round(rf.confidence*100)}%` : '';
+    const reason = rf.reason ? `<div class="rs-item"><span class="rs-warn" aria-hidden="true">·</span><span class="rs-txt" style="color:var(--tx2)">${esc(rf.reason)}</span></div>` : '';
+    const missing = rf.missing_requirements?.length
+      ? `<div class="rs-item"><span class="rs-warn" aria-hidden="true">!</span><span class="rs-txt">Still needed: ${rf.missing_requirements.map(esc).join(', ')}</span></div>`
+      : '';
+    return `<div class="rs-item" style="border-top:1px solid var(--b1);margin-top:6px;padding-top:6px">
+      <span class="${stCls}" aria-hidden="true">◈</span>
+      <span class="rs-txt">Reflection: ${esc(st)}${conf}</span>
+    </div>${reason}${missing}`;
+  })() : '';
+  const replanHtml = r.replans_used
+    ? `<div class="rs-item"><span class="rs-warn" aria-hidden="true">↻</span><span class="rs-txt">Replanned ${r.replans_used} time${r.replans_used!==1?'s':''}</span></div>`
+    : '';
   card.innerHTML = `
     <div class="result-hd">
       <span aria-hidden="true">${ok?'✓':'✕'}</span>
@@ -1171,7 +1246,7 @@ function addResultCard(r) {
       <div class="rs-item">
         <span class="${s.succeeded?'rs-ok':'rs-fail'}" aria-hidden="true">${s.succeeded?'✓':'✕'}</span>
         <span class="rs-txt">${esc(toolLabel(s.tool_name))} — ${esc(s.summary||'')}</span>
-      </div>`).join('')}${vrHtml}
+      </div>`).join('')}${replanHtml}${vrHtml}${rfHtml}
     </div>`;
   msgInner.appendChild(card); scrollBot();
 }
@@ -1188,17 +1263,59 @@ function addInfo(msg) {
 function scrollBot() { const m = g('messages'); m.scrollTop = m.scrollHeight; }
 
 // ─── Sidebar & storage ────────────────────────────────────────
-function loadStore() {
-  try { S.convs = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch { S.convs = []; }
+// Sessions are created/renamed/deleted on the server when available.
+// localStorage stores message content (server doesn't have it).
+// Hybrid: server is source of truth for session existence; local for messages.
+
+async function loadStore() {
+  // Load local message data
+  let localMap = {};
+  try {
+    const local = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+    local.forEach(c => { localMap[c.id] = c; });
+  } catch {}
+
+  // Try to merge server sessions in
+  try {
+    const data = await get('/api/sessions');
+    const srv = (data.sessions || []).map(s => {
+      const local = localMap[s.session_id] || {};
+      return {
+        id: s.session_id,
+        title: s.title || local.title || 'New conversation',
+        ts: s.created_at ? new Date(s.created_at).getTime() : (local.ts || Date.now()),
+        msgs: local.msgs || [],
+        _server: true,
+      };
+    });
+    const srvIds = new Set(srv.map(c => c.id));
+    // Keep local-only conversations (not yet synced) too
+    const localOnly = Object.values(localMap).filter(c => !srvIds.has(c.id));
+    S.convs = [...srv, ...localOnly].sort((a, b) => b.ts - a.ts);
+  } catch {
+    // Server unavailable — fall back to local only
+    S.convs = Object.values(localMap).sort((a, b) => b.ts - a.ts);
+  }
 }
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(S.convs.slice(-MAX_CONVS))); } catch {}
 }
 function ensureConv() { if (!S.id) newChat(false); }
-function newChat(render = true) {
+async function newChat(render = true) {
   const id = 'c' + Date.now();
-  S.convs.unshift({ id, title: 'New conversation', ts: Date.now(), msgs: [] });
+  const conv = { id, title: 'New conversation', ts: Date.now(), msgs: [] };
+  S.convs.unshift(conv);
   S.id = id; save();
+  // Register on server (best-effort, fire-and-forget)
+  try {
+    const r = await post('/api/sessions', {});
+    if (r.session_id && r.session_id !== id) {
+      // Server gave us a different ID — update
+      conv.id = r.session_id;
+      if (S.id === id) S.id = r.session_id;
+      save();
+    }
+  } catch { /* server unavailable, keep local-only conv */ }
   if (render) { clearMsgs(); chatTtl.textContent = 'Pearl AI'; }
   renderSidebar();
 }
@@ -1212,6 +1329,8 @@ function saveMsg(role, content) {
     c.title = content.slice(0,54) + (content.length > 54 ? '…' : '');
     chatTtl.textContent = c.title;
     renderSidebar();
+    // Sync auto-generated title to server (best-effort)
+    try { fetch(`/api/sessions/${c.id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({title: c.title}) }); } catch {}
   }
   c.msgs.push({ role, content, ts: Date.now() }); save();
 }
@@ -1225,10 +1344,24 @@ function loadConv(id) {
       msgInner.appendChild(r);
     } else {
       const r = mk('div','msg-row msg-pearl');
+      const rawMd = m.content;
       r.innerHTML = `
         <div class="pearl-label"><span class="pearl-dot" aria-hidden="true"></span>Pearl</div>
-        <div class="pearl-bub md">${renderMd(m.content)}</div>
+        <div class="pearl-bub md">${renderMd(rawMd)}</div>
+        <div class="pearl-acts">
+          <button class="pa-btn pa-copy" aria-label="Copy response">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M4 11H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v1"/></svg>
+            Copy
+          </button>
+        </div>
         <div class="msg-meta">${tsStr(m.ts)}</div>`;
+      r.querySelector('.pa-copy').addEventListener('click', e => {
+        const btn = e.currentTarget;
+        navigator.clipboard.writeText(rawMd).then(() => {
+          btn.classList.add('copied'); btn.childNodes[btn.childNodes.length-1].textContent = ' Copied!';
+          setTimeout(() => { btn.classList.remove('copied'); btn.childNodes[btn.childNodes.length-1].textContent = ' Copy'; }, 2000);
+        }).catch(() => {});
+      });
       msgInner.appendChild(r);
     }
   });
@@ -1260,17 +1393,23 @@ function renderSidebar(filter = '') {
         </span>`;
       item.addEventListener('click', e => { if (!e.target.closest('.sb-act')) loadConv(conv.id); });
       item.addEventListener('keydown', e => { if (e.key === 'Enter') loadConv(conv.id); });
-      item.querySelector('.rename').addEventListener('click', e => {
+      item.querySelector('.rename').addEventListener('click', async e => {
         e.stopPropagation();
         const t = prompt('Rename:', conv.title);
-        if (t?.trim()) { conv.title = t.trim(); save(); renderSidebar(filter); }
+        if (!t?.trim()) return;
+        conv.title = t.trim(); save(); renderSidebar(filter);
+        // Sync rename to server (best-effort)
+        try { await fetch(`/api/sessions/${conv.id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({title: conv.title}) }); } catch {}
       });
-      item.querySelector('.del').addEventListener('click', e => {
+      item.querySelector('.del').addEventListener('click', async e => {
         e.stopPropagation();
         if (!confirm('Delete this conversation?')) return;
-        S.convs = S.convs.filter(x => x.id !== conv.id);
-        if (S.id === conv.id) { S.id = null; clearMsgs(); chatTtl.textContent = 'Pearl AI'; }
+        const delId = conv.id;
+        S.convs = S.convs.filter(x => x.id !== delId);
+        if (S.id === delId) { S.id = null; clearMsgs(); chatTtl.textContent = 'Pearl AI'; }
         save(); renderSidebar(filter);
+        // Sync delete to server (best-effort)
+        try { await fetch(`/api/sessions/${delId}`, { method: 'DELETE' }); } catch {}
       });
       sbList.appendChild(item);
     });

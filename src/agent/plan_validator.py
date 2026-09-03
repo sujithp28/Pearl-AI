@@ -103,7 +103,8 @@ def _extensions_in_workspace() -> frozenset[str]:
     Fails open: returns an empty frozenset (no check applied) when the
     workspace cannot be scanned, so a broken scan never blocks planning.
     """
-    root = Path.cwd()
+    from src.config.workspace import get_workspace_root
+    root = get_workspace_root()
     exts: set[str] = set()
     try:
         for dirpath, dirnames, filenames in os.walk(root):

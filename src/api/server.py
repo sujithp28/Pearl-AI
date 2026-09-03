@@ -359,6 +359,70 @@ async def tools() -> JSONResponse:
     return JSONResponse({"tools": tool_list, "count": len(tool_list)})
 
 
+# ------------------------------------------------------------------ sessions (V2)
+
+from src.agent.session_manager import get_session_manager
+
+
+class RenameSessionRequest(BaseModel):
+    title: str
+
+
+@app.get("/api/sessions")
+async def list_sessions() -> JSONResponse:
+    """List all persistent sessions, newest first."""
+    manager = get_session_manager()
+    return JSONResponse({"sessions": manager.list_sessions()})
+
+
+@app.post("/api/sessions")
+async def create_session_endpoint() -> JSONResponse:
+    """Create a new persistent session for the current workspace."""
+    session = get_session()
+    manager = get_session_manager()
+    sid = manager.create_session(workspace=str(session.workspace))
+    return JSONResponse({"session_id": sid})
+
+
+@app.get("/api/sessions/{session_id}")
+async def get_session_endpoint(session_id: str) -> JSONResponse:
+    manager = get_session_manager()
+    try:
+        rec = manager.get_session(session_id)
+        return JSONResponse(rec.to_dict())
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+
+@app.patch("/api/sessions/{session_id}")
+async def rename_session_endpoint(
+    session_id: str, req: RenameSessionRequest
+) -> JSONResponse:
+    manager = get_session_manager()
+    try:
+        manager.rename_session(session_id, req.title)
+        return JSONResponse({"ok": True})
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session_endpoint(session_id: str) -> JSONResponse:
+    manager = get_session_manager()
+    manager.delete_session(session_id)
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/sessions/{session_id}/history")
+async def session_history_endpoint(session_id: str) -> JSONResponse:
+    manager = get_session_manager()
+    try:
+        history = manager.load_history(session_id)
+        return JSONResponse({"messages": history})
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+
 # ------------------------------------------------------------------ helpers
 
 

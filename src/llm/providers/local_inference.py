@@ -42,6 +42,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from src.llm.errors import ContextLengthError
 from src.llm.providers.base import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -72,14 +73,16 @@ def _get_shared_llm(model_path: str, n_ctx: int, n_threads: int) -> Any:
                     "--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu"
                 ) from exc
 
-            logger.info("Loading local model: %s", model_path)
+            logger.info("Loading local model: %s (requested n_ctx=%d)", model_path, n_ctx)
             _llm = Llama(
                 model_path=model_path,
                 n_ctx=n_ctx,
                 n_threads=n_threads,
                 verbose=False,
             )
-            logger.info("Local model ready.")
+            # Report the n_ctx the runtime actually allocated — authoritative value.
+            actual_ctx = _llm.n_ctx() if hasattr(_llm, "n_ctx") else n_ctx
+            logger.info("Local model ready (actual n_ctx=%d).", actual_ctx)
         return _llm
 
 
@@ -115,6 +118,29 @@ def _download_model(repo_id: str, filename: str, local_dir: str) -> str:
             f"Failed to download {filename} from {repo_id}: {exc}\n"
             "Check your internet connection and try again."
         ) from exc
+
+
+# ── Context-length detection ──────────────────────────────────────────────────
+
+_CTX_PHRASES = ("exceed context", "too long", "exceeds maximum")
+
+
+def _reraise_if_context_length(exc: ValueError) -> None:
+    """
+    Re-raise *exc* as ``ContextLengthError`` when the message indicates the
+    prompt exceeded ``n_ctx``.
+
+    llama-cpp-python raises ``ValueError`` with messages like:
+      "Requested tokens (N) exceed context window of M"
+    We translate those into the typed ``ContextLengthError`` so the
+    condenser can catch it without matching raw strings.
+
+    Does nothing (returns normally) for other ValueErrors — the caller
+    will re-raise the original.
+    """
+    msg = str(exc).lower()
+    if any(phrase in msg for phrase in _CTX_PHRASES):
+        raise ContextLengthError(str(exc)) from exc
 
 
 # ── Provider ──────────────────────────────────────────────────────────────────
@@ -203,13 +229,17 @@ class LocalInferenceProvider(LLMProvider):
         max_tokens: int,
     ) -> str:
         llm = self._get_llm()
-        with _inference_lock:
-            result = llm.create_chat_completion(
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                stream=False,
-            )
+        try:
+            with _inference_lock:
+                result = llm.create_chat_completion(
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    stream=False,
+                )
+        except ValueError as exc:
+            _reraise_if_context_length(exc)
+            raise
         content = result["choices"][0]["message"].get("content", "")
         if not content:
             raise ValueError("Local model returned an empty response.")
@@ -222,13 +252,17 @@ class LocalInferenceProvider(LLMProvider):
         max_tokens: int,
     ) -> Iterator[str]:
         llm = self._get_llm()
-        with _inference_lock:
-            for chunk in llm.create_chat_completion(
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                stream=True,
-            ):
-                delta = chunk["choices"][0]["delta"]
-                if "content" in delta and delta["content"]:
-                    yield delta["content"]
+        try:
+            with _inference_lock:
+                for chunk in llm.create_chat_completion(
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    stream=True,
+                ):
+                    delta = chunk["choices"][0]["delta"]
+                    if "content" in delta and delta["content"]:
+                        yield delta["content"]
+        except ValueError as exc:
+            _reraise_if_context_length(exc)
+            raise

@@ -13,6 +13,7 @@ venv/
 
 # Test workspace
 test_workspace/
+_e2e_testdir/
 
 # VS Code
 .vscode/

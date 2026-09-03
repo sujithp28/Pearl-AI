@@ -45,6 +45,7 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,6 +57,8 @@ from src.repository.index import RepositoryIndex, SymbolEntry
 if TYPE_CHECKING:
     from src.memory.workspace_memory import WorkspaceMemory
     from src.repository.service import RepositoryService
+
+logger = logging.getLogger(__name__)
 
 _WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
@@ -311,6 +314,27 @@ class SemanticContextBuilder:
                             1.0,
                             f"recently created symbol: {sym_name}",
                         )
+
+        # --- PageRank boost ---
+        # Re-rank term-matched files by their centrality in the import
+        # graph, using the term scores as personalization weights so
+        # high-relevance files attract more teleportation probability.
+        # Mirrors Aider's repo-map approach. Non-fatal: a failure here
+        # degrades silently to term-match-only ranking.
+        if scores:
+            try:
+                personalization = {fp: max(sc, 1.0) for fp, sc in scores.items()}
+                pr_scores = graph.pagerank(personalization=personalization)
+                max_pr = max(pr_scores.values(), default=1.0) or 1.0
+                for fp in list(scores.keys()):
+                    pr = pr_scores.get(fp, 0.0)
+                    if pr > 0:
+                        # Add up to 1.5 points — enough to re-order equally
+                        # relevant files, not enough to override term matches.
+                        pr_boost = (pr / max_pr) * 1.5
+                        boost(fp, pr_boost, f"pagerank={pr:.4f}")
+            except Exception:
+                logger.debug("PageRank boost failed; using term-match-only ranking.", exc_info=True)
 
         # --- Initial ranking ---
         initial = sorted(

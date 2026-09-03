@@ -53,6 +53,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.config.settings import Settings
+from src.config.workspace import get_workspace_root
 from src.tools.command_approval import CommandApprovalManager, ShellCommandRequest
 from src.tools.file_tools import _ensure_within_workspace
 from src.tools.metadata import tool
@@ -355,7 +356,7 @@ def _workspace_cwd() -> str:
     that's future work this design deliberately leaves room for.
     """
 
-    return str(Path.cwd().resolve())
+    return str(get_workspace_root())
 
 
 def _resource_limiter(
@@ -623,7 +624,7 @@ def pwd() -> str:
     Return current working directory.
     """
 
-    return str(Path.cwd())
+    return str(get_workspace_root())
 
 
 @tool(
