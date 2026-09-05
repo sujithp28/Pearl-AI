@@ -136,6 +136,54 @@ class TestRealModelGeneration:
 
 
 # ---------------------------------------------------------------------------
+# TEST A2 — real autocomplete (raw completion, not chat)
+# ---------------------------------------------------------------------------
+
+
+class TestRealAutocomplete:
+    """
+    Confirms the fix for a real bug found while building the autocomplete
+    role: `generate()` routes through the model's chat template, and for
+    a bare code fragment an instruct model frequently refuses outright
+    ("I'm sorry, I can't assist with that") rather than continuing it.
+    `complete_raw()` bypasses the chat template so the model does plain
+    next-token continuation instead.
+    """
+
+    def test_generate_on_a_code_fragment_can_produce_a_refusal(self, router):
+        """
+        Documents the bug this fix addresses — not asserting the model
+        MUST refuse (that would be flaky), just that generate() is the
+        wrong tool: it sends the fragment through the chat template
+        regardless of whether this particular sample happens to refuse.
+        """
+        out = router.autocomplete_client().generate(
+            "def add(a, b):\n    return", max_new_tokens=20, temperature=0.0
+        )
+        assert isinstance(out, str)  # generate() always returns text or raises
+
+    def test_complete_raw_continues_code_without_chat_framing(self, router):
+        out = router.autocomplete_client().complete_raw(
+            "def add(a, b):\n    return",
+            temperature=0.0,
+            max_new_tokens=20,
+            stop=["\n\n", "def "],
+        )
+        refusal_markers = ("sorry", "as an ai", "i cannot", "i can't", "assist")
+        assert not any(m in out.lower() for m in refusal_markers), (
+            f"complete_raw() must not produce chat-style refusals, got: {out!r}"
+        )
+        assert out.strip(), "completion must not be empty"
+
+    def test_complete_raw_respects_stop_sequences(self, router):
+        """A completion that runs into a blank line must stop there, not ramble on."""
+        out = router.autocomplete_client().complete_raw(
+            "x = 1\n", temperature=0.0, max_new_tokens=40, stop=["\n\n"]
+        )
+        assert "\n\n" not in out
+
+
+# ---------------------------------------------------------------------------
 # TEST B — real planning
 # ---------------------------------------------------------------------------
 

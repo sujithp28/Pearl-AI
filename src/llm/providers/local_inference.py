@@ -347,3 +347,38 @@ class LocalInferenceProvider(LLMProvider):
         except ValueError as exc:
             _reraise_if_context_length(exc)
             raise
+
+    def complete_raw(
+        self,
+        prompt: str,
+        temperature: float,
+        max_tokens: int,
+        stop: list[str] | None = None,
+    ) -> str:
+        """
+        Continue `prompt` via llama.cpp's raw completion API
+        (`create_completion`), not `create_chat_completion`.
+
+        This is the actual fix for autocomplete returning chat replies:
+        `create_chat_completion` renders the prompt through Qwen's
+        instruct template (`<|im_start|>user ... <|im_end|>`), so the
+        model answers *about* the code — often refusing outright, since
+        an out-of-context code fragment reads like a suspicious request
+        to an instruct-tuned model. `create_completion` sends `prompt`
+        as plain text with no template, so the model does what a base
+        completion model does: predicts the most likely next tokens,
+        which for a code prefix is the code that follows it.
+        """
+        llm = self._get_llm()
+        try:
+            with self._lock():
+                result = llm.create_completion(
+                    prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    stop=stop or [],
+                )
+        except ValueError as exc:
+            _reraise_if_context_length(exc)
+            raise
+        return result["choices"][0]["text"]

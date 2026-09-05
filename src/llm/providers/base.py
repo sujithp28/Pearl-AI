@@ -53,3 +53,35 @@ class LLMProvider(ABC):
         """
 
         yield self.complete(messages, temperature, max_tokens)
+
+    def complete_raw(
+        self,
+        prompt: str,
+        temperature: float,
+        max_tokens: int,
+        stop: list[str] | None = None,
+    ) -> str:
+        """
+        Continue `prompt` as plain text — no chat template, no system/
+        user/assistant framing.
+
+        This exists for inline code completion: an instruct model's chat
+        template makes it answer *about* the given text ("Here's how you
+        could finish that function...", or an outright refusal) rather
+        than simply continuing it. Autocomplete needs the latter.
+
+        Most hosted chat APIs have no equivalent endpoint, so the default
+        implementation degrades to a single-turn chat completion with an
+        explicit continuation instruction — best-effort, not a true raw
+        completion. `LocalInferenceProvider` overrides this with
+        llama.cpp's real completion API, which is what makes local
+        autocomplete actually work rather than degrade.
+        """
+        instruction = (
+            "Continue the following code with no explanation, no markdown "
+            "fences, and no repetition of the given text — output only the "
+            "continuation:\n\n" + prompt
+        )
+        return self.complete(
+            [{"role": "user", "content": instruction}], temperature, max_tokens
+        )

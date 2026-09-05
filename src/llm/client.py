@@ -234,6 +234,37 @@ class LLMClient:
 
         logger.info("Stream finished.")
 
+    def complete_raw(
+        self,
+        prompt: str,
+        temperature: float | None = None,
+        max_new_tokens: int | None = None,
+        stop: list[str] | None = None,
+    ) -> str:
+        """
+        Continue `prompt` as plain text, with no chat template and no
+        message assembly (no system prompt, no history) — unlike
+        `generate()`, `prompt` is sent exactly as given.
+
+        Built for inline code completion: `generate()`'s chat framing
+        makes an instruct model respond *about* a code fragment (often
+        refusing it outright) rather than continuing it. This calls
+        `provider.complete_raw()`, which for `LocalInferenceProvider`
+        uses llama.cpp's real completion API; other providers fall back
+        to a best-effort single-turn instruction (see
+        `LLMProvider.complete_raw`'s default).
+
+        No retry/backoff: autocomplete callers need to fail fast and
+        move on, not spend the completion's latency budget retrying.
+        """
+        if temperature is None:
+            temperature = Settings.TEMPERATURE
+
+        if max_new_tokens is None:
+            max_new_tokens = Settings.MAX_NEW_TOKENS
+
+        return self.provider.complete_raw(prompt, temperature, max_new_tokens, stop)
+
     def _extract_json(self, text: str) -> str:
         """
         Extract JSON from model output.
