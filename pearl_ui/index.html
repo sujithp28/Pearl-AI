@@ -260,6 +260,9 @@ body {
   scrollbar-width: thin; scrollbar-color: var(--b2) transparent;
   display: flex; flex-direction: column;
 }
+/* `display: flex` above outranks the [hidden] default, so hiding the
+   chat log when switching to Code mode needs this explicitly. */
+#messages[hidden] { display: none; }
 #messages::-webkit-scrollbar { width: 5px; }
 #messages::-webkit-scrollbar-thumb { background: var(--b2); border-radius: 3px; }
 #msg-inner {
@@ -565,6 +568,65 @@ body {
 #send-btn:disabled { opacity: .35; cursor: not-allowed; }
 #send-btn svg { width: 16px; height: 16px; }
 .comp-hint { font-size: 11px; color: var(--tx3); text-align: center; margin-top: 7px; }
+.comp-hint kbd {
+  font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--surf2); border: 1px solid var(--b2); border-radius: 4px;
+  padding: 0 4px; color: var(--tx2);
+}
+
+/* ── Code mode ──────────────────────────────────────────────────────── */
+
+#code-pane {
+  flex: 1; display: flex; flex-direction: column; min-height: 0;
+  padding: 12px 20px 14px; background: var(--bg);
+}
+#code-pane[hidden] { display: none; }
+
+#code-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.code-lbl { font-size: 12px; color: var(--tx2); }
+#code-lang, #code-clear {
+  background: var(--surf2); color: var(--tx); border: 1px solid var(--b2);
+  border-radius: 7px; padding: 5px 9px; font-size: 12px; font-family: inherit;
+  cursor: pointer;
+}
+#code-lang:focus-visible, #code-clear:focus-visible {
+  outline: 2px solid var(--acc); outline-offset: 1px;
+}
+#code-clear:hover { background: var(--surf3); }
+#code-status { margin-left: auto; font-size: 11px; color: var(--tx3); }
+
+/* The textarea and its mirror must render text identically — same font,
+   size, line-height, padding, tab size and wrapping — or the ghost text
+   will not line up with the caret. Every one of these is shared on
+   purpose; changing one without the other visibly breaks alignment. */
+#code-wrap {
+  position: relative; flex: 1; min-height: 0;
+  border: 1px solid var(--b2); border-radius: 10px; background: var(--surf);
+  overflow: auto;
+}
+#code-wrap:focus-within { border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-dim); }
+
+#code-mirror, #code-input {
+  margin: 0; padding: 14px 16px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px; line-height: 1.6; tab-size: 4;
+  white-space: pre; overflow-wrap: normal; word-break: normal;
+  border: 0; box-sizing: border-box;
+  min-width: 100%; min-height: 100%;
+}
+#code-mirror {
+  position: absolute; inset: 0; pointer-events: none;
+  color: var(--tx); overflow: hidden;
+}
+#code-input {
+  position: relative; display: block; width: 100%;
+  background: transparent; resize: none; outline: none;
+  /* Text is transparent because the mirror underneath paints it; the
+     caret is not, so it stays visible where the real text sits. */
+  color: transparent; caret-color: var(--acc);
+}
+#code-input::placeholder { color: var(--tx3); }
+#code-ghost { color: var(--tx3); opacity: .85; }
 
 /* === Settings modal === */
 #settings-modal {
@@ -703,6 +765,7 @@ button:focus:not(:focus-visible) { outline: none; }
       <div id="mode-toggle" role="group" aria-label="Interaction mode">
         <button class="mode-btn active" data-mode="agent" aria-pressed="true">Agent</button>
         <button class="mode-btn" data-mode="chat" aria-pressed="false">Chat</button>
+        <button class="mode-btn" data-mode="code" aria-pressed="false">Code</button>
       </div>
       <button id="theme-btn" aria-label="Toggle light/dark theme">
         <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -733,6 +796,40 @@ button:focus:not(:focus-visible) { outline: none; }
       </div>
     </div>
   </div>
+
+  <!-- Code mode: a scratch editor with inline ghost-text completion,
+       served by POST /api/complete. Hidden unless mode === 'code'. -->
+  <section id="code-pane" hidden aria-label="Code playground">
+    <div id="code-bar">
+      <label for="code-lang" class="code-lbl">Language</label>
+      <select id="code-lang">
+        <option value="python">Python</option>
+        <option value="javascript">JavaScript</option>
+        <option value="typescript">TypeScript</option>
+        <option value="go">Go</option>
+        <option value="rust">Rust</option>
+        <option value="java">Java</option>
+      </select>
+      <span id="code-status" role="status" aria-live="polite"></span>
+      <button id="code-clear" type="button">Clear</button>
+    </div>
+
+    <!-- The editor is a transparent-caret textarea layered over a <pre>
+         that mirrors its text plus the suggestion. Both must share the
+         exact same font metrics, padding and wrapping, or the ghost text
+         drifts out of alignment with the caret. -->
+    <div id="code-wrap">
+      <pre id="code-mirror" aria-hidden="true"><span id="code-typed"></span><span id="code-ghost"></span></pre>
+      <textarea id="code-input" spellcheck="false" autocomplete="off"
+                autocorrect="off" autocapitalize="off" wrap="off"
+                aria-label="Code editor with inline completion"
+                placeholder="Start typing code…&#10;&#10;def add(a, b):&#10;    return"></textarea>
+    </div>
+    <p class="comp-hint">
+      Pause typing for a suggestion · <kbd>Tab</kbd> accept · <kbd>Esc</kbd> dismiss
+      · runs on your local model, nothing leaves this machine
+    </p>
+  </section>
 
   <section id="composer" aria-label="Message composer">
     <div id="comp-wrap">
@@ -832,6 +929,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadStore();
   renderSidebar();
   wire();
+  initCodeMode();
+  applyMode();
   pollStatus();
   loadProvider();
   setInterval(pollStatus, POLL_MS);
@@ -877,6 +976,7 @@ function wire() {
       x.classList.toggle('active', x.dataset.mode === S.mode);
       x.setAttribute('aria-pressed', String(x.dataset.mode === S.mode));
     });
+    applyMode();
   }));
   sendBtn.addEventListener('click', submit);
   stopBtn.addEventListener('click', cancel);
@@ -1527,6 +1627,137 @@ async function post(path, body) {
   });
   if (!r.ok) throw new Error(await r.text() || `HTTP ${r.status}`);
   return r.json();
+}
+
+// ─── Code mode: inline completion ─────────────────────────────
+//
+// Mirrors the VS Code provider's behaviour against the same
+// /api/complete endpoint: debounce a burst of keystrokes into one
+// request, drop a response whose context is already stale, and stay
+// silent on failure. A suggestion that lands after you have typed past
+// it is worse than no suggestion, so late responses are discarded
+// rather than rendered.
+
+const CODE_DEBOUNCE_MS = 150;
+
+const CODE = {
+  timer: null,
+  ghost: '',        // the suggestion currently shown
+  seq: 0,           // request counter; only the newest may render
+};
+
+function applyMode() {
+  const isCode = S.mode === 'code';
+  g('code-pane').hidden = !isCode;
+  g('messages').hidden = isCode;
+  g('composer').hidden = isCode;
+  if (isCode) {
+    g('code-input').focus();
+    syncMirror();
+  }
+}
+
+// Repaint the layer that actually shows text. The textarea's own text is
+// transparent, so nothing is visible until this runs.
+function syncMirror() {
+  const input = g('code-input');
+  g('code-typed').textContent = input.value;
+  g('code-ghost').textContent = CODE.ghost;
+}
+
+function clearGhost() {
+  if (!CODE.ghost) return;
+  CODE.ghost = '';
+  syncMirror();
+  g('code-status').textContent = '';
+}
+
+// Only suggest at the very end of the buffer. Ghost text rendered
+// mid-document would appear detached from the caret, since the mirror
+// appends it rather than inserting at the cursor.
+function atEnd(input) {
+  return input.selectionStart === input.value.length &&
+         input.selectionEnd === input.value.length;
+}
+
+function requestCompletion() {
+  const input = g('code-input');
+  const prefix = input.value;
+
+  if (!prefix.trim() || !atEnd(input)) { clearGhost(); return; }
+
+  const seq = ++CODE.seq;
+  g('code-status').textContent = 'thinking…';
+
+  post('/api/complete', {
+    prefix,
+    suffix: '',
+    language: g('code-lang').value,
+  }).then(res => {
+    // A newer keystroke has already superseded this request, or the
+    // buffer moved on while it was in flight.
+    if (seq !== CODE.seq || input.value !== prefix) return;
+
+    CODE.ghost = res.completion || '';
+    syncMirror();
+    g('code-status').textContent = CODE.ghost
+      ? (res.cached ? 'cached' : 'suggestion ready')
+      : (res.declined_reason || 'no suggestion');
+  }).catch(() => {
+    if (seq !== CODE.seq) return;
+    clearGhost();
+    // Silent by design: a failed completion must never interrupt typing.
+    g('code-status').textContent = '';
+  });
+}
+
+function scheduleCompletion() {
+  clearTimeout(CODE.timer);
+  clearGhost();
+  CODE.timer = setTimeout(requestCompletion, CODE_DEBOUNCE_MS);
+}
+
+function initCodeMode() {
+  const input = g('code-input');
+  const mirror = g('code-mirror');
+
+  input.addEventListener('input', scheduleCompletion);
+  // Moving the caret invalidates a suggestion computed for the old
+  // position, but must not trigger a new request on its own.
+  input.addEventListener('click', clearGhost);
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Tab' && CODE.ghost) {
+      e.preventDefault();
+      input.value += CODE.ghost;
+      clearGhost();
+      syncMirror();
+      input.selectionStart = input.selectionEnd = input.value.length;
+      return;
+    }
+    if (e.key === 'Tab') {           // no suggestion: indent, don't tab away
+      e.preventDefault();
+      const at = input.selectionStart;
+      input.value = input.value.slice(0, at) + '    ' + input.value.slice(at);
+      input.selectionStart = input.selectionEnd = at + 4;
+      syncMirror();
+      return;
+    }
+    if (e.key === 'Escape' && CODE.ghost) { e.preventDefault(); clearGhost(); return; }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
+        e.key === 'ArrowUp' || e.key === 'ArrowDown') clearGhost();
+  });
+
+  // Keep the painted layer aligned while scrolling a long buffer.
+  input.addEventListener('scroll', () => {
+    mirror.scrollTop = input.scrollTop;
+    mirror.scrollLeft = input.scrollLeft;
+  });
+
+  g('code-lang').addEventListener('change', () => { clearGhost(); input.focus(); });
+  g('code-clear').addEventListener('click', () => {
+    input.value = ''; clearGhost(); syncMirror(); input.focus();
+  });
 }
 
 // ─── Markdown ─────────────────────────────────────────────────

@@ -376,6 +376,20 @@ the model has loaded (the first one also pays a one-off load). That is
 usable but noticeably slower than a hosted completion model — it is the
 cost of the suggestion never leaving your machine.
 
+### Trying it without VS Code
+
+The standalone web UI has a **Code** tab (next to Agent / Chat) with a
+scratch editor wired to the same completion service — the quickest way
+to see it working:
+
+```bash
+uvicorn src.api.server:app --reload
+```
+
+Open <http://localhost:8000>, click **Code**, and start typing. Same
+behaviour as the editor: pause to get a suggestion, <kbd>Tab</kbd> to
+accept, <kbd>Esc</kbd> to dismiss.
+
 Two other surfaces expose the same service: `POST /api/complete` for
 scripting, and the `pearl/complete` MCP method for any MCP client.
 
