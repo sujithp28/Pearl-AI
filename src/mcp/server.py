@@ -20,6 +20,7 @@ from typing import IO, Any, Callable
 
 from openai import OpenAIError
 
+from src.agent.completion import CompletionService
 from src.agent.dispatcher import ToolDispatcher, ToolExecutionError, ToolNotFoundError
 from src.agent.executor import (
     AutonomousExecutor,
@@ -232,6 +233,10 @@ class MCPServer:
         # list.
         self.checkpoints = checkpoints or CheckpointManager()
         self._autonomous_executor: AutonomousExecutor | None = None
+        # Inline completion. Constructing this loads no model — the
+        # autocomplete client is resolved on the first actual request, so
+        # a server whose client never asks for completions pays nothing.
+        self._completion_service = CompletionService()
 
     # -- V2 loop components -------------------------------------------------
 
@@ -447,6 +452,41 @@ class MCPServer:
             "steps": [
                 {"tool": step.tool_name, "arguments": step.kwargs} for step in steps
             ]
+        }
+
+    def _complete(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
+        """
+        Return one inline completion for the text at a cursor position.
+
+        Unlike every other method here, this is on the typing path: it is
+        called as the developer types and must return quickly or not at
+        all. It therefore never raises for a model failure — an
+        unavailable model yields an empty completion with a reason, since
+        an error popup mid-keystroke is worse than no suggestion.
+
+        `prefix` is required; `suffix` and `language` refine the result.
+        """
+        prefix = params.get("prefix")
+
+        if not isinstance(prefix, str):
+            raise MCPProtocolError(INVALID_PARAMS, "'prefix' is required.")
+
+        suffix = params.get("suffix") or ""
+        language = params.get("language") or ""
+
+        if not isinstance(suffix, str) or not isinstance(language, str):
+            raise MCPProtocolError(
+                INVALID_PARAMS, "'suffix' and 'language' must be strings."
+            )
+
+        result = self._completion_service.complete(
+            prefix=prefix, suffix=suffix, language=language
+        )
+
+        return {
+            "completion": result.text,
+            "cached": result.cached,
+            "declinedReason": result.declined_reason,
         }
 
     def _chat(self, params: dict[str, Any], notify: NotifyFn) -> dict[str, Any]:
@@ -811,6 +851,7 @@ class MCPServer:
         "tools/call": _tools_call,
         "pearl/planOnly": _plan_only,
         "pearl/chat": _chat,
+        "pearl/complete": _complete,
         "pearl/runAutonomous": _run_autonomous,
         "pearl/approvePatches": _approve_patches,
         "pearl/rejectPatches": _reject_patches,

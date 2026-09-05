@@ -35,6 +35,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from src.agent.completion import CompletionService
 from src.api.session import PearlSession, register_loop
 
 logger = logging.getLogger(__name__)
@@ -353,6 +354,46 @@ async def set_provider(req: ProviderRequest) -> JSONResponse:
         "ok": True,
         "provider": name,
         "display": _provider_display(name),
+    })
+
+
+# ------------------------------------------------------------------ completion
+
+
+class CompleteRequest(BaseModel):
+    prefix: str
+    suffix: str = ""
+    language: str = ""
+
+
+# One service per process: it owns the completion cache, so a per-request
+# instance would make the cache useless.
+_completion_service = CompletionService()
+
+
+@app.post("/api/complete")
+async def complete(req: CompleteRequest) -> JSONResponse:
+    """
+    Return one inline completion for the text at a cursor position.
+
+    On the typing path, so it never returns an error status for a model
+    failure — an unavailable model yields an empty completion with a
+    reason. A caller polling this on every keystroke must not have to
+    handle exceptions to keep working.
+
+    Runs in a worker thread: local inference is a blocking CPU call, and
+    holding the event loop through it would stall every other request.
+    """
+    result = await asyncio.to_thread(
+        _completion_service.complete,
+        req.prefix,
+        req.suffix,
+        req.language,
+    )
+    return JSONResponse({
+        "completion": result.text,
+        "cached": result.cached,
+        "declined_reason": result.declined_reason,
     })
 
 

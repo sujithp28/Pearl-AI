@@ -126,7 +126,12 @@
         "pearl.provider": {
           "type": "string",
           "default": "",
-          "description": "Informational only: the LLM provider Pearl's MCP server is configured to use (e.g. claude, openai, ollama, custom), shown in the status bar. This mirrors your server-side PEARL_LLM_PROVIDER setting but is not read from the server itself — set it to match if you want it displayed."
+          "description": "Informational only: the LLM provider Pearl's MCP server is configured to use (e.g. pearl, claude, openai, gemini, custom), shown in the status bar. This mirrors your server-side PEARL_LLM_PROVIDER setting but is not read from the server itself — set it to match if you want it displayed."
+        },
+        "pearl.inlineCompletion.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline ghost-text completions as you type, powered by Pearl's local autocomplete model. Runs entirely on your machine and requires no API key."
         }
       }
     }

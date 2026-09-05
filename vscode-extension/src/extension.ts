@@ -12,6 +12,7 @@ import {
 } from "./checkpoints/checkpointTreeProvider";
 import { ChatPanel } from "./chat/chatPanel";
 import { MCPConnection } from "./mcp/connection";
+import { PearlInlineCompletionProvider } from "./completion/inlineCompletionProvider";
 import { MCPStatusBar } from "./mcp/statusBar";
 import { MemoryTreeProvider } from "./memory/memoryTreeProvider";
 
@@ -81,6 +82,23 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   connection.start();
+
+  // Inline completion. Registered for every language: Pearl's completion
+  // service is language-aware via `languageId` rather than needing a
+  // separate registration per language, and a language with no specific
+  // handling still gets a useful generic continuation.
+  const inlineProvider = new PearlInlineCompletionProvider(connection, () =>
+    vscode.workspace
+      .getConfiguration("pearl")
+      .get<boolean>("inlineCompletion.enabled", true)
+  );
+  context.subscriptions.push(
+    vscode.languages.registerInlineCompletionItemProvider(
+      { pattern: "**" },
+      inlineProvider
+    ),
+    inlineProvider
+  );
 
   const openChatCommand = vscode.commands.registerCommand(
     OPEN_CHAT_COMMAND_ID,

@@ -8,7 +8,7 @@
 ![Status](https://img.shields.io/badge/Status-Public%20Beta-orange)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 ![Version](https://img.shields.io/badge/Version-1.2.0--beta-informational)
-![Tests](https://img.shields.io/badge/Tests-2%2C467%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-2%2C769%20passing-brightgreen)
 
 ---
 
@@ -83,6 +83,9 @@ adds the pieces that turn "the tools ran" into "the task is verified done":
   tiers for planning, chat, editing, condensation, reflection, and
   (new) autocomplete and vision, selectable per-role or via one
   `PEARL_MODEL_PROFILE` setting. See [Model Routing](#model-routing).
+- **Inline completion** — ghost-text suggestions as you type in VS Code,
+  served by a small local model with no API key. See
+  [Inline Completion](#inline-completion).
 - **Multi-language repository parsing** — Python (AST-based), plus
   regex-based parsers for JavaScript, TypeScript, Go, Rust, and Java, all
   registered by default and degrading gracefully (never raising) on
@@ -344,6 +347,45 @@ is down.
 
 ---
 
+## Inline Completion
+
+Ghost-text suggestions as you type in VS Code, on by default and served
+entirely by a local model — no API key, nothing leaving your machine.
+
+```jsonc
+// VS Code settings
+"pearl.inlineCompletion.enabled": true   // default
+```
+
+It uses the smallest local model (Qwen2.5-0.5B by default) rather than
+the planning model, because a suggestion that arrives after you have
+typed past it is worse than none. Three things keep it out of the way:
+
+- **Debounced** (150 ms) — a burst of keystrokes costs one request.
+- **Cancelled on the next keystroke** — an in-flight suggestion computed
+  for a cursor position you have already left is discarded, not rendered.
+- **Locally gated** — no request at all on an empty line, mid-word (where
+  VS Code's own completion applies), or inside a comment.
+
+Completions are cached per cursor context, so re-visiting the same
+position is instant rather than a fresh inference. Failures are always
+silent: an unavailable model shows no suggestion, never an error.
+
+Expect roughly **0.5 s** per suggestion on a mid-range laptop CPU after
+the model has loaded (the first one also pays a one-off load). That is
+usable but noticeably slower than a hosted completion model — it is the
+cost of the suggestion never leaving your machine.
+
+Two other surfaces expose the same service: `POST /api/complete` for
+scripting, and the `pearl/complete` MCP method for any MCP client.
+
+**Not implemented: fill-in-the-middle.** The bundled Qwen2.5-*-Instruct
+models are not FIM-tuned, so text *after* the cursor cannot be used as
+true FIM context — it is used for overlap trimming and stop-sequence
+derivation only. A Coder-tuned model would allow proper FIM prompting.
+
+---
+
 ## Configuration
 
 Pearl reads a `.env` file from its own repository root.
@@ -399,6 +441,8 @@ Install the resulting `.vsix` via VS Code's
 
 The extension provides:
 
+- **Inline ghost-text completions** as you type, from a local model —
+  see [Inline Completion](#inline-completion).
 - A chat panel for natural-language requests, with the plan and each
   tool call rendered as it happens.
 - An inline **patch approval** step — review a unified diff for every
@@ -423,6 +467,7 @@ newline-delimited JSON-RPC 2.0 over stdio.
 | `pearl/runAutonomous` | Runs the loop up to the next pause point (plan → execute → stage, or completion). |
 | `pearl/approvePatches` / `pearl/rejectPatches` | Resumes a paused run after a human decision; approval's response includes `verification` and `reflection` when they ran. |
 | `pearl/chat` | Sends a message straight to the LLM (no planning/tools). |
+| `pearl/complete` | Returns one inline completion for a cursor position. Never errors for a model failure — returns an empty completion with a reason. |
 | `pearl/memory` | Returns the server's current `WorkspaceMemory` contents. |
 | `pearl/checkpointCreate` / `pearl/checkpoints` / … | Checkpoint system — see [`docs/checkpoints.md`](docs/checkpoints.md). |
 | `shutdown` / `exit` | Graceful shutdown. |
