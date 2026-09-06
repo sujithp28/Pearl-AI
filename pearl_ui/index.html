@@ -941,8 +941,22 @@ window.addEventListener('DOMContentLoaded', async () => {
 async function pollStatus() {
   try {
     const d = await get('/api/status');
-    connDot.className = 'ok';
-    connLbl.textContent = 'Connected';
+    // Reachable is not the same as usable. A server whose interpreter
+    // lacks the model library answers /api/status perfectly while every
+    // actual request fails — showing a healthy "Connected" there sends
+    // the user hunting through their prompt instead of their setup.
+    if (d.model_ready === false) {
+      connDot.className = 'err';
+      connLbl.textContent = 'Model unavailable';
+      if (d.model_error && !S.modelWarned) {
+        S.modelWarned = true;
+        addErr(d.model_error);
+      }
+    } else {
+      connDot.className = 'ok';
+      connLbl.textContent = 'Connected';
+      S.modelWarned = false;
+    }
     if (d.workspace) {
       S.ws = d.workspace;
       wsName.textContent = d.workspace.name || d.workspace.path;

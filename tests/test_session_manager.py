@@ -100,6 +100,33 @@ class TestListSessions:
         ids = [s["id"] for s in sessions]
         assert ids[0] == sid1
 
+    def test_ordering_holds_within_one_clock_tick(self) -> None:
+        """
+        Windows advances its clock in ~15.6 ms steps, so these three
+        operations all read the same wall-clock value. Ordering must come
+        from the timestamps being strictly increasing, not from the clock
+        happening to tick between calls — otherwise the sidebar order is
+        random, and this test only passes by luck.
+        """
+        import tempfile
+        from pathlib import Path
+
+        for _ in range(50):
+            mgr = SessionManager(Path(tempfile.mkdtemp(prefix="tick_")))
+            first = mgr.create_session(workspace="/a")
+            mgr.create_session(workspace="/b")
+            mgr.rename_session(first, "Touched")
+
+            assert mgr.list_sessions()[0]["id"] == first
+
+    def test_timestamps_are_strictly_increasing(self) -> None:
+        from src.agent.session_manager import _now
+
+        stamps = [_now() for _ in range(1000)]
+
+        assert len(set(stamps)) == len(stamps), "duplicate timestamps"
+        assert stamps == sorted(stamps), "timestamps not monotonic"
+
     def test_summary_dict_keys(self, manager: SessionManager) -> None:
         manager.create_session(workspace="/tmp")
         sessions = manager.list_sessions()

@@ -79,6 +79,77 @@ class TestStartupInitialisesSession:
         assert response.status_code == 200
 
 
+class TestModelReadiness:
+    """
+    Reachable is not the same as usable.
+
+    A server whose interpreter lacks llama-cpp-python starts cleanly,
+    serves the UI, and answers /api/status — then fails every real
+    request. The UI showed a healthy green "Connected" throughout, which
+    sent the user hunting through their prompt instead of their setup.
+    """
+
+    def test_status_reports_ready_when_the_model_is_importable(
+        self, uninitialised_app
+    ):
+        with TestClient(uninitialised_app.app) as client:
+            body = client.get("/api/status").json()
+
+        assert body["model_ready"] is True
+        assert body["model_error"] is None
+
+    def test_status_reports_not_ready_without_llama_cpp(
+        self, uninitialised_app, monkeypatch
+    ):
+        import sys
+
+        monkeypatch.setitem(sys.modules, "llama_cpp", None)
+
+        with TestClient(uninitialised_app.app) as client:
+            body = client.get("/api/status").json()
+
+        assert body["model_ready"] is False
+        assert "wrong interpreter" in body["model_error"]
+        # Names the interpreter, so the user can see which Python is wrong.
+        assert sys.executable in body["model_error"]
+
+    def test_remote_provider_is_not_flagged_unready(
+        self, uninitialised_app, monkeypatch
+    ):
+        """
+        A remote provider needs no local model, and its credentials
+        cannot be validated without spending a real API call — which a
+        status poll must not do.
+        """
+        import sys
+
+        monkeypatch.setitem(sys.modules, "llama_cpp", None)
+        monkeypatch.setattr(
+            "src.config.settings.Settings.LLM_PROVIDER", "openai"
+        )
+
+        with TestClient(uninitialised_app.app) as client:
+            body = client.get("/api/status").json()
+
+        assert body["model_ready"] is True
+
+    def test_pearl_gateway_is_not_flagged_unready(
+        self, uninitialised_app, monkeypatch
+    ):
+        """`pearl` with a gateway key runs remotely — no GGUF involved."""
+        import sys
+
+        monkeypatch.setitem(sys.modules, "llama_cpp", None)
+        monkeypatch.setattr(
+            "src.config.settings.Settings.PEARL_INFERENCE_API_KEY", "prl-key"
+        )
+
+        with TestClient(uninitialised_app.app) as client:
+            body = client.get("/api/status").json()
+
+        assert body["model_ready"] is True
+
+
 class TestExplicitInitIsPreserved:
     def test_startup_does_not_override_an_explicit_workspace(
         self, monkeypatch, tmp_path

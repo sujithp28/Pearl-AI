@@ -24,9 +24,9 @@ import json
 import logging
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from threading import RLock
+from threading import Lock, RLock
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -34,9 +34,40 @@ logger = logging.getLogger(__name__)
 _SESSIONS_DIR = Path.home() / ".pearl" / "sessions"
 
 
+_clock_lock = Lock()
+_last_stamp = ""
+
+
 def _now() -> str:
-    # timespec="microseconds" avoids the 15ms timer-resolution flake on Windows.
-    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+    """
+    Return a UTC timestamp strictly greater than the previous one.
+
+    Sessions are ordered by comparing these strings, so two of them
+    sharing a value sort arbitrarily. That is not hypothetical on
+    Windows: the system clock advances in ~15.6 ms steps, so every
+    operation inside one tick reads back byte-identical — creating two
+    sessions and renaming one, which happens in well under a
+    millisecond, produced three identical stamps and a sidebar whose
+    order was effectively random.
+
+    Higher precision alone does not fix it, because the underlying clock
+    value simply does not change that often. Advancing by a microsecond
+    whenever the clock has not moved makes ordering total and
+    deterministic without pretending to measure real elapsed time.
+    """
+    global _last_stamp
+
+    with _clock_lock:
+        stamp = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+        if stamp <= _last_stamp:
+            # ISO strings sort lexicographically, so step the real value
+            # rather than the text to keep that property intact.
+            bumped = datetime.fromisoformat(_last_stamp) + timedelta(microseconds=1)
+            stamp = bumped.isoformat(timespec="microseconds")
+
+        _last_stamp = stamp
+        return stamp
 
 
 @dataclass

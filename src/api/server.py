@@ -26,6 +26,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import threading
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -79,6 +80,16 @@ async def _startup() -> None:
         logger.info("No workspace configured; defaulting to %s", workspace)
         _session = PearlSession(workspace)
 
+    # Surface an unusable model configuration now rather than letting the
+    # server look healthy and fail on every request.
+    model_error = check_model_ready()
+    if model_error:
+        logger.warning("=" * 68)
+        logger.warning("Pearl started, but the model cannot serve requests:")
+        logger.warning("  %s", model_error)
+        logger.warning("Chat, Agent and Code modes will all fail until this is fixed.")
+        logger.warning("=" * 68)
+
     logger.info("Pearl API server started.")
 
 
@@ -96,14 +107,50 @@ async def serve_ui() -> HTMLResponse:
 # ------------------------------------------------------------------ status
 
 
+def check_model_ready() -> str | None:
+    """
+    Return why the configured model cannot serve requests, or None.
+
+    A server whose interpreter lacks llama-cpp-python starts cleanly,
+    serves the UI, and reports "Connected" — then fails every single
+    request. Reporting that up front turns a healthy-looking server that
+    silently does nothing into an obvious, explained problem.
+
+    Only checks local inference: a remote provider's credentials cannot
+    be validated without spending a real API call, which is not
+    something a status poll should do.
+    """
+    from src.config.settings import Settings
+
+    provider = Settings.LLM_PROVIDER.lower()
+    if provider != "pearl" or Settings.PEARL_INFERENCE_API_KEY:
+        return None  # remote — nothing checkable for free
+
+    try:
+        import llama_cpp  # noqa: F401
+    except ImportError:
+        return (
+            "llama-cpp-python is not importable in the Python running "
+            f"Pearl ({sys.executable}). If it is installed elsewhere, this "
+            "is the wrong interpreter — start Pearl with "
+            "`python -m src.api`."
+        )
+    return None
+
+
 @app.get("/api/status")
 async def status() -> JSONResponse:
     session = get_session()
+    model_error = check_model_ready()
     return JSONResponse({
         "ok": True,
         "workspace": session.workspace_info(),
         "running": session.is_running(),
         "awaiting_approval": session.is_awaiting_approval(),
+        # False means requests will fail; the UI should say so rather
+        # than showing a healthy "Connected".
+        "model_ready": model_error is None,
+        "model_error": model_error,
     })
 
 
