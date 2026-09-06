@@ -64,6 +64,21 @@ def init_session(workspace: Path) -> None:
 @app.on_event("startup")
 async def _startup() -> None:
     register_loop(asyncio.get_event_loop())
+
+    # Initialise a session if nothing has already done so.
+    #
+    # `python -m src.api` calls init_session() itself before handing the
+    # app to uvicorn, and that choice is preserved here. But running the
+    # app directly — `uvicorn src.api.server:app`, which is how the
+    # README says to start it and what any ASGI host would do — has no
+    # such step, leaving _session as None so every endpoint behind
+    # get_session() answers 503 while the UI shows "Disconnected".
+    global _session
+    if _session is None:
+        workspace = Path.cwd().resolve()
+        logger.info("No workspace configured; defaulting to %s", workspace)
+        _session = PearlSession(workspace)
+
     logger.info("Pearl API server started.")
 
 
