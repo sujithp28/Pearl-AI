@@ -8,8 +8,8 @@ Coverage:
 - Match below threshold → MatchFailed
 - Empty search → MatchFailed
 - File not found → EditResult(succeeded=False)
-- Stages via PatchManager when active
-- Writes directly when no PatchManager
+- Stages via ChangeManager when active
+- Writes directly when no ChangeManager
 - validate() returns correct found/similarity
 - count=1 replaces only first occurrence
 - count=-1 replaces all occurrences
@@ -135,9 +135,9 @@ class TestApplyNormalizedMatch:
 
     def test_normalized_match_updates_content(self, workspace: Path) -> None:
         f = workspace / "f.py"
-        f.write_text("class  Foo:\n    pass\n")
+        f.write_text("class  NewFoo:\n    pass\n")
         editor = SearchReplaceEditor()
-        result = editor.apply("f.py", "class Foo:", "class FooBar:")
+        result = editor.apply("f.py", "class NewFoo:", "class FooBar:")
         assert result.succeeded
         assert "FooBar" in f.read_text()
 
@@ -198,7 +198,7 @@ class TestApplyErrors:
 
 
 # ---------------------------------------------------------------------------
-# PatchManager integration
+# ChangeManager integration
 # ---------------------------------------------------------------------------
 
 

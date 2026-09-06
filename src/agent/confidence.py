@@ -55,7 +55,7 @@ MAX_REPLAN_PENALTY: float = 0.30
 # new write-capable tools are added.
 WRITE_TOOL_NAMES: frozenset[str] = frozenset(
     {
-        # edit_tools.py — all staged via PatchManager in autonomous mode
+        # edit_tools.py — all staged via ChangeManager in autonomous mode
         "create_file",
         "replace_in_file",
         "edit_lines",

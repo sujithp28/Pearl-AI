@@ -40,7 +40,7 @@ def _expr_to_name(node: ast.expr) -> str | None:
 
     Handles:
 
-    * ``Name("Foo")``           → ``"Foo"``
+    * ``Name("NewFoo")``           → ``"NewFoo"``
     * ``Attribute(Name("m"), "Base")`` → ``"m.Base"``
     * anything else             → ``None``
     """

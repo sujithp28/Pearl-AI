@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from src.tools.patch_manager import PatchManager, unified_diff
+from src.tools.patch_manager import ChangeManager, unified_diff
 
 # ---------------------------------------------------------------------
 # unified_diff
@@ -33,12 +33,12 @@ def test_unified_diff_empty_for_identical_content():
 
 
 # ---------------------------------------------------------------------
-# PatchManager: proposing and inspecting
+# ChangeManager: proposing and inspecting
 # ---------------------------------------------------------------------
 
 
 def test_propose_stages_an_edit_without_touching_state():
-    manager = PatchManager()
+    manager = ChangeManager()
 
     edit = manager.propose("a.txt", "old\n", "new\n")
 
@@ -53,7 +53,7 @@ def test_propose_stages_an_edit_without_touching_state():
 
 
 def test_propose_marks_new_files():
-    manager = PatchManager()
+    manager = ChangeManager()
 
     edit = manager.propose("new.txt", None, "hello\n")
 
@@ -61,14 +61,14 @@ def test_propose_marks_new_files():
 
 
 def test_has_pending_false_when_empty():
-    manager = PatchManager()
+    manager = ChangeManager()
 
     assert not manager.has_pending()
     assert manager.pending == []
 
 
 def test_affected_files_lists_every_staged_path_in_order():
-    manager = PatchManager()
+    manager = ChangeManager()
 
     manager.propose("a.txt", "1", "2")
     manager.propose("b.txt", None, "new")
@@ -77,7 +77,7 @@ def test_affected_files_lists_every_staged_path_in_order():
 
 
 def test_combined_diff_concatenates_every_staged_diff():
-    manager = PatchManager()
+    manager = ChangeManager()
 
     manager.propose("a.txt", "1\n", "2\n")
     manager.propose("b.txt", "3\n", "4\n")
@@ -94,7 +94,7 @@ def test_combined_diff_concatenates_every_staged_diff():
 
 
 def test_apply_all_writes_every_pending_edit_and_clears_pending(tmp_path):
-    manager = PatchManager()
+    manager = ChangeManager()
 
     file_a = tmp_path / "a.txt"
     file_a.write_text("old\n")
@@ -112,7 +112,7 @@ def test_apply_all_writes_every_pending_edit_and_clears_pending(tmp_path):
 
 
 def test_apply_all_creates_parent_directories(tmp_path):
-    manager = PatchManager()
+    manager = ChangeManager()
     nested = tmp_path / "a" / "b" / "c.txt"
 
     manager.propose(str(nested), None, "deep\n")
@@ -124,13 +124,13 @@ def test_apply_all_creates_parent_directories(tmp_path):
 def test_apply_all_on_empty_pending_writes_nothing_and_returns_empty(
     tmp_path,
 ):
-    manager = PatchManager()
+    manager = ChangeManager()
 
     assert manager.apply_all() == []
 
 
 def test_discard_all_writes_nothing(tmp_path):
-    manager = PatchManager()
+    manager = ChangeManager()
     file_a = tmp_path / "a.txt"
 
     manager.propose(str(file_a), None, "should not appear\n")
@@ -143,7 +143,7 @@ def test_discard_all_writes_nothing(tmp_path):
 
 
 def test_discard_all_on_empty_pending_returns_empty():
-    manager = PatchManager()
+    manager = ChangeManager()
 
     assert manager.discard_all() == []
 
@@ -155,7 +155,7 @@ def test_discard_all_on_empty_pending_returns_empty():
 
 def test_apply_all_succeeds_all_or_none_on_success(tmp_path):
     """All files written when no error occurs."""
-    manager = PatchManager()
+    manager = ChangeManager()
     a = tmp_path / "a.txt"
     b = tmp_path / "b.txt"
     manager.propose(str(a), None, "alpha\n")
@@ -171,7 +171,7 @@ def test_apply_all_succeeds_all_or_none_on_success(tmp_path):
 
 def test_apply_all_rollback_restores_existing_file_on_failure(tmp_path, monkeypatch):
     """If the second write fails, the first write is rolled back."""
-    manager = PatchManager()
+    manager = ChangeManager()
     a = tmp_path / "a.txt"
     b = tmp_path / "b.txt"
     a.write_text("original\n")
@@ -203,7 +203,7 @@ def test_apply_all_rollback_restores_existing_file_on_failure(tmp_path, monkeypa
 
 def test_apply_all_rollback_deletes_new_file_on_failure(tmp_path, monkeypatch):
     """A new file that was written before the failure is deleted on rollback."""
-    manager = PatchManager()
+    manager = ChangeManager()
     a = tmp_path / "new_a.txt"
     b = tmp_path / "new_b.txt"
 
@@ -231,7 +231,7 @@ def test_apply_all_rollback_deletes_new_file_on_failure(tmp_path, monkeypatch):
 
 def test_apply_all_pending_cleared_only_on_success(tmp_path):
     """Pending list is NOT cleared when apply_all() raises."""
-    manager = PatchManager()
+    manager = ChangeManager()
     manager.propose(str(tmp_path / "x.txt"), None, "x\n")
 
     with mock.patch.object(Path, "write_text", side_effect=OSError("fail")):
@@ -243,5 +243,5 @@ def test_apply_all_pending_cleared_only_on_success(tmp_path):
 
 def test_apply_all_empty_returns_empty_list(tmp_path):
     """Calling apply_all() with no pending edits is a no-op."""
-    manager = PatchManager()
+    manager = ChangeManager()
     assert manager.apply_all() == []

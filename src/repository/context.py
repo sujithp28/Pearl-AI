@@ -9,13 +9,13 @@ What makes this "semantic" vs. the older ``ContextBuilder`` in
 ``src/tools/context_manager.py``:
 
 1. **Richer symbol matching** — matches against the fully-qualified name
-   (``"PatchManager.stage"``), the docstring first line, and decorators,
+   (``"ChangeManager.stage"``), the docstring first line, and decorators,
    not just the flat symbol name.
 
 2. **Graph-aware expansion** — after scoring files by term match, the top
    candidates are expanded by one IMPORTS hop so the LLM also sees the
-   files that *use* the matched symbols.  A query for "PatchManager" will
-   include ``edit_tools.py`` because it imports ``PatchManager``; the LLM
+   files that *use* the matched symbols.  A query for "ChangeManager" will
+   include ``edit_tools.py`` because it imports ``ChangeManager``; the LLM
    then understands the full approval contract without an extra round-trip.
 
 3. **Precise source extraction** — large files are compressed using the
@@ -280,7 +280,7 @@ class SemanticContextBuilder:
             fp = entry.relative_path
             sym = entry.symbol
 
-            # Qualified name (e.g. "PatchManager.stage")
+            # Qualified name (e.g. "ChangeManager.stage")
             if _term_matches(sym.qualified_name, terms):
                 boost(fp, 4.0, f"symbol: {sym.qualified_name}")
                 matched.setdefault(fp, []).append(entry)

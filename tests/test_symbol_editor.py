@@ -1,7 +1,7 @@
 import pytest
 
 from src.tools.edit_tools import set_active_patch_manager
-from src.tools.patch_manager import PatchManager
+from src.tools.patch_manager import ChangeManager
 from src.tools.symbol_editor import (
     SymbolEditor,
     SymbolNotFoundError,
@@ -332,7 +332,7 @@ def test_tool_insert_before_symbol_writes_file_in_apply_mode(sample_file):
 def test_tool_replace_function_preview_mode_stages_instead_of_writing(
     sample_file,
 ):
-    manager = PatchManager()
+    manager = ChangeManager()
     set_active_patch_manager(manager)
 
     original_content = sample_file.read_text()
@@ -357,7 +357,7 @@ def test_tool_replace_function_preview_mode_stages_instead_of_writing(
 def test_tool_replace_class_preview_mode_stages_instead_of_writing(
     sample_file,
 ):
-    manager = PatchManager()
+    manager = ChangeManager()
     set_active_patch_manager(manager)
 
     replace_class("Empty", "class Empty:\n    value = 1\n", path=str(sample_file))
@@ -370,7 +370,7 @@ def test_tool_replace_class_preview_mode_stages_instead_of_writing(
 def test_tool_insert_after_symbol_preview_mode_stages_instead_of_writing(
     sample_file,
 ):
-    manager = PatchManager()
+    manager = ChangeManager()
     set_active_patch_manager(manager)
 
     insert_after_symbol("foo", "def new_func():\n    return 1\n", path=str(sample_file))
@@ -511,7 +511,7 @@ def test_tool_replace_method_preview_mode_stages_instead_of_writing(
     src = "class Greeter:\n    def greet(self):\n        return 'hello'\n"
     (tmp_path / "a.py").write_text(src)
 
-    pm = PatchManager()
+    pm = ChangeManager()
     set_active_patch_manager(pm)
     try:
         replace_method(
@@ -528,7 +528,7 @@ def test_tool_replace_method_preview_mode_stages_instead_of_writing(
 
 def test_tool_replace_method_raises_when_class_not_found(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "a.py").write_text("class Foo: pass\n")
+    (tmp_path / "a.py").write_text("class NewFoo: pass\n")
 
     with pytest.raises(SymbolNotFoundError):
         replace_method("NonExistent", "some_method", "    pass\n", path=str(tmp_path / "a.py"))

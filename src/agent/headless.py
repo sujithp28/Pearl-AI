@@ -11,7 +11,7 @@ Modes:
 
 Security guarantees:
   - Dangerous tools are ALWAYS blocked in headless/CI mode.
-  - The PatchManager approval gate remains active; this module only
+  - The ChangeManager approval gate remains active; this module only
     decides whether to auto-approve it after the run.
   - Fail closed: if mode is unknown, treat as interactive (most restrictive).
 
@@ -42,7 +42,7 @@ class ExecutionPolicy:
     Determines approval behavior based on execution mode.
 
     This class encodes the approval policy — it does NOT execute tools or
-    bypass PatchManager.  It is consulted by the approval coordinator to
+    bypass ChangeManager.  It is consulted by the approval coordinator to
     decide whether to automatically approve a staged patch set.
     """
 

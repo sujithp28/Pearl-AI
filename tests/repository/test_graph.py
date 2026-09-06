@@ -177,7 +177,7 @@ class TestNode:
         assert "src/a.py" in repr(n)
 
     def test_repr_symbol(self) -> None:
-        n = Node(id="src/a.py#Foo", kind=NodeKind.SYMBOL, label="Foo")
+        n = Node(id="src/a.py#NewFoo", kind=NodeKind.SYMBOL, label="NewFoo")
         assert "symbol" in repr(n)
 
 
@@ -366,32 +366,32 @@ class TestBuildFileNodes:
 class TestBuildSymbolNodes:
     def test_symbol_node_created_per_symbol(self, tmp_path: Path) -> None:
         g = _build_graph(tmp_path, {
-            "src/a.py": "class Foo:\n    def bar(self): pass\n",
+            "src/a.py": "class NewFoo:\n    def bar(self): pass\n",
         })
         sym_nodes = g.nodes(kind=NodeKind.SYMBOL)
         labels = {n.label for n in sym_nodes}
-        assert "Foo" in labels
-        assert "Foo.bar" in labels
+        assert "NewFoo" in labels
+        assert "NewFoo.bar" in labels
 
     def test_symbol_node_id_format(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
-        assert "src/a.py#Foo" in g
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
+        assert "src/a.py#NewFoo" in g
 
     def test_symbol_node_kind_field(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
-        n = g.node("src/a.py#Foo")
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
+        n = g.node("src/a.py#NewFoo")
         assert n is not None
         assert n.symbol_kind == "class"
 
     def test_symbol_node_file_path(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
-        n = g.node("src/a.py#Foo")
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
+        n = g.node("src/a.py#NewFoo")
         assert n is not None
         assert n.file_path == "src/a.py"
 
     def test_symbol_node_line_numbers(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo:\n    pass\n"})
-        n = g.node("src/a.py#Foo")
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo:\n    pass\n"})
+        n = g.node("src/a.py#NewFoo")
         assert n is not None
         assert n.line_start == 1
         assert n.line_end == 2
@@ -404,10 +404,10 @@ class TestBuildSymbolNodes:
 
 class TestDefinesEdges:
     def test_defines_edge_file_to_symbol(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         out = g.edges_out("src/a.py", kind=EdgeKind.DEFINES)
         targets = {e.target for e in out}
-        assert "src/a.py#Foo" in targets
+        assert "src/a.py#NewFoo" in targets
 
     def test_defines_edge_for_function(self, tmp_path: Path) -> None:
         g = _build_graph(tmp_path, {"src/a.py": "def bar(): pass\n"})
@@ -425,11 +425,11 @@ class TestDefinesEdges:
 
     def test_nested_symbols_also_have_defines_edge(self, tmp_path: Path) -> None:
         g = _build_graph(tmp_path, {
-            "src/a.py": "class Foo:\n    def method(self): pass\n",
+            "src/a.py": "class NewFoo:\n    def method(self): pass\n",
         })
         out = g.edges_out("src/a.py", kind=EdgeKind.DEFINES)
         targets = {e.target for e in out}
-        assert "src/a.py#Foo.method" in targets
+        assert "src/a.py#NewFoo.method" in targets
 
 
 # ---------------------------------------------------------------------------
@@ -440,11 +440,11 @@ class TestDefinesEdges:
 class TestContainsEdges:
     def test_contains_edge_class_to_method(self, tmp_path: Path) -> None:
         g = _build_graph(tmp_path, {
-            "src/a.py": "class Foo:\n    def bar(self): pass\n",
+            "src/a.py": "class NewFoo:\n    def bar(self): pass\n",
         })
-        out = g.edges_out("src/a.py#Foo", kind=EdgeKind.CONTAINS)
+        out = g.edges_out("src/a.py#NewFoo", kind=EdgeKind.CONTAINS)
         targets = {e.target for e in out}
-        assert "src/a.py#Foo.bar" in targets
+        assert "src/a.py#NewFoo.bar" in targets
 
     def test_no_contains_for_top_level(self, tmp_path: Path) -> None:
         g = _build_graph(tmp_path, {
@@ -478,8 +478,8 @@ class TestContainsEdges:
 class TestImportsEdges:
     def test_absolute_import_creates_edge(self, tmp_path: Path) -> None:
         g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import Foo\n",
-            "src/b.py": "class Foo: pass\n",
+            "src/a.py": "from src.b import NewFoo\n",
+            "src/b.py": "class NewFoo: pass\n",
         })
         out = g.edges_out("src/a.py", kind=EdgeKind.IMPORTS)
         targets = {e.target for e in out}
@@ -511,8 +511,8 @@ class TestImportsEdges:
     def test_import_edge_deduplicated(self, tmp_path: Path) -> None:
         # Two import statements to the same module → only one IMPORTS edge
         g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import Foo\nfrom src.b import Bar\n",
-            "src/b.py": "class Foo: pass\nclass Bar: pass\n",
+            "src/a.py": "from src.b import NewFoo\nfrom src.b import Bar\n",
+            "src/b.py": "class NewFoo: pass\nclass Bar: pass\n",
         })
         out = g.edges_out("src/a.py", kind=EdgeKind.IMPORTS)
         # All edges should point to src/b.py — deduplicated to one
@@ -520,13 +520,13 @@ class TestImportsEdges:
 
     def test_import_edge_imported_names(self, tmp_path: Path) -> None:
         g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import Foo\n",
-            "src/b.py": "class Foo: pass\n",
+            "src/a.py": "from src.b import NewFoo\n",
+            "src/b.py": "class NewFoo: pass\n",
         })
         out = g.edges_out("src/a.py", kind=EdgeKind.IMPORTS)
         edge = next((e for e in out if e.target == "src/b.py"), None)
         assert edge is not None
-        assert "Foo" in edge.imported_names
+        assert "NewFoo" in edge.imported_names
 
     def test_no_self_import_edge(self, tmp_path: Path) -> None:
         # __init__.py importing from the same package should not self-loop
@@ -598,10 +598,10 @@ class TestInheritsEdges:
     def test_no_self_inherits_edge(self, tmp_path: Path) -> None:
         # A class cannot inherit from itself in a well-formed graph
         g = _build_graph(tmp_path, {
-            "src/a.py": "class Foo(Foo): pass\n",
+            "src/a.py": "class NewFoo(NewFoo): pass\n",
         })
-        out = g.edges_out("src/a.py#Foo", kind=EdgeKind.INHERITS)
-        self_edges = [e for e in out if e.target == "src/a.py#Foo"]
+        out = g.edges_out("src/a.py#NewFoo", kind=EdgeKind.INHERITS)
+        self_edges = [e for e in out if e.target == "src/a.py#NewFoo"]
         assert self_edges == []
 
 
@@ -612,7 +612,7 @@ class TestInheritsEdges:
 
 class TestNodeQuery:
     def test_node_returns_correct_node(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         n = g.node("src/a.py")
         assert n is not None
         assert n.id == "src/a.py"
@@ -622,28 +622,28 @@ class TestNodeQuery:
         assert g.node("nonexistent.py") is None
 
     def test_nodes_no_filter(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         all_nodes = g.nodes()
         assert any(n.kind is NodeKind.FILE for n in all_nodes)
         assert any(n.kind is NodeKind.SYMBOL for n in all_nodes)
 
     def test_nodes_file_filter(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         file_nodes = g.nodes(kind=NodeKind.FILE)
         assert all(n.kind is NodeKind.FILE for n in file_nodes)
 
     def test_nodes_symbol_filter(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         sym_nodes = g.nodes(kind=NodeKind.SYMBOL)
         assert all(n.kind is NodeKind.SYMBOL for n in sym_nodes)
 
     def test_contains_known_node(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         assert "src/a.py" in g
-        assert "src/a.py#Foo" in g
+        assert "src/a.py#NewFoo" in g
 
     def test_not_contains_unknown_node(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         assert "nonexistent.py" not in g
 
 
@@ -654,17 +654,17 @@ class TestNodeQuery:
 
 class TestEdgeQuery:
     def test_edges_no_filter(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         all_edges = g.edges()
         assert len(all_edges) > 0
 
     def test_edges_filter_by_kind(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         defines = g.edges(kind=EdgeKind.DEFINES)
         assert all(e.kind is EdgeKind.DEFINES for e in defines)
 
     def test_edges_no_duplicates(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         all_edges = g.edges()
         keys = [(e.source, e.target, e.kind) for e in all_edges]
         assert len(keys) == len(set(keys))
@@ -719,7 +719,7 @@ class TestNeighbors:
         assert "src/a.py" in ids
 
     def test_neighbors_out_no_kind_filter(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         out = g.neighbors_out("src/a.py")
         assert len(out) >= 1  # at least one DEFINES edge target
 
@@ -1005,10 +1005,10 @@ class TestImpact:
     def test_affected_symbol_count(self, tmp_path: Path) -> None:
         g = _build_graph(tmp_path, {
             "src/base.py": "X = 1\n",
-            "src/user.py": "from src.base import X\nclass Foo: pass\ndef bar(): pass\n",
+            "src/user.py": "from src.base import X\nclass NewFoo: pass\ndef bar(): pass\n",
         })
         result = g.impact("src/base.py")
-        # user.py has at least 2 symbols (Foo and bar)
+        # user.py has at least 2 symbols (NewFoo and bar)
         assert result.affected_symbol_count >= 2
 
     def test_direct_vs_transitive_dependents(self, tmp_path: Path) -> None:
@@ -1040,15 +1040,15 @@ class TestStats:
 
     def test_node_counts(self, tmp_path: Path) -> None:
         g = _build_graph(tmp_path, {
-            "src/a.py": "class Foo: pass\n",
+            "src/a.py": "class NewFoo: pass\n",
             "src/b.py": "x = 1\n",
         })
         s = g.stats()
         assert s.file_node_count == 2
-        assert s.symbol_node_count >= 2  # Foo + x
+        assert s.symbol_node_count >= 2  # NewFoo + x
 
     def test_edge_counts_defines(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         s = g.stats()
         assert s.defines_edge_count >= 1
 
@@ -1073,7 +1073,7 @@ class TestStats:
         assert g.stats().build_duration_ms >= 0.0
 
     def test_node_count_equals_len(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         assert g.stats().node_count == len(g)
 
 
@@ -1088,7 +1088,7 @@ class TestDunder:
         assert len(g) == 0
 
     def test_len_after_build(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {"src/a.py": "class Foo: pass\n"})
+        g = _build_graph(tmp_path, {"src/a.py": "class NewFoo: pass\n"})
         assert len(g) >= 2  # at least FILE node + SYMBOL node
 
     def test_contains_true(self, tmp_path: Path) -> None:
@@ -1293,7 +1293,7 @@ class TestFindSymbolNode:
         return {
             "a.py#Base": Node(id="a.py#Base", kind=NodeKind.SYMBOL, label="Base"),
             "a.py#pkg.Sub": Node(id="a.py#pkg.Sub", kind=NodeKind.SYMBOL, label="pkg.Sub"),
-            "b.py#Foo": Node(id="b.py#Foo", kind=NodeKind.FILE, label="Foo"),  # FILE, not SYMBOL
+            "b.py#NewFoo": Node(id="b.py#NewFoo", kind=NodeKind.FILE, label="NewFoo"),  # FILE, not SYMBOL
         }
 
     def test_exact_label_match(self) -> None:
@@ -1309,11 +1309,11 @@ class TestFindSymbolNode:
         assert result == "a.py#Base"
 
     def test_file_node_not_matched(self) -> None:
-        # b.py#Foo is a FILE node — should not be returned
+        # b.py#NewFoo is a FILE node — should not be returned
         nodes = {
-            "b.py#Foo": Node(id="b.py#Foo", kind=NodeKind.FILE, label="Foo"),
+            "b.py#NewFoo": Node(id="b.py#NewFoo", kind=NodeKind.FILE, label="NewFoo"),
         }
-        result = _find_symbol_node("Foo", "exclude", nodes)
+        result = _find_symbol_node("NewFoo", "exclude", nodes)
         assert result is None
 
     def test_exclude_self(self) -> None:

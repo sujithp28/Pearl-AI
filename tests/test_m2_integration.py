@@ -28,7 +28,7 @@ from src.llm.parser import ToolCall
 from src.llm.validation import validate_tool_call
 from src.tools.edit_tools import create_file, replace_in_file, set_active_patch_manager
 from src.tools.metadata import tool
-from src.tools.patch_manager import PatchManager
+from src.tools.patch_manager import ChangeManager
 from src.tools.registry import ToolRegistry
 from src.tools.shell_tools import set_active_command_approver
 
@@ -100,7 +100,7 @@ def _call(tool_name: str, **kwargs) -> ToolCall:
 class TestIT1CancelMidFlight:
     """
     Cancellation that arrives after a write step has staged patches but
-    before the next step begins must leave the PatchManager empty.
+    before the next step begins must leave the ChangeManager empty.
     Without the fix, the next run() call would inherit stale patches
     from the cancelled run and corrupt the new approval batch.
     """
@@ -146,7 +146,7 @@ class TestIT1CancelMidFlight:
         assert report.stop_reason == "cancelled"
         assert step1_done["done"], "step 1 must have run"
 
-        # Core assertion: the PatchManager must be empty after cancellation.
+        # Core assertion: the ChangeManager must be empty after cancellation.
         assert not executor.patch_manager.has_pending(), (
             "Stale patches from the cancelled run must be discarded, "
             "not left in patch_manager.pending"

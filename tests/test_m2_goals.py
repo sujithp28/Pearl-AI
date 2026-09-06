@@ -257,15 +257,15 @@ class TestCreateFileSafety:
     def test_create_file_stages_in_preview_mode(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         from src.tools.edit_tools import create_file, set_active_patch_manager
-        from src.tools.patch_manager import PatchManager
+        from src.tools.patch_manager import ChangeManager
 
-        pm = PatchManager()
+        pm = ChangeManager()
         set_active_patch_manager(pm)
         try:
             target = str(tmp_path / "preview.py")
             create_file(target, "x = 1\n")
             assert not Path(target).exists(), "File must not be on disk in preview mode"
-            assert pm.has_pending(), "Edit must be staged in PatchManager"
+            assert pm.has_pending(), "Edit must be staged in ChangeManager"
         finally:
             set_active_patch_manager(None)
 

@@ -15,7 +15,7 @@ runs for real:
     starts it
   - real stdout/stdin pipes and real newline-delimited framing
   - the real MCPServer, Planner, ToolDispatcher, tool registry
-  - the real PatchManager approval gate, writing to a real temp dir
+  - the real ChangeManager approval gate, writing to a real temp dir
 
 These are slower than unit tests (subprocess startup, real indexing)
 but there are only a handful, and they exercise the seams no in-process

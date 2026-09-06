@@ -132,7 +132,7 @@ def _execution_report_to_dict(
 ) -> dict[str, Any]:
     """
     Convert an `ExecutionReport` (and, for a paused run, the matching
-    `PatchManager`/`CommandApprovalManager` state) into the camelCase
+    `ChangeManager`/`CommandApprovalManager` state) into the camelCase
     shape the VS Code extension's `patchClient.ts` expects.
 
     `commands` is additive (Phase 26): existing clients that only read
@@ -417,7 +417,7 @@ class MCPServer:
     # planned sequence of tool calls directly via the dispatcher, one
     # after another, with no replanning. Removed as a confirmed
     # safety bug, not a style cleanup: dispatching this way runs
-    # completely outside AutonomousExecutor, so no PatchManager is
+    # completely outside AutonomousExecutor, so no ChangeManager is
     # ever active, and every write tool (create_file, etc.) falls
     # through to writing straight to disk with zero approval —
     # verified live by calling the dispatcher the same way this
@@ -560,7 +560,7 @@ class MCPServer:
         just constructs one (bound to the server's own `planner` /
         `dispatcher`) and calls `.run()`. All planning, execution,
         reflection, cancellation, and patch-preview logic lives in
-        `AutonomousExecutor`/`PatchManager` — nothing is duplicated
+        `AutonomousExecutor`/`ChangeManager` — nothing is duplicated
         here, only translated to/from JSON.
         """
 

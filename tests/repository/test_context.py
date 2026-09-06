@@ -93,8 +93,12 @@ class TestTokenize:
         assert "fix" not in terms
 
     def test_lowercases(self) -> None:
-        terms = _tokenize("PatchManager")
-        assert "patchmanager" in terms
+        # An invented name, not a real Pearl class: this previously used
+        # "PatchManager", and renaming that class rewrote the input here
+        # while leaving the lowercase assertion untouched — the test then
+        # tokenised one word and asserted a different one.
+        terms = _tokenize("WidgetFactory")
+        assert "widgetfactory" in terms
 
     def test_empty_string_returns_empty_set(self) -> None:
         assert _tokenize("") == set()
@@ -110,7 +114,7 @@ class TestTokenize:
 
 class TestTermMatches:
     def test_substring_match(self) -> None:
-        assert _term_matches("PatchManager", {"patch"})
+        assert _term_matches("WidgetFactory", {"widget"})
 
     def test_case_insensitive(self) -> None:
         assert _term_matches("authentication", {"auth"})
@@ -314,8 +318,8 @@ class TestGraphExpansion:
         # executor.py imports patch_manager.py
         # Query matches "patch"; executor.py should appear via expansion
         files = {
-            "patch_manager.py": "class PatchManager:\n    def stage(self): pass\n",
-            "executor.py": "from patch_manager import PatchManager\nclass Executor: pass\n",
+            "patch_manager.py": "class ChangeManager:\n    def stage(self): pass\n",
+            "executor.py": "from patch_manager import ChangeManager\nclass Executor: pass\n",
             "unrelated.py": "def zoo(): pass\n",
         }
         svc = _build_service(tmp_path, files)
@@ -327,8 +331,8 @@ class TestGraphExpansion:
 
     def test_expansion_disabled_when_hops_zero(self, tmp_path: Path) -> None:
         files = {
-            "patch_manager.py": "class PatchManager:\n    def stage(self): pass\n",
-            "executor.py": "from patch_manager import PatchManager\nclass Executor: pass\n",
+            "patch_manager.py": "class ChangeManager:\n    def stage(self): pass\n",
+            "executor.py": "from patch_manager import ChangeManager\nclass Executor: pass\n",
         }
         svc = _build_service(tmp_path, files)
         cfg = ContextConfig(expansion_hops=0)

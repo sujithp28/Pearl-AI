@@ -98,7 +98,7 @@ def _extensions_in_workspace() -> frozenset[str]:
 
     Used by validate_plan to detect when the model requested a file whose
     extension has never appeared in this project — a strong signal of
-    path hallucination (e.g. ``src/Foo.java`` in a Python repo).
+    path hallucination (e.g. ``src/NewFoo.java`` in a Python repo).
 
     Fails open: returns an empty frozenset (no check applied) when the
     workspace cannot be scanned, so a broken scan never blocks planning.

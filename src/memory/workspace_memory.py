@@ -9,9 +9,9 @@ it from scratch (e.g. for the Planner).
 
 `WorkspaceMemory` is deliberately independent of everything it
 observes: it never imports or modifies `AutonomousExecutor`,
-`PatchManager`, the Git tools, or `SymbolEditor`. Instead, a caller
+`ChangeManager`, the Git tools, or `SymbolEditor`. Instead, a caller
 (e.g. `PearlAgent`) feeds it their already-public outputs —
-`ExecutionStep`/`ExecutionReport` objects, a `PatchManager`'s
+`ExecutionStep`/`ExecutionReport` objects, a `ChangeManager`'s
 `affected_files()` — after the fact. This keeps every protected
 module completely untouched while still letting memory update
 "automatically" from a single call site per event.
@@ -229,7 +229,7 @@ class WorkspaceMemory:
 
     def observe_patch_manager(self, patch_manager: Any) -> None:
         """
-        Sync pending-patch tracking with a `PatchManager`'s current
+        Sync pending-patch tracking with a `ChangeManager`'s current
         state. Read-only: only calls its existing public
         `affected_files()`, never mutates it.
         """
@@ -243,7 +243,7 @@ class WorkspaceMemory:
 
         Pending-patch tracking for an `awaiting_approval` report is
         handled separately via `observe_patch_manager`, since the
-        patch details live on the `PatchManager`, not the report.
+        patch details live on the `ChangeManager`, not the report.
         """
 
         for step in report.steps:

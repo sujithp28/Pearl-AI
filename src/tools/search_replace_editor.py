@@ -12,7 +12,7 @@ Matching strategies (tried in order):
 If confidence is insufficient: FAIL.  The caller (planner/reflection)
 must handle recovery — never silently modify the wrong region.
 
-All edits are staged through PatchManager so approval is preserved.
+All edits are staged through ChangeManager so approval is preserved.
 
 Usage::
 
@@ -38,7 +38,7 @@ from typing import Literal
 
 from src.config.workspace import get_workspace_root
 from src.tools.edit_tools import get_active_patch_manager
-from src.tools.patch_manager import PatchManager
+from src.tools.patch_manager import ChangeManager
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +155,7 @@ class SearchReplaceEditor:
     def __init__(
         self,
         similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
-        patch_manager: PatchManager | None = None,
+        patch_manager: ChangeManager | None = None,
     ) -> None:
         self._threshold = similarity_threshold
         self._pm_override = patch_manager
@@ -170,8 +170,8 @@ class SearchReplaceEditor:
         """
         Find `search` in `path` and replace up to `count` occurrences.
 
-        The edit is staged via PatchManager when one is active.  If no
-        PatchManager is active (interactive/direct mode), the file is
+        The edit is staged via ChangeManager when one is active.  If no
+        ChangeManager is active (interactive/direct mode), the file is
         written directly.
 
         Parameters

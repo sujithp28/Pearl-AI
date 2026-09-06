@@ -7,7 +7,7 @@ matching the existing convention in `test_mcp_server.py`, but focus
 specifically on the autonomous/patch-preview workflow: the complete
 happy path, multi-file batches, rejection, cancellation while
 awaiting approval, and recovery after a mid-plan replan — end to end,
-through the real `AutonomousExecutor`/`PatchManager`/`Planner`, with
+through the real `AutonomousExecutor`/`ChangeManager`/`Planner`, with
 only the LLM boundary (`Planner.client.generate_json`) stubbed.
 """
 

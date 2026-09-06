@@ -6,7 +6,7 @@ with operations that span multiple files: atomic batch writes and
 cross-file symbol rename.
 
 All write operations route through the same preview/apply mechanism
-(PatchManager) as every other editing tool, so changes are staged
+(ChangeManager) as every other editing tool, so changes are staged
 and presented for user approval before reaching disk.
 """
 
@@ -52,7 +52,7 @@ def _python_files(root: Path) -> list[Path]:
     description=(
         "Write multiple files atomically in a single operation. All paths are "
         "validated first — if any is invalid, nothing is written. In preview "
-        "mode (autonomous runs) all files are staged in one PatchManager batch "
+        "mode (autonomous runs) all files are staged in one ChangeManager batch "
         "so they are reviewed together rather than one at a time."
     ),
     parameters={"files": "dict[str, str]"},
@@ -121,7 +121,7 @@ def batch_write_files(files: dict[str, str]) -> str:
 @tool(
     description=(
         "Rename a Python symbol (class, function, or variable) across all "
-        "files in the workspace. Uses whole-word matching so 'Foo' in 'FooBar' "
+        "files in the workspace. Uses whole-word matching so 'NewFoo' in 'FooBar' "
         "is not replaced. All changes are staged together for review."
     ),
     parameters={"old_name": "str", "new_name": "str"},
@@ -139,7 +139,7 @@ def rename_symbol(old_name: str, new_name: str) -> str:
         The replacement identifier (must be a valid Python identifier).
 
     Returns a summary of which files were changed. All changes are
-    routed through PatchManager so they appear in the patch preview.
+    routed through ChangeManager so they appear in the patch preview.
     """
 
     if not old_name or not old_name.isidentifier():

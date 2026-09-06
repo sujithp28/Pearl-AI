@@ -6,7 +6,7 @@ Exercises the complete workflow through the real executor:
     PLAN → EXECUTE → STAGE → APPROVE → VERIFY → REFLECT → REPLAN → DONE
 
 These are integration tests: the executor, planner, dispatcher,
-PatchManager, VerificationEngine and ReflectionEngine are all real.
+ChangeManager, VerificationEngine and ReflectionEngine are all real.
 Only the LLM boundary is scripted (deterministic plan/reflection JSON),
 which is the project's standard integration-test convention — no network,
 no model download, no Ollama.

@@ -36,7 +36,7 @@ class TestRelevantTools:
             assert core in names
 
     def test_web_tools_excluded_for_local_query(self) -> None:
-        result = relevant_tools("find PatchManager in the codebase", ALL_TOOLS)
+        result = relevant_tools("find ChangeManager in the codebase", ALL_TOOLS)
         names = {t["name"] for t in result}
         assert "web_search" not in names
         assert "web_fetch" not in names

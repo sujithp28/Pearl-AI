@@ -8,7 +8,7 @@ from src.tools.edit_tools import (
     replace_in_file,
     set_active_patch_manager,
 )
-from src.tools.patch_manager import PatchManager
+from src.tools.patch_manager import ChangeManager
 
 
 @pytest.fixture(autouse=True)
@@ -231,7 +231,7 @@ def test_patch_file_missing_file_raises(tmp_path):
 
 def test_create_file_preview_mode_stages_instead_of_writing(tmp_path):
     file = tmp_path / "new.py"
-    manager = PatchManager()
+    manager = ChangeManager()
     set_active_patch_manager(manager)
 
     result = create_file(str(file), "print('hi')\n")
@@ -248,7 +248,7 @@ def test_create_file_preview_mode_stages_instead_of_writing(tmp_path):
 def test_create_file_preview_mode_still_rejects_existing_file(tmp_path):
     file = tmp_path / "existing.txt"
     file.write_text("original")
-    manager = PatchManager()
+    manager = ChangeManager()
     set_active_patch_manager(manager)
 
     with pytest.raises(FileExistsError):
@@ -261,7 +261,7 @@ def test_create_file_preview_mode_still_rejects_existing_file(tmp_path):
 def test_replace_in_file_preview_mode_stages_instead_of_writing(tmp_path):
     file = tmp_path / "code.py"
     file.write_text("foo = 1\n")
-    manager = PatchManager()
+    manager = ChangeManager()
     set_active_patch_manager(manager)
 
     replaced = replace_in_file(str(file), "foo", "bar")
@@ -275,7 +275,7 @@ def test_replace_in_file_preview_mode_stages_instead_of_writing(tmp_path):
 def test_edit_lines_preview_mode_stages_instead_of_writing(tmp_path):
     file = tmp_path / "code.py"
     file.write_text("line1\nline2\nline3\n")
-    manager = PatchManager()
+    manager = ChangeManager()
     set_active_patch_manager(manager)
 
     result = edit_lines(str(file), 2, 2, "changed")
@@ -288,7 +288,7 @@ def test_edit_lines_preview_mode_stages_instead_of_writing(tmp_path):
 def test_patch_file_preview_mode_stages_instead_of_writing(tmp_path):
     file = tmp_path / "code.py"
     file.write_text("line1\nline2\n")
-    manager = PatchManager()
+    manager = ChangeManager()
     set_active_patch_manager(manager)
 
     patch = "\n".join(["@@ -1,2 +1,2 @@", " line1", "-line2", "+changed"])
@@ -302,7 +302,7 @@ def test_patch_file_preview_mode_stages_instead_of_writing(tmp_path):
 def test_patch_file_preview_mode_still_validates_the_patch(tmp_path):
     file = tmp_path / "code.py"
     file.write_text("line1\nline2\n")
-    manager = PatchManager()
+    manager = ChangeManager()
     set_active_patch_manager(manager)
 
     patch = "\n".join(["@@ -1,1 +1,1 @@", "-does not match", "+x"])
@@ -316,7 +316,7 @@ def test_patch_file_preview_mode_still_validates_the_patch(tmp_path):
 def test_multiple_edit_tools_stage_into_the_same_batch(tmp_path):
     existing = tmp_path / "existing.py"
     existing.write_text("old\n")
-    manager = PatchManager()
+    manager = ChangeManager()
     set_active_patch_manager(manager)
 
     create_file(str(tmp_path / "new.py"), "print(1)\n")
@@ -331,7 +331,7 @@ def test_multiple_edit_tools_stage_into_the_same_batch(tmp_path):
 
 def test_deactivating_preview_mode_restores_direct_writes(tmp_path):
     file = tmp_path / "new.py"
-    manager = PatchManager()
+    manager = ChangeManager()
     set_active_patch_manager(manager)
     set_active_patch_manager(None)
 
@@ -377,36 +377,36 @@ def test_edit_lines_refreshes_repository_index(tmp_path):
 
 class TestPatchManagerIsEmpty:
     def test_is_empty_true_when_no_edits_staged(self):
-        pm = PatchManager()
+        pm = ChangeManager()
         assert pm.is_empty is True
 
     def test_is_empty_false_after_staging_an_edit(self, tmp_path):
-        pm = PatchManager()
+        pm = ChangeManager()
         pm.propose(str(tmp_path / "f.py"), None, "content")
         assert pm.is_empty is False
 
     def test_is_empty_true_after_discard(self, tmp_path):
-        pm = PatchManager()
+        pm = ChangeManager()
         pm.propose(str(tmp_path / "f.py"), None, "content")
         pm.discard_all()
         assert pm.is_empty is True
 
     def test_is_empty_true_after_apply(self, tmp_path):
-        pm = PatchManager()
+        pm = ChangeManager()
         pm.propose(str(tmp_path / "f.py"), None, "content")
         pm.apply_all()
         assert pm.is_empty is True
 
     def test_is_empty_complements_has_pending(self, tmp_path):
-        pm = PatchManager()
+        pm = ChangeManager()
         assert pm.is_empty is not pm.has_pending()
         pm.propose(str(tmp_path / "f.py"), None, "content")
         assert pm.is_empty is not pm.has_pending()
 
     def test_len_zero_does_not_make_patch_manager_falsy(self):
-        # __len__ must not affect truthiness: an empty PatchManager is still
+        # __len__ must not affect truthiness: an empty ChangeManager is still
         # a valid object and must not be treated as falsy by callers using
         # `pm or fallback` patterns (regression guard for executor __init__).
-        pm = PatchManager()
+        pm = ChangeManager()
         assert len(pm) == 0
         assert bool(pm) is True  # must remain truthy despite __len__ == 0

@@ -62,10 +62,10 @@ class TestBatchWriteFiles:
     ) -> None:
         monkeypatch.chdir(tmp_path)
 
-        from src.tools.patch_manager import PatchManager
+        from src.tools.patch_manager import ChangeManager
         from src.tools.edit_tools import set_active_patch_manager
 
-        pm = PatchManager()
+        pm = ChangeManager()
         set_active_patch_manager(pm)
         try:
             result = batch_write_files({"a.py": "x=1\n", "b.py": "y=2\n"})
@@ -106,67 +106,79 @@ class TestRenameSymbol:
 
     def test_same_name_returns_nothing_to_do(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        result = rename_symbol("Foo", "Foo")
+        result = rename_symbol("NewFoo", "NewFoo")
         assert "nothing to do" in result.lower()
 
     def test_no_occurrences_returns_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "a.py").write_text("class Bar: pass\n")
+        # Old and new must differ, or this exercises the same-name guard
+        # above instead of the not-found path it is named for.
         result = rename_symbol("Foo", "NewFoo")
         assert "No occurrences" in result
+
+    # These fixtures deliberately use invented names rather than real
+    # Pearl classes. They previously renamed PatchManager -> ChangeManager,
+    # and when that rename was actually performed on the codebase, the
+    # tool rewrote these literals too — collapsing both sides so the test
+    # renamed a symbol to itself and asserted the result was both present
+    # and absent. An automated rename cannot tell a reference from a
+    # string that merely happens to spell an identifier, so test data
+    # must not spell one that exists.
 
     def test_renames_in_single_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "a.py").write_text(
-            "class PatchManager:\n    def stage(self): pass\n\npm = PatchManager()\n"
+            "class OldWidget:\n    def stage(self): pass\n\npm = OldWidget()\n"
         )
-        result = rename_symbol("PatchManager", "ChangeManager")
-        assert "ChangeManager" in (tmp_path / "a.py").read_text()
-        assert "PatchManager" not in (tmp_path / "a.py").read_text()
+        result = rename_symbol("OldWidget", "NewWidget")
+        assert "NewWidget" in (tmp_path / "a.py").read_text()
+        assert "OldWidget" not in (tmp_path / "a.py").read_text()
         assert "a.py" in result
 
     def test_renames_across_multiple_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        (tmp_path / "patch_manager.py").write_text("class PatchManager: pass\n")
-        (tmp_path / "executor.py").write_text("from patch_manager import PatchManager\npm = PatchManager()\n")
+        (tmp_path / "widget.py").write_text("class OldWidget: pass\n")
+        (tmp_path / "consumer.py").write_text("from widget import OldWidget\npm = OldWidget()\n")
         (tmp_path / "unrelated.py").write_text("class Other: pass\n")
-        rename_symbol("PatchManager", "ChangeManager")
-        assert "ChangeManager" in (tmp_path / "patch_manager.py").read_text()
-        assert "ChangeManager" in (tmp_path / "executor.py").read_text()
+        rename_symbol("OldWidget", "NewWidget")
+        assert "NewWidget" in (tmp_path / "widget.py").read_text()
+        assert "NewWidget" in (tmp_path / "consumer.py").read_text()
         # Unrelated file untouched
-        assert "PatchManager" not in (tmp_path / "unrelated.py").read_text()
+        assert "OldWidget" not in (tmp_path / "unrelated.py").read_text()
 
     def test_word_boundary_no_false_positives(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "a.py").write_text(
-            "class PatchManager: pass\n"
-            "class ActivePatchManager: pass\n"
-            "pm = PatchManager()\n"
+            "class OldWidget: pass\n"
+            "class ActiveOldWidget: pass\n"
+            "pm = OldWidget()\n"
         )
-        rename_symbol("PatchManager", "ChangeManager")
+        rename_symbol("OldWidget", "NewWidget")
         text = (tmp_path / "a.py").read_text()
         # The whole-word version is renamed
-        assert "pm = ChangeManager()" in text
-        # The compound name is preserved — word boundary stops at 'e' in 'ActivePatch'
-        assert "ActivePatchManager" in text
+        assert "pm = NewWidget()" in text
+        # The compound name is preserved — the word boundary stops the
+        # match, so ActiveOldWidget is not silently rewritten.
+        assert "ActiveOldWidget" in text
 
     def test_preview_mode_stages_not_writes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.chdir(tmp_path)
-        (tmp_path / "a.py").write_text("class Foo: pass\nfoo = Foo()\n")
+        (tmp_path / "a.py").write_text("class NewFoo: pass\nfoo = NewFoo()\n")
 
-        from src.tools.patch_manager import PatchManager
+        from src.tools.patch_manager import ChangeManager
         from src.tools.edit_tools import set_active_patch_manager
 
-        pm = PatchManager()
+        pm = ChangeManager()
         set_active_patch_manager(pm)
         try:
-            result = rename_symbol("Foo", "Bar")
+            result = rename_symbol("NewFoo", "Bar")
             # Staged for review
             assert "staged for review" in result
             assert len(pm.pending) == 1
             # Original on disk unchanged
-            assert "Foo" in (tmp_path / "a.py").read_text()
+            assert "NewFoo" in (tmp_path / "a.py").read_text()
         finally:
             set_active_patch_manager(None)

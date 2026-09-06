@@ -1,7 +1,7 @@
 """
 Patch preview and approval for Pearl's editing tools.
 
-`PatchManager` collects proposed file edits instead of letting them
+`ChangeManager` collects proposed file edits instead of letting them
 write straight to disk, generates a unified diff for each one, and
 only writes anything to disk once the whole batch is explicitly
 approved (`apply_all()`) — or discards it cleanly on rejection
@@ -64,7 +64,7 @@ class PendingEdit:
         return self.original_content is None
 
 
-class PatchManager:
+class ChangeManager:
     """
     Collects proposed file edits, generates unified diffs for them,
     and either applies the whole batch to disk (on approval) or
@@ -195,10 +195,10 @@ class PatchManager:
         return len(self._pending)
 
     def __bool__(self) -> bool:
-        # Always True — a PatchManager with zero staged edits is still a
+        # Always True — a ChangeManager with zero staged edits is still a
         # valid, usable object.  Without this, Python would derive bool()
         # from __len__() and make an empty manager falsy, which would cause
-        # `pm or PatchManager()` to silently discard the caller's instance.
+        # `pm or ChangeManager()` to silently discard the caller's instance.
         return True
 
     def discard_all(self) -> list[str]:

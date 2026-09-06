@@ -271,7 +271,7 @@ def test_internal_error_is_reported_without_crashing():
 
 # `pearl/plan` used to be tested here. Removed as a confirmed safety
 # bug: it dispatched planned steps directly via `Planner.run()`,
-# completely outside AutonomousExecutor, so no PatchManager was ever
+# completely outside AutonomousExecutor, so no ChangeManager was ever
 # active and every write tool wrote straight to disk with zero
 # approval. The VS Code extension never called it. `pearl/runAutonomous`
 # is the only path that stages writes behind approval; see

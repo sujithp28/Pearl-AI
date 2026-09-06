@@ -143,7 +143,7 @@ class SymbolDef:
     -------------------------------------------------------------------
     base_classes:
         Names of base classes for ``CLASS`` symbols — e.g.
-        ``["Base", "Mixin"]`` for ``class Foo(Base, Mixin):``.
+        ``["Base", "Mixin"]`` for ``class NewFoo(Base, Mixin):``.
         Simple names are stored as-is; dotted names like
         ``"module.Base"`` are stored with the dot chain preserved.
         Defaults to ``[]`` so existing parsers are backward-compatible.

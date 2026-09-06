@@ -3,7 +3,7 @@ A deterministic, offline LLM provider.
 
 Exists so Pearl's *real* stack can be exercised end to end — a real
 `python -m src.mcp` subprocess, real stdio framing, real JSON-RPC,
-real planning, real tool dispatch, real `PatchManager` — with the one
+real planning, real tool dispatch, real `ChangeManager` — with the one
 genuinely non-deterministic component (the model) replaced by a fixed
 script.
 

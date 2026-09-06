@@ -169,7 +169,7 @@ class TestWorkspaceIsolationConcurrent:
         process-global cwd that the other thread changes.
         """
         import threading
-        from src.tools.patch_manager import PatchManager
+        from src.tools.patch_manager import ChangeManager
 
         ws_a = tmp_path / "workspace_a"
         ws_b = tmp_path / "workspace_b"
@@ -181,7 +181,7 @@ class TestWorkspaceIsolationConcurrent:
 
         def write_in(ws: Path, name: str) -> None:
             try:
-                pm = PatchManager()
+                pm = ChangeManager()
                 target = str(ws / f"{name}.txt")
                 pm.propose(target, None, f"content from {name}\n")
                 pm.apply_all()

@@ -336,20 +336,20 @@ class TestCannotCondenseFurther:
 class TestApprovalInvariantPreserved:
     def test_create_file_stages_not_writes_when_patch_manager_active(self, tmp_path) -> None:
         """
-        The condenser must not touch PatchManager or any write path.
+        The condenser must not touch ChangeManager or any write path.
         This is the canonical approval invariant from CLAUDE.md §3.
         Verified via create_file (in edit_tools.py), which honours the
-        active PatchManager unlike file_tools.write_file.
+        active ChangeManager unlike file_tools.write_file.
         """
         from src.config.workspace import clear_workspace_root, set_workspace_root
         from src.tools.edit_tools import create_file, set_active_patch_manager
-        from src.tools.patch_manager import PatchManager
+        from src.tools.patch_manager import ChangeManager
 
         # Point workspace at tmp_path so _ensure_within_workspace passes.
         set_workspace_root(tmp_path)
         target = str(tmp_path / "approval_invariant_test.py")
 
-        pm = PatchManager()
+        pm = ChangeManager()
         set_active_patch_manager(pm)
         try:
             create_file(target, "content")

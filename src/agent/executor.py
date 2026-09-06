@@ -9,7 +9,7 @@ infinite replan loops), and execution continues with that plan.
 
 While a run is in progress, every editing tool (`create_file`,
 `replace_in_file`, `edit_lines`, `patch_file`) stages its changes in
-a `PatchManager` instead of writing to disk ("preview mode" — the
+a `ChangeManager` instead of writing to disk ("preview mode" — the
 default here), and `execute_shell` likewise stages its command in a
 `CommandApprovalManager` instead of running it. Once the current plan
 runs out of steps (or would otherwise stop) with edits and/or
@@ -47,7 +47,7 @@ from src.personality import EventKind, PersonalityManager
 from src.tools.checkpoints import CheckpointManager
 from src.tools.command_approval import CommandApprovalManager
 from src.tools.edit_tools import set_active_patch_manager
-from src.tools.patch_manager import PatchManager
+from src.tools.patch_manager import ChangeManager
 from src.tools.repo_tools import refresh_indexed_file
 from src.tools.shell_tools import _run_shell_command, set_active_command_approver
 
@@ -372,12 +372,12 @@ class ApprovalCoordinator:
 
     Extracted from AutonomousExecutor to group all approval-related
     state as a named concern. AutonomousExecutor delegates to this
-    for all PatchManager / CommandApprovalManager interactions.
+    for all ChangeManager / CommandApprovalManager interactions.
     """
 
     def __init__(
         self,
-        patch_manager: PatchManager,
+        patch_manager: ChangeManager,
         command_approver: CommandApprovalManager,
     ) -> None:
         self.patch_manager = patch_manager
@@ -436,7 +436,7 @@ class AutonomousExecutor:
         max_replans: int = DEFAULT_MAX_REPLANS,
         max_retries: int = DEFAULT_MAX_RETRIES,
         on_progress: Callable[[ProgressEvent], None] | None = None,
-        patch_manager: PatchManager | None = None,
+        patch_manager: ChangeManager | None = None,
         command_approver: CommandApprovalManager | None = None,
         personality: PersonalityManager | None = None,
         checkpoints: CheckpointManager | None = None,
@@ -453,9 +453,9 @@ class AutonomousExecutor:
         self.max_retries = max_retries
         self.on_progress = on_progress
 
-        # Build concrete PatchManager / CommandApprovalManager instances first
+        # Build concrete ChangeManager / CommandApprovalManager instances first
         # so coordinators and backward-compat attributes point to the same objects.
-        _pm = patch_manager if patch_manager is not None else PatchManager()
+        _pm = patch_manager if patch_manager is not None else ChangeManager()
         _ca = (
             command_approver
             if command_approver is not None

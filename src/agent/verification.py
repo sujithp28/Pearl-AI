@@ -9,8 +9,8 @@ Pipeline:
   planned_files → actual changes (git status) → unexpected detection
   → test selection → targeted test run → VerificationResult
 
-Integration point: call verify() AFTER PatchManager.apply_all() with
-the list of paths that were staged (from PatchManager.affected_files()
+Integration point: call verify() AFTER ChangeManager.apply_all() with
+the list of paths that were staged (from ChangeManager.affected_files()
 before apply).
 """
 
@@ -95,7 +95,7 @@ class VerificationEngine:
         """
         Run the full verification pipeline and return a structured
         result. `planned_files` is the list of paths that were staged in
-        PatchManager before apply (from `PatchManager.affected_files()`).
+        ChangeManager before apply (from `ChangeManager.affected_files()`).
         """
         errors: list[str] = []
         evidence: list[str] = []

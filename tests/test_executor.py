@@ -15,7 +15,7 @@ from src.tools.edit_tools import (
 )
 from src.tools.file_tools import read_file
 from src.tools.metadata import tool
-from src.tools.patch_manager import PatchManager
+from src.tools.patch_manager import ChangeManager
 from src.tools.registry import ToolRegistry
 from src.tools.shell_tools import execute_shell, set_active_command_approver
 
@@ -52,7 +52,7 @@ def build_executor(
     max_iterations: int = 10,
     max_replans: int = 3,
     on_progress=None,
-    patch_manager: PatchManager | None = None,
+    patch_manager: ChangeManager | None = None,
     command_approver: CommandApprovalManager | None = None,
 ):
     registry = ToolRegistry()
@@ -1590,7 +1590,7 @@ def test_rejection_emits_progress_event(monkeypatch, workspace):
 
 
 def test_shared_patch_manager_can_be_passed_in(monkeypatch, workspace):
-    shared = PatchManager()
+    shared = ChangeManager()
     executor, planner = build_executor(patch_manager=shared)
     target = str(workspace / "a.py")
 
@@ -1751,7 +1751,7 @@ def test_approve_emits_a_checkpoint_created_event_when_one_is_taken(
     # actually snapshot.
     (workspace / "existing.txt").write_text("baseline\n")
 
-    executor, planner = build_executor(patch_manager=PatchManager())
+    executor, planner = build_executor(patch_manager=ChangeManager())
     executor.checkpoints = CheckpointManager(workspace)
 
     monkeypatch.setattr(
@@ -1785,7 +1785,7 @@ def test_approve_emits_a_checkpoint_created_event_when_one_is_taken(
 def test_no_checkpoint_created_event_when_checkpointing_is_disabled(
     monkeypatch, workspace
 ):
-    executor, planner = build_executor(patch_manager=PatchManager())
+    executor, planner = build_executor(patch_manager=ChangeManager())
     executor.checkpoints = None
 
     monkeypatch.setattr(
@@ -1826,7 +1826,7 @@ def test_no_checkpoint_created_event_when_nothing_new_to_capture(
 
     (workspace / "existing.txt").write_text("baseline\n")
 
-    executor, planner = build_executor(patch_manager=PatchManager())
+    executor, planner = build_executor(patch_manager=ChangeManager())
     manager = CheckpointManager(workspace)
     executor.checkpoints = manager
     manager.create("pre-existing checkpoint")  # captures current state
@@ -1886,7 +1886,7 @@ def test_checkpoint_undo_restores_workspace_after_multi_step_approved_plan(
     (workspace / "baseline.txt").write_text("baseline\n")
 
     ckpt_mgr = CheckpointManager(workspace)
-    executor, planner = build_executor(patch_manager=PatchManager())
+    executor, planner = build_executor(patch_manager=ChangeManager())
     executor.checkpoints = ckpt_mgr
 
     target_a = str(workspace / "plan_a.py")

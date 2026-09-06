@@ -70,7 +70,7 @@ def test_plan_rejects_unknown_tool(monkeypatch):
 # `Planner.run()` used to be tested here — sequential dispatch with no
 # replanning and, critically, no approval gate (it runs completely
 # outside AutonomousExecutor, so every write tool bypasses
-# PatchManager and writes straight to disk). Removed as a confirmed
+# ChangeManager and writes straight to disk). Removed as a confirmed
 # safety bug; see the removal note in src/agent/planner.py. Its
 # `AutonomousExecutor.run()` replacement is covered by
 # tests/test_executor.py.

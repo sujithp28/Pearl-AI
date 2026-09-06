@@ -7,7 +7,7 @@ registered automatically by the ToolRegistry.
 V2 adds a ``risk_level`` parameter for tiered approval:
 
   "safe"       — read-only, can execute without approval in any mode
-  "staged"     — write, subject to PatchManager approval gate
+  "staged"     — write, subject to ChangeManager approval gate
   "dangerous"  — destructive/irreversible, always requires confirmation
 
 Default: "staged" (fail-safe — an unclassified tool is treated as

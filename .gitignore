@@ -25,3 +25,8 @@ _e2e_testdir/
 .DS_Store
 # Pearl checkpoint store (shadow git repo)
 .pearl/
+
+# Fine-tuning artefacts (datasets, adapters, merged weights)
+finetune/data/
+finetune/adapter/
+finetune/merged/

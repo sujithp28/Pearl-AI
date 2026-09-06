@@ -45,7 +45,7 @@ Usage
         print(entry.symbol.line_start)
 
     # By name
-    for e in index.lookup("PatchManager"):
+    for e in index.lookup("ChangeManager"):
         print(e.relative_path, e.symbol.kind)
 
     # All methods
@@ -292,15 +292,15 @@ class RepositoryIndex:
         Parameters
         ----------
         name:
-            Unqualified symbol name, e.g. ``"PatchManager"`` or
+            Unqualified symbol name, e.g. ``"ChangeManager"`` or
             ``"__init__"``.
 
         Examples
         --------
         ::
 
-            entries = index.lookup("PatchManager")
-            # → [SymbolEntry(class 'PatchManager' in 'src/agent/patch.py')]
+            entries = index.lookup("ChangeManager")
+            # → [SymbolEntry(class 'ChangeManager' in 'src/agent/patch.py')]
         """
         return list(self._by_name.get(name, []))
 
@@ -407,7 +407,7 @@ class RepositoryIndex:
         ----------
         module_or_name:
             Module or name to search for, e.g. ``"asyncio"``,
-            ``"PatchManager"``, ``"pathlib"``.
+            ``"ChangeManager"``, ``"pathlib"``.
 
         Returns
         -------

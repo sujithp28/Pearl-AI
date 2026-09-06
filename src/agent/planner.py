@@ -305,7 +305,7 @@ class Planner:
     # `run()` used to live here: it dispatched each planned step
     # directly, sequentially, with no replanning. Removed rather than
     # kept — dispatching this way happens completely outside
-    # AutonomousExecutor, so no PatchManager is ever active and
+    # AutonomousExecutor, so no ChangeManager is ever active and
     # every write tool falls through to writing straight to disk,
     # bypassing the approval gate entirely. That's not a style
     # preference; it's confirmed live: calling

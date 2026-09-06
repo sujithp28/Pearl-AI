@@ -15,7 +15,7 @@ needed for the current request. Two benefits:
    ``web_search`` is not in scope for the task.
 
 This is a keyword heuristic, not a security boundary. The workspace
-path validator and PatchManager approval gate remain the real enforcement
+path validator and ChangeManager approval gate remain the real enforcement
 points; this filter only shapes the planning prompt for quality.
 """
 from __future__ import annotations

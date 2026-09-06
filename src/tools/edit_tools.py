@@ -17,7 +17,7 @@ from typing import Any
 
 from src.tools.file_tools import _ensure_within_workspace
 from src.tools.metadata import tool
-from src.tools.patch_manager import PatchManager
+from src.tools.patch_manager import ChangeManager
 from src.tools.repo_tools import refresh_indexed_file
 
 logger = logging.getLogger(__name__)
@@ -25,18 +25,18 @@ logger = logging.getLogger(__name__)
 _HUNK_HEADER_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+\d+(?:,\d+)? @@")
 
 # When set, every editing tool in this module stages its change in
-# the active PatchManager instead of writing to disk ("preview
+# the active ChangeManager instead of writing to disk ("preview
 # mode"). Unset (the default), they write directly ("apply mode"),
 # exactly as before this module gained patch-preview support — so
 # calling these tools directly (CLI, tests, `PearlAgent.run`) is
 # completely unaffected. Only `AutonomousExecutor` activates preview
 # mode, for the duration of its own run.
-_active_patch_manager: contextvars.ContextVar[PatchManager | None] = (
+_active_patch_manager: contextvars.ContextVar[ChangeManager | None] = (
     contextvars.ContextVar("pearl_active_patch_manager", default=None)
 )
 
 
-def set_active_patch_manager(manager: PatchManager | None) -> None:
+def set_active_patch_manager(manager: ChangeManager | None) -> None:
     """
     Activate (or, with `None`, deactivate) preview mode for every
     editing tool in this module.
@@ -45,9 +45,9 @@ def set_active_patch_manager(manager: PatchManager | None) -> None:
     _active_patch_manager.set(manager)
 
 
-def get_active_patch_manager() -> PatchManager | None:
+def get_active_patch_manager() -> ChangeManager | None:
     """
-    Return the currently active `PatchManager`, or `None` if preview
+    Return the currently active `ChangeManager`, or `None` if preview
     mode is off (the default).
     """
 
@@ -183,7 +183,7 @@ def create_file(path: str, content: str = "") -> None | str:
     Create a new file. Raises if the file already exists.
 
     In preview mode (an `AutonomousExecutor` run in progress), stages
-    the new file in the active `PatchManager` and returns a short
+    the new file in the active `ChangeManager` and returns a short
     status string instead of writing anything.
     """
 
@@ -297,7 +297,7 @@ def edit_lines(
     Replace lines `start_line`-`end_line` (1-indexed, inclusive)
     with `new_content`.
 
-    In preview mode, stages the change in the active `PatchManager`
+    In preview mode, stages the change in the active `ChangeManager`
     and returns a short status string instead of writing anything.
     """
 
@@ -347,7 +347,7 @@ def patch_file(path: str, patch: str) -> None | str:
     """
     Apply a unified diff `patch` to an existing file.
 
-    In preview mode, stages the change in the active `PatchManager`
+    In preview mode, stages the change in the active `ChangeManager`
     and returns a short status string instead of writing anything.
     """
 
