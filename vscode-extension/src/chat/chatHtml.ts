@@ -1023,6 +1023,7 @@ export function getChatHtml(): string {
       step_failed: "Step failed",
       replanning: "Replanning",
       task_completed: "Finishing up",
+      task_failed: "Failed",
       cancelled: "Cancelling",
       awaiting_approval: "Awaiting approval",
       rejected: "Rejected"
@@ -1425,6 +1426,12 @@ export function getChatHtml(): string {
         setProgress(100);
         setRunIdle();
         addActivity("\\u2705", "Task completed");
+      } else if (event.status === "task_failed") {
+        // Deliberately not a checkmark or 100% — a failed run showing
+        // "Task completed" is exactly the contradiction this status exists
+        // to remove.
+        setRunIdle();
+        addActivity("\\u274C", "Task failed");
       } else if (event.status === "replanning") {
         addActivity("\\uD83D\\uDD04", "Replanning…");
       }

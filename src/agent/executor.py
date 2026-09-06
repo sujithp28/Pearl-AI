@@ -88,6 +88,11 @@ ProgressStatus = Literal[
     "step_retrying",
     "replanning",
     "task_completed",
+    # Distinct from task_completed so a client can tell success from
+    # failure by status alone. Previously every terminal path emitted
+    # task_completed and only the personality wording differed, so a
+    # failed run rendered a green "Done" beside its own error.
+    "task_failed",
     "cancelled",
     "awaiting_approval",
     "rejected",
@@ -788,7 +793,7 @@ class AutonomousExecutor:
             logger.error("Planning failed after retry: %s", plan_exc)
             self._emit(
                 events,
-                "task_completed",
+                "task_failed",
                 current_step=0,
                 total_steps=0,
                 current_action=self._personality.format(EventKind.FAILURE),
@@ -1293,7 +1298,7 @@ class AutonomousExecutor:
 
                 self._emit(
                     events,
-                    "task_completed",
+                    "task_failed",
                     current_step=len(steps),
                     total_steps=len(steps),
                     current_action=self._personality.format(EventKind.FAILURE),
@@ -1471,7 +1476,7 @@ class AutonomousExecutor:
 
                     self._emit(
                         events,
-                        "task_completed",
+                        "task_failed",
                         current_step=len(steps),
                         total_steps=len(steps),
                         current_action=self._personality.format(EventKind.FAILURE),
@@ -1505,7 +1510,7 @@ class AutonomousExecutor:
 
                     self._emit(
                         events,
-                        "task_completed",
+                        "task_failed",
                         current_step=len(steps),
                         total_steps=len(steps),
                         current_action=self._personality.format(EventKind.FAILURE),
@@ -1595,7 +1600,7 @@ class AutonomousExecutor:
 
                     self._emit(
                         events,
-                        "task_completed",
+                        "task_failed",
                         current_step=len(steps),
                         total_steps=len(steps),
                         current_action=self._personality.format(EventKind.FAILURE),

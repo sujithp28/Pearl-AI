@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.agent.confidence import score_plan
+from src.agent.conversational import needs_no_tools
 from src.agent.dependency_graph import topological_sort
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.plan_validator import validate_plan
@@ -153,6 +154,18 @@ class Planner:
         """
 
         logger.info("Planning steps for request: %s", user_prompt)
+
+        # Plainly conversational input takes the `none` sentinel directly
+        # instead of a planning call. A small model asked to plan a
+        # greeting invents work rather than declining — "hello" produced
+        # read_file("hello.py"), which failed and surfaced as fatal_error.
+        # Deterministic on purpose: no model call, so no latency and no
+        # chance of judging the same input differently twice.
+        if needs_no_tools(user_prompt):
+            logger.info("Request is conversational; no tools needed.")
+            steps = [ToolCall(tool_name="none", args=(), kwargs={})]
+            self.last_confidence_score = score_plan(steps).score
+            return steps
 
         prompt = self.build_prompt(user_prompt, workspace_context)
 

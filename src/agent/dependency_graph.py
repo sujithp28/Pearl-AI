@@ -80,7 +80,25 @@ def topological_sort(steps: list[ToolCall]) -> list[ToolCall]:
 
     for i, step in enumerate(steps):
         for dep_id in step.depends_on:
-            dep_index = id_to_index[dep_id]  # guaranteed valid by validator
+            # An unknown reference is skipped rather than looked up blindly.
+            #
+            # This used to index directly, on the stated assumption that the
+            # validator had already checked every reference. It has not:
+            # both Planner.plan() and Planner.replan() sort *before*
+            # validating, deliberately, so that read-before-write and other
+            # ordering rules see execution order. validate_dependencies()
+            # also calls this function itself, on unvalidated input, to
+            # detect cycles.
+            #
+            # So a model naming a tool instead of a step_id
+            # (depends_on: ["read_file"]) crashed the run with a bare
+            # KeyError instead of the clear "references unknown step id"
+            # error the validator produces a moment later. Dropping the
+            # edge keeps ordering well-defined and lets that validation
+            # error be the one the user actually sees.
+            dep_index = id_to_index.get(dep_id)
+            if dep_index is None:
+                continue
             successors[dep_index].append(i)
             in_degree[i] += 1
 

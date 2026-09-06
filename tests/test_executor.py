@@ -540,7 +540,13 @@ def test_run_emits_step_failed_and_replanning_events(monkeypatch):
     )
 
 
-def test_run_emits_task_completed_on_max_iterations(monkeypatch):
+def test_run_emits_task_failed_on_max_iterations(monkeypatch):
+    """
+    Hitting the iteration cap is a failure and must say so by status.
+    This previously asserted "task_completed" alongside FAILURE wording —
+    encoding the contradiction that made the UI draw a green "Done" next
+    to the run's own error.
+    """
     executor, planner = build_executor(max_iterations=1)
 
     monkeypatch.setattr(
@@ -554,11 +560,11 @@ def test_run_emits_task_completed_on_max_iterations(monkeypatch):
 
     report = executor.run("add twice")
 
-    assert report.events[-1].status == "task_completed"
+    assert report.events[-1].status == "task_failed"
     assert report.events[-1].current_action == _default_progress_text(EventKind.FAILURE)
 
 
-def test_run_emits_task_completed_on_fatal_error(monkeypatch):
+def test_run_emits_task_failed_on_fatal_error(monkeypatch):
     executor, planner = build_executor(max_replans=0)
 
     monkeypatch.setattr(
@@ -574,8 +580,11 @@ def test_run_emits_task_completed_on_fatal_error(monkeypatch):
         "planning",
         "executing_step",
         "step_failed",
-        "task_completed",
+        "task_failed",
     ]
+    assert "task_completed" not in statuses, (
+        "a failed run must not also report completion"
+    )
     assert report.events[-1].current_action == _default_progress_text(EventKind.FAILURE)
 
 

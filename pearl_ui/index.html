@@ -1082,6 +1082,9 @@ function onProgress(d, g, map) {
     if (ca) { const k = ca + (cs||0); const el = map.get(k); if (el) doneStep(el, true); }
   } else if (status === 'awaiting_approval') groupHdr(g,'warn','📋 Review required',cs,ts);
   else if (status === 'task_completed') groupHdr(g,'ok','✓ Done',cs,ts);
+  // A run that ended in failure must not also render a green "Done" —
+  // the error card below it says the opposite.
+  else if (status === 'task_failed') groupHdr(g,'err','✕ Failed',cs,ts);
   scrollBot();
 }
 

@@ -16,6 +16,10 @@ export type ProgressStatus =
   | "step_failed"
   | "replanning"
   | "task_completed"
+  // Distinct from task_completed so success and failure are
+  // distinguishable by status alone, rather than only by the wording of
+  // currentAction — which is personality text, not a contract.
+  | "task_failed"
   | "cancelled"
   | "awaiting_approval"
   | "rejected";
@@ -34,6 +38,7 @@ const PROGRESS_STATUSES: readonly string[] = [
   "step_failed",
   "replanning",
   "task_completed",
+  "task_failed",
   "cancelled",
   "awaiting_approval",
   "rejected",
