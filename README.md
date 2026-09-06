@@ -109,8 +109,12 @@ adds the pieces that turn "the tools ran" into "the task is verified done":
 - **Three interchangeable surfaces** — terminal CLI, standalone web UI,
   and VS Code extension, all driving the same backend and executor.
 - **Repository intelligence** — a cached, incremental index of every
-  file's symbols and imports across Python, JavaScript, TypeScript, Go,
-  Rust, and Java, used for symbol lookup, reference search, and context.
+  file's symbols and imports across **13 languages** (Python,
+  JavaScript, TypeScript, Go, Rust, Java, C, C++, C#, Ruby, PHP, Swift,
+  Kotlin), used for symbol lookup, reference search, and context.
+- **Speaks your language** — chat replies in whatever language you write
+  in, and greetings in any language are handled without invoking the
+  engineering loop.
 - **Symbol-aware editing** — replace or insert a function/class/method by
   name via AST (Python) or regex-based parsing (other languages),
   preserving surrounding formatting exactly.
@@ -679,9 +683,23 @@ successfully and still be reported `blocked` if the tests it triggered
 fail or an unrelated file changed.
 
 **Does Pearl index non-Python files?**
-Yes — Python (AST-based), plus regex-based parsers for JavaScript,
-TypeScript, Go, Rust, and Java, all registered by default. A parser never
-raises on malformed input; it returns whatever it could extract.
+Yes — 13 languages: Python (AST-based), plus regex-based parsers for
+JavaScript, TypeScript, Go, Rust, Java, C, C++, C#, Ruby, PHP, Swift and
+Kotlin, all registered by default. A parser never raises on malformed
+input; it returns whatever it could extract.
+
+Markdown, JSON, YAML, HTML, CSS, SQL and shell files are still scanned,
+read and text-searchable — they simply have no symbol structure worth
+extracting with a regex.
+
+**Can I talk to Pearl in a language other than English?**
+Yes. Chat replies in the language you write in, and code, identifiers,
+paths and error text are left untranslated. Greetings in any language
+are recognised without invoking the planner.
+
+Fluency depends entirely on the model: the bundled 1.5B handles other
+languages roughly, and a larger local or remote model does noticeably
+better — see [Model Routing](#model-routing).
 
 **Can I use a hosted model instead of the local one?**
 Yes — set `PEARL_LLM_PROVIDER` to `openai`, `openrouter`, `claude`/

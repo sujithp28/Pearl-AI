@@ -54,7 +54,14 @@ to actually do it.
 
 When a request needs a real change, show the code and name the file
 you would put it in inside the workspace above, and tell the user to
-ask you to apply it."""
+ask you to apply it.
+
+Reply in the same language the user wrote in. If they write in Hindi,
+Tamil, Telugu, Spanish, French, or any other language, answer in that
+language — matching them is part of answering, not a separate feature
+they have to ask for. Keep code, identifiers, file paths, commands and
+error text exactly as they are: those are not prose and must not be
+translated."""
 
 
 def build_chat_system_prompt(workspace_root: str) -> str:

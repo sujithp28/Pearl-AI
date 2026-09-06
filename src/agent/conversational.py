@@ -27,8 +27,15 @@ import re
 
 # Whole-input courtesy phrases. Anchored: these must be the *entire*
 # message, so "hi, delete the build directory" is never caught by "hi".
+#
+# Non-English greetings are included because the alternative is worse
+# than it sounds: an unmatched greeting goes to the planner, and a small
+# model asked to plan "namaste" invents a file to read and the run ends
+# in an error. Someone greeting Pearl in their own language should not
+# get a crash for it.
 _PURE_CONVERSATIONAL = re.compile(
     r"""^\s*(?:
+      # ── English ──────────────────────────────────────────────────
         (?:hi|hii+|hey+|hello+|helo|yo|sup|hiya|howdy)
       | (?:good\s+(?:morning|afternoon|evening|day))
       | (?:how\s+(?:are\s+you|is\s+it\s+going|are\s+things)|how'?s\s+it\s+going)
@@ -41,9 +48,43 @@ _PURE_CONVERSATIONAL = re.compile(
       # _TASK_SIGNAL catches them anyway; listing them here would only be
       # misleading.
       | (?:who\s+are\s+you|what\s+are\s+you|what\s+can\s+you\s+do)
+
+      # ── Romanised South Asian ────────────────────────────────────
+      | (?:namaste|namaskar|namaskaram|vanakkam|sat\s?sri\s?akal|adaab)
+      | (?:dhanyavaad|dhanyawad|shukriya|nandri|dhanyavadalu)
+      | (?:kaise\s+ho|kya\s+haal|theek\s+hai|accha|thik\s+hai|haan|nahi)
+      | (?:alvida|phir\s+milenge)
+
+      # ── Other widely used greetings ──────────────────────────────
+      | (?:hola|buenos\s+d[ií]as|buenas\s+(?:tardes|noches)|gracias|adi[oó]s)
+      | (?:bonjour|bonsoir|salut|merci|au\s+revoir)
+      | (?:hallo|guten\s+(?:tag|morgen|abend)|danke|tsch[üu]ss)
+      | (?:ciao|buongiorno|grazie|arrivederci)
+      | (?:ol[áa]|bom\s+dia|boa\s+(?:tarde|noite)|obrigad[oa])
+      | (?:privet|zdravstvuyte|spasibo)
+      | (?:salam|salaam|shukran|marhaba|assalamu?\s*alaikum)
+      | (?:konnichiwa|ohayou?|arigatou?|sayonara)
+      | (?:annyeong(?:haseyo)?|kamsahamnida)
+      | (?:ni\s?hao|xiexie|zaijian)
+      | (?:merhaba|te[sş]ekk[üu]rler)
+      | (?:shalom|toda)
+
+      # ── Non-Latin scripts ────────────────────────────────────────
+      # Matched as whole words so a longer sentence in the same script
+      # still reaches the planner rather than being treated as a greeting.
+      | (?:नमस्ते|नमस्कार|धन्यवाद|शुक्रिया|अलविदा)
+      | (?:வணக்கம்|நன்றி)
+      | (?:నమస్కారం|ధన్యవాదాలు)
+      | (?:নমস্কার|ধন্যবাদ)
+      | (?:こんにちは|おはよう|ありがとう|さようなら)
+      | (?:안녕하세요|안녕|감사합니다)
+      | (?:你好|您好|谢谢|再见)
+      | (?:مرحبا|السلام\s*عليكم|شكرا)
+      | (?:привет|здравствуйте|спасибо|пока)
+      | (?:γεια|ευχαριστώ)
     )
     [\s!?.,~]*$""",
-    re.IGNORECASE | re.VERBOSE,
+    re.IGNORECASE | re.VERBOSE | re.UNICODE,
 )
 
 # Anything suggesting real work overrides the match above. Cheap

@@ -42,9 +42,18 @@ class TestParserRegistryDefault:
                      Language.GO, Language.RUST, Language.JAVA):
             assert reg.supports(lang), f"Missing parser for {lang}"
 
-    def test_registry_has_six_parsers(self):
+    def test_registry_has_no_duplicate_registrations(self):
+        """
+        This asserted an exact count of six, which broke the moment a
+        language was added — a count is not what the test cares about.
+        What matters is that every registered parser claims a distinct
+        language, since registering two for the same one silently
+        replaces the first.
+        """
         reg = ParserRegistry.default()
-        assert len(reg) == 6
+
+        assert len(reg) == len(reg.supported_languages())
+        assert len(reg) >= 6, "built-in parsers went missing"
 
 
 # ---------------------------------------------------------------------------

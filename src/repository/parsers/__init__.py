@@ -457,9 +457,21 @@ class ParserRegistry:
         * Go (.go) — regex-based
         * Rust (.rs) — regex-based
         * Java (.java) — regex-based
+        * C (.c, .h) — regex-based
+        * C++ (.cpp, .cc, .cxx, .hpp, .hxx) — regex-based
+        * C# (.cs) — regex-based
+        * Ruby (.rb, .rake) — regex-based
+        * PHP (.php) — regex-based
+        * Swift (.swift) — regex-based
+        * Kotlin (.kt, .kts) — regex-based
 
         All non-Python parsers gracefully degrade — they never raise
         and return partial results on malformed input.
+
+        Languages in :class:`~src.repository.models.Language` with no
+        parser here (Markdown, JSON, YAML, HTML, CSS, SQL, shell) are
+        still scanned, read, and text-searchable; they simply have no
+        symbol-level structure worth extracting with a regex.
 
         To extend with extra parsers::
 
@@ -472,14 +484,35 @@ class ParserRegistry:
         from src.repository.parsers.go_parser import GoParser  # noqa: PLC0415
         from src.repository.parsers.rust_parser import RustParser  # noqa: PLC0415
         from src.repository.parsers.java_parser import JavaParser  # noqa: PLC0415
+        from src.repository.parsers.c_family_parser import (  # noqa: PLC0415
+            CParser,
+            CppParser,
+            CSharpParser,
+        )
+        from src.repository.parsers.ruby_parser import RubyParser  # noqa: PLC0415
+        from src.repository.parsers.php_parser import PhpParser  # noqa: PLC0415
+        from src.repository.parsers.swift_kotlin_parser import (  # noqa: PLC0415
+            KotlinParser,
+            SwiftParser,
+        )
 
         registry = cls()
-        registry.register(PythonParser())
-        registry.register(JavaScriptParser())
-        registry.register(TypeScriptParser())
-        registry.register(GoParser())
-        registry.register(RustParser())
-        registry.register(JavaParser())
+        for parser in (
+            PythonParser(),
+            JavaScriptParser(),
+            TypeScriptParser(),
+            GoParser(),
+            RustParser(),
+            JavaParser(),
+            CParser(),
+            CppParser(),
+            CSharpParser(),
+            RubyParser(),
+            PhpParser(),
+            SwiftParser(),
+            KotlinParser(),
+        ):
+            registry.register(parser)
         return registry
 
     # ------------------------------------------------------------------
