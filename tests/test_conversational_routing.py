@@ -237,6 +237,37 @@ class TestFailureStatus:
                     f"{head[:200]}"
                 )
 
+    def test_missing_llama_cpp_names_the_interpreter(self):
+        """
+        The usual cause is the wrong Python, not a missing package: a bare
+        `uvicorn` runs under whichever uvicorn is first on PATH, often an
+        unrelated virtualenv. Telling the user to install a package they
+        already have — into the environment that already has it — sends
+        them the wrong way, so the message must name the interpreter.
+        """
+        import sys
+
+        import src.llm.providers.local_inference as mod
+
+        saved_module = sys.modules.get("llama_cpp")
+        saved_cache = dict(mod._llms)
+        sys.modules["llama_cpp"] = None
+        mod._llms.clear()
+        try:
+            with pytest.raises(ImportError) as exc:
+                mod._get_shared_llm("fake.gguf", 512, 1)
+
+            message = str(exc.value)
+            assert sys.executable in message, "must name the interpreter"
+            assert "python -m uvicorn" in message, "must give the correct command"
+            assert "wrong interpreter" in message
+        finally:
+            if saved_module is None:
+                sys.modules.pop("llama_cpp", None)
+            else:
+                sys.modules["llama_cpp"] = saved_module
+            mod._llms.update(saved_cache)
+
     def test_planning_failure_explains_itself(self, monkeypatch, tmp_path):
         """
         A planning failure produces no steps, so a client reporting the

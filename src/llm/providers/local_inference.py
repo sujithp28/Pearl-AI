@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import threading
 from collections import OrderedDict
 from collections.abc import Iterator
@@ -106,10 +107,24 @@ def _get_shared_llm(model_path: str, n_ctx: int, n_threads: int) -> Any:
         try:
             from llama_cpp import Llama
         except ImportError as exc:
+            # Naming the interpreter matters more than naming the package.
+            # The common cause is not a missing install but the wrong
+            # Python: a bare `uvicorn ...` runs under whichever uvicorn is
+            # first on PATH, which is often an unrelated virtualenv without
+            # Pearl's dependencies. "Install llama-cpp-python" then sends
+            # the user to reinstall something they already have, into the
+            # environment that already has it.
             raise ImportError(
-                "llama-cpp-python is required for local inference.\n"
-                "Install it with:\n"
-                "  pip install llama-cpp-python "
+                "llama-cpp-python is not importable in the Python running "
+                f"Pearl:\n  {sys.executable}\n\n"
+                "If it is already installed elsewhere, this is the wrong "
+                "interpreter, not a missing package — a bare `uvicorn` "
+                "command runs under whichever uvicorn is first on PATH. "
+                "Start Pearl with the interpreter that has its dependencies:\n"
+                "  python -m src.api\n"
+                "  python -m uvicorn src.api.server:app --reload\n\n"
+                "Otherwise install it into that interpreter:\n"
+                f"  \"{sys.executable}\" -m pip install llama-cpp-python "
                 "--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu"
             ) from exc
 

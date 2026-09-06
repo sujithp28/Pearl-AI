@@ -256,12 +256,26 @@ approval entirely.
 ### Option B — Standalone Web UI
 
 ```bash
-# Start the web server (from the Pearl-AI directory):
-uvicorn src.api.server:app --reload
-
-# Open http://localhost:8000 in your browser.
-# Pearl downloads the local model (~1 GB) on the first request.
+python -m src.api
 ```
+
+Opens <http://localhost:7474> and downloads the local model (~1 GB) on
+first use. Add `--workspace /path/to/project` to point it elsewhere, or
+`--port 8000` to change the port.
+
+To run it under a reloading ASGI server instead:
+
+```bash
+python -m uvicorn src.api.server:app --reload --port 8000
+```
+
+> **Use `python -m uvicorn`, not a bare `uvicorn`.** A bare `uvicorn`
+> runs under whichever `uvicorn` executable is first on your PATH, which
+> is often an unrelated virtualenv that does not have Pearl's
+> dependencies. The symptom is confusing: Pearl starts, the UI connects,
+> and then every request fails with "llama-cpp-python is required for
+> local inference" even though it is installed — just not in the
+> interpreter that ended up running the server.
 
 ### Option C — VS Code Extension
 
@@ -383,10 +397,10 @@ scratch editor wired to the same completion service — the quickest way
 to see it working:
 
 ```bash
-uvicorn src.api.server:app --reload
+python -m src.api
 ```
 
-Open <http://localhost:8000>, click **Code**, and start typing. Same
+Open <http://localhost:7474>, click **Code**, and start typing. Same
 behaviour as the editor: pause to get a suggestion, <kbd>Tab</kbd> to
 accept, <kbd>Esc</kbd> to dismiss.
 
