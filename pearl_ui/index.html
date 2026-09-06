@@ -1100,8 +1100,19 @@ async function onResult(d, grp, map) {
     groupHdr(grp,'warn','📋 Changes ready for review',null,null);
     await showDiff();
   } else if (!r.succeeded) {
+    // Prefer a reason the user can act on. A planning failure produces no
+    // steps, so `fail` is undefined and the old fallback printed the bare
+    // stop_reason — "fatal_error" explains nothing. r.error carries what
+    // actually went wrong.
     const fail = r.steps?.find(s => !s.succeeded);
-    addErr(fail?.error || `Stopped: ${r.stop_reason}`);
+    addErr(r.error || fail?.error || `Stopped: ${r.stop_reason}`);
+    // The synthesizer's explanation was previously computed and discarded
+    // on every failure path, which is exactly when it is most useful.
+    if (r.final_answer) {
+      const { setText } = addPearlBubble();
+      setText(r.final_answer, false);
+      saveMsg('assistant', r.final_answer);
+    }
   } else {
     const txt = r.final_answer || bestOutput(r.steps);
     if (txt) { const { setText } = addPearlBubble(); setText(txt, false); saveMsg('assistant', txt); }

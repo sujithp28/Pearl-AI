@@ -237,6 +237,65 @@ class TestFailureStatus:
                     f"{head[:200]}"
                 )
 
+    def test_planning_failure_explains_itself(self, monkeypatch, tmp_path):
+        """
+        A planning failure produces no steps, so a client reporting the
+        failed step has nothing to show and falls back to the bare
+        stop_reason. "fatal_error" tells the user nothing about what
+        happened or what to try instead.
+        """
+        from src.agent.dispatcher import ToolDispatcher
+        from src.agent.executor import AutonomousExecutor
+        from src.agent.planner import Planner
+        from src.config.workspace import clear_workspace_root, set_workspace_root
+        from src.tools.registry import ToolRegistry
+
+        set_workspace_root(tmp_path)
+        try:
+            registry = ToolRegistry()
+            planner = Planner(registry, ToolDispatcher(registry))
+            monkeypatch.setattr(
+                planner.client,
+                "generate_json",
+                lambda *a, **k: (_ for _ in ()).throw(
+                    ValueError("Expected JSON object, got prose")
+                ),
+            )
+
+            executor = AutonomousExecutor(
+                planner, ToolDispatcher(registry), checkpoints=None
+            )
+            report = executor.run("jiii")
+
+            assert report.steps == [], "planning failed, so there are no steps"
+            assert report.error, "a failure with no steps must explain itself"
+            # Actionable, not a raw exception echoed back.
+            assert "fatal_error" not in report.error
+            assert "Chat mode" in report.error or "rephras" in report.error.lower()
+        finally:
+            clear_workspace_root()
+
+    def test_error_reaches_the_api_payload(self, monkeypatch, tmp_path):
+        """The UI can only show what the payload carries."""
+        from src.agent.executor import ExecutionReport
+        from src.api.session import _report_to_dict
+
+        report = ExecutionReport(
+            steps=[], stop_reason="fatal_error", error="Could not plan that."
+        )
+
+        payload = _report_to_dict(report)
+
+        assert payload["error"] == "Could not plan that."
+
+    def test_successful_report_carries_no_error_key(self):
+        from src.agent.executor import ExecutionReport
+        from src.api.session import _report_to_dict
+
+        payload = _report_to_dict(ExecutionReport(stop_reason="completed"))
+
+        assert "error" not in payload
+
     def test_planning_failure_reports_failure_status(self, monkeypatch, tmp_path):
         """End-to-end: a run that cannot plan must not look successful."""
         from src.agent.dispatcher import ToolDispatcher

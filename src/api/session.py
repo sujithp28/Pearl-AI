@@ -496,6 +496,8 @@ def _report_to_dict(report: ExecutionReport) -> dict[str, Any]:
             for s in report.steps
         ],
     }
+    if report.error:
+        d["error"] = report.error
     if report.llm_reflection is not None:
         d["reflection"] = {
             "status": report.llm_reflection.status,

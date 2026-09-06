@@ -183,6 +183,40 @@ def _reflect(
     )
 
 
+def _describe_planning_failure(exc: Exception) -> str:
+    """
+    Turn a planning exception into something the user can act on.
+
+    Planning failure is the one failure mode with no steps to point at,
+    so whatever this returns is the entire explanation the user gets.
+    "fatal_error" alone says nothing about what happened or what to try
+    next, which is what a small model producing an unusable plan looked
+    like from the outside.
+    """
+
+    detail = str(exc).strip()
+
+    # A small model frequently emits prose or malformed JSON instead of a
+    # plan. That is a limitation of the model, not a mistake by the user,
+    # and saying so is more useful than echoing a parse error.
+    if isinstance(exc, (ValueError, json.JSONDecodeError)) or "json" in detail.lower():
+        return (
+            "I couldn't turn that into a plan I could run. This usually "
+            "means the request was too vague for the current model, or it "
+            "isn't a coding task. Try rephrasing it as a concrete action — "
+            "for example \"add a docstring to parse_config in src/utils.py\" "
+            "— or switch to Chat mode to just talk."
+        )
+
+    if not detail:
+        return (
+            "Planning failed for an unknown reason. Try rephrasing the "
+            "request, or switch to Chat mode."
+        )
+
+    return f"Planning failed: {detail}"
+
+
 @dataclass(slots=True, repr=False)
 class ExecutionStep:
     """
@@ -239,6 +273,14 @@ class ExecutionReport:
     # LLM-based structured reflection — richer than the heuristic `reflection`
     # above; only populated when a ReflectionEngine is wired into the executor.
     llm_reflection: "LLMReflectionResult | None" = None
+    # Why the run failed, in terms a user can act on.
+    #
+    # A planning failure produces no steps, so a client that reports the
+    # failed step has nothing to show and falls back to printing the
+    # stop_reason — "fatal_error" tells the user nothing about what went
+    # wrong or what to do next. The underlying exception used to be
+    # logged and then discarded; this carries it out to the surface.
+    error: str | None = None
 
     @property
     def succeeded(self) -> bool:
@@ -805,6 +847,7 @@ class AutonomousExecutor:
                 stop_reason="fatal_error",
                 replans_used=1,
                 events=events,
+                error=_describe_planning_failure(plan_exc),
                 reflection=_reflect(steps, "fatal_error", 1),
             )
 

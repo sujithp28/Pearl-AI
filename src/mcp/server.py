@@ -173,6 +173,9 @@ def _execution_report_to_dict(
     # are unaffected. Both are absent rather than faked when they did
     # not run, so a client can distinguish "verified clean" from
     # "never checked".
+    if report.error:
+        result["error"] = report.error
+
     verification = getattr(executor, "_last_verification", None)
     if verification is not None:
         result["verification"] = {
