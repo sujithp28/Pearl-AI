@@ -35,6 +35,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
+from src.agent.conversational import AmbiguousRequestError
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.planner import Planner
 from src.agent.retry import classify_error, is_transient_error
@@ -195,6 +196,12 @@ def _describe_planning_failure(exc: Exception) -> str:
     """
 
     detail = str(exc).strip()
+
+    # Declining to guess is not a failure to plan. Its message is already
+    # a question addressed to the user, so pass it through untouched
+    # rather than wrapping it in failure language.
+    if isinstance(exc, AmbiguousRequestError):
+        return detail
 
     # A small model frequently emits prose or malformed JSON instead of a
     # plan. That is a limitation of the model, not a mistake by the user,
@@ -1210,6 +1217,9 @@ class AutonomousExecutor:
         caller.
 
         ``LLMCancelled`` is never retried — it propagates immediately.
+        ``AmbiguousRequestError`` is not retried either: the request did
+        not say what to do, and asking the model a second time only
+        raises the odds it invents something.
         """
         try:
             return list(self.planner.plan(
@@ -1217,7 +1227,7 @@ class AutonomousExecutor:
                 workspace_context=workspace_context,
                 cancel_check=self.is_cancelled,
             ))
-        except LLMCancelled:
+        except (LLMCancelled, AmbiguousRequestError):
             raise
         except Exception as first_exc:
             logger.warning(

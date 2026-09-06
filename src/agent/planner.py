@@ -13,7 +13,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.agent.confidence import score_plan
-from src.agent.conversational import needs_no_tools
+from src.agent.conversational import (
+    AmbiguousRequestError,
+    needs_clarification,
+    needs_no_tools,
+)
 from src.agent.dependency_graph import topological_sort
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.plan_validator import validate_plan
@@ -167,6 +171,17 @@ class Planner:
             self.last_confidence_score = score_plan(steps).score
             return steps
 
+        # Refuse to guess at input that says nothing about what to do.
+        # Asked to plan "lpoe", the model did not decline — it searched,
+        # failed to read lpoe.py, searched again, then created lpoe.py,
+        # and reflection called that "complete, confidence 100%". Every
+        # step was individually correct; the run should never have begun.
+        # Tool names count as intent — "boom" naming a registered tool is
+        # a request to run it, while "lpoe" names nothing Pearl has.
+        if needs_clarification(user_prompt, known_terms=self._tool_names()):
+            logger.info("Request is too vague to act on: %r", user_prompt)
+            raise AmbiguousRequestError(user_prompt)
+
         prompt = self.build_prompt(user_prompt, workspace_context)
 
         payload = self._generate_json(prompt, cancel_check)
@@ -195,6 +210,19 @@ class Planner:
         )
 
         return steps
+
+    def _tool_names(self) -> set[str]:
+        """
+        Names of every registered tool, for the unactionable-input gate.
+
+        Best-effort: a registry that cannot enumerate itself must not
+        stop a run, so failure yields an empty set and the gate simply
+        loses this one signal.
+        """
+        try:
+            return {t["name"] for t in self.registry.get_tools()}
+        except Exception:
+            return set()
 
     def build_replan_prompt(
         self,

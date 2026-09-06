@@ -86,6 +86,182 @@ class TestNeedsNoTools:
         assert needs_no_tools("hi " * 20) is False
 
 
+class TestUnactionableInput:
+    """
+    Reported: typing "lpoe" made Pearl search for it, fail to read
+    lpoe.py, search again, then CREATE lpoe.py — and reflection called
+    that "complete, confidence 100%".
+
+    Every step behaved correctly in isolation. The run should never have
+    started. Guessing at meaningless input is the failure mode worth
+    preventing precisely because its output looks like success.
+    """
+
+    @pytest.mark.parametrize(
+        "prompt", ["lpoe", "jiii", "asdf", "qwer", "zz", "blah", ""]
+    )
+    def test_unactionable_input_needs_clarification(self, prompt):
+        from src.agent.conversational import needs_clarification
+
+        assert needs_clarification(prompt) is True
+
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            # A verb is intent, even with few words.
+            "run tests", "fix login", "add docstring", "explain executor",
+            # A path or extension is intent.
+            "src/main.py", "README.md", "read config.yaml",
+            # Code is intent.
+            "def add(a, b):",
+            # Enough words carry intent without a recognised verb.
+            "the login page is broken",
+            # Two words is already past the gate — anything longer than a
+            # bare token plausibly carries intent this check cannot see,
+            # and refusing real work is the costly direction.
+            "xyz abc",
+            "say hello",
+        ],
+    )
+    def test_real_requests_do_not_need_clarification(self, prompt):
+        from src.agent.conversational import needs_clarification
+
+        assert needs_clarification(prompt) is False
+
+    def test_a_bare_tool_name_is_actionable(self):
+        """
+        An early version guessed at meaninglessness and rejected one-word
+        commands — including tool names, which are the most actionable
+        input there is. Naming a tool Pearl has is a request to use it.
+        """
+        from src.agent.conversational import needs_clarification
+
+        assert needs_clarification("boom", known_terms={"boom", "add"}) is False
+        assert needs_clarification("lpoe", known_terms={"boom", "add"}) is True
+
+    def test_planner_treats_its_own_tools_as_actionable(self):
+        from src.agent.conversational import AmbiguousRequestError
+        from src.agent.dispatcher import ToolDispatcher
+        from src.agent.planner import Planner
+        from src.tools.metadata import tool
+        from src.tools.registry import ToolRegistry
+
+        @tool(description="Test tool.", returns="None")
+        def zqx() -> None:
+            return None
+
+        registry = ToolRegistry()
+        registry.register(zqx)
+        planner = Planner(registry, ToolDispatcher(registry))
+
+        # Would look like gibberish, but it names a registered tool.
+        try:
+            planner.plan("zqx")
+        except AmbiguousRequestError:
+            pytest.fail("a registered tool name was treated as unactionable")
+        except Exception:
+            pass  # any other planning outcome is fine; only the gate matters
+
+    @pytest.mark.parametrize("prompt", ["hello", "hi", "namaste", "thanks"])
+    def test_greetings_are_answered_not_questioned(self, prompt):
+        """
+        A greeting is unactionable too, but asking "what did you mean by
+        hello?" is worse than answering it.
+        """
+        from src.agent.conversational import needs_clarification
+
+        assert needs_clarification(prompt) is False
+
+    def test_planner_refuses_rather_than_guessing(self):
+        from src.agent.conversational import AmbiguousRequestError
+        from src.agent.dispatcher import ToolDispatcher
+        from src.agent.planner import Planner
+        from src.tools.registry import ToolRegistry
+
+        registry = ToolRegistry()
+        planner = Planner(registry, ToolDispatcher(registry))
+
+        with pytest.raises(AmbiguousRequestError):
+            planner.plan("lpoe")
+
+    def test_refusal_does_not_call_the_model(self, monkeypatch):
+        """Asking the model again only raises the odds it invents work."""
+        from src.agent.conversational import AmbiguousRequestError
+        from src.agent.dispatcher import ToolDispatcher
+        from src.agent.planner import Planner
+        from src.tools.registry import ToolRegistry
+
+        registry = ToolRegistry()
+        planner = Planner(registry, ToolDispatcher(registry))
+        monkeypatch.setattr(
+            planner.client,
+            "generate_json",
+            lambda *a, **k: pytest.fail("model was called for unactionable input"),
+        )
+
+        with pytest.raises(AmbiguousRequestError):
+            planner.plan("lpoe")
+
+    def test_run_creates_nothing_and_asks_instead(self, tmp_path):
+        """The end-to-end guarantee: noise in, no filesystem change."""
+        from src.agent.dispatcher import ToolDispatcher
+        from src.agent.executor import AutonomousExecutor
+        from src.agent.planner import Planner
+        from src.config.workspace import clear_workspace_root, set_workspace_root
+        from src.main import build_registry
+
+        set_workspace_root(tmp_path)
+        try:
+            registry = build_registry()
+            dispatcher = ToolDispatcher(registry)
+            executor = AutonomousExecutor(
+                Planner(registry, dispatcher), dispatcher, checkpoints=None
+            )
+
+            report = executor.run("lpoe")
+
+            assert report.steps == [], "no step should have run"
+            assert list(tmp_path.iterdir()) == [], "created a file from noise"
+            assert not executor.patch_manager.has_pending(), "staged a change"
+            assert report.error and "not sure what you'd like" in report.error
+        finally:
+            clear_workspace_root()
+
+    def test_ambiguous_request_is_not_retried(self, tmp_path):
+        """
+        The retry path exists for a model that produced a bad plan. Here
+        the model was never asked, and asking now would invite exactly
+        the invention this prevents — so the refusal must propagate on
+        the first attempt rather than triggering a second.
+        """
+        from src.agent.conversational import AmbiguousRequestError
+        from src.agent.dispatcher import ToolDispatcher
+        from src.agent.executor import AutonomousExecutor
+        from src.agent.planner import Planner
+        from src.config.workspace import clear_workspace_root, set_workspace_root
+        from src.tools.registry import ToolRegistry
+
+        set_workspace_root(tmp_path)
+        try:
+            registry = ToolRegistry()
+            planner = Planner(registry, ToolDispatcher(registry))
+            calls = {"replan": 0}
+            planner.replan = lambda *a, **k: calls.__setitem__(  # type: ignore[method-assign]
+                "replan", calls["replan"] + 1
+            )
+
+            executor = AutonomousExecutor(
+                planner, ToolDispatcher(registry), checkpoints=None
+            )
+
+            with pytest.raises(AmbiguousRequestError):
+                executor._plan_with_retry("lpoe", "", [], [])
+
+            assert calls["replan"] == 0, "refusal triggered a retry"
+        finally:
+            clear_workspace_root()
+
+
 class TestPlannerShortCircuit:
     def _planner(self):
         from src.agent.dispatcher import ToolDispatcher

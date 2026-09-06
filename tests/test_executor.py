@@ -2049,7 +2049,11 @@ class TestExecutionStepErrorType:
             _plan_of({"tool": "always_timeout", "arguments": {}}),
         )
 
-        report = executor.run("timeout")
+        # "run always_timeout" rather than a bare "timeout": a lone noun
+        # states no action, so the planner now asks what was meant instead
+        # of guessing. This test is about error_type classification, and a
+        # realistic prompt exercises that just as well.
+        report = executor.run("run always_timeout")
         failed = report.failed_steps
         assert len(failed) == 1
         assert failed[0].error_type == "transient"

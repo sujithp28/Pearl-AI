@@ -24,6 +24,27 @@ those merely fall through to normal planning, exactly as before.
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
+
+
+class AmbiguousRequestError(ValueError):
+    """
+    Raised instead of planning when a request says nothing about what to do.
+
+    Deliberately not a generic planning failure: planning *failed* means
+    Pearl tried and could not: asking for clarification means it declined
+    to guess. Conflating them produces the behaviour this prevents — a
+    confident plan built on noise.
+    """
+
+    def __init__(self, prompt: str) -> None:
+        self.prompt = prompt
+        super().__init__(
+            f"I'm not sure what you'd like me to do with {prompt.strip()!r}. "
+            "Could you describe the task — for example \"add a docstring to "
+            "parse_config in src/utils.py\" or \"run the tests\"? "
+            "If you just want to talk, switch to Chat mode."
+        )
 
 # Whole-input courtesy phrases. Anchored: these must be the *entire*
 # message, so "hi, delete the build directory" is never caught by "hi".
@@ -130,3 +151,63 @@ def needs_no_tools(prompt: str) -> bool:
         return False
 
     return bool(_PURE_CONVERSATIONAL.match(text))
+
+
+def needs_clarification(
+    prompt: str,
+    known_terms: Collection[str] = (),
+) -> bool:
+    """
+    Return True when `prompt` is too vague to act on.
+
+    Callers must ask what the user wants rather than planning.
+
+    This is deliberately *not* gibberish detection. Whether a word is
+    meaningless is not decidable, and an early version that guessed at it
+    rejected legitimate one-word commands — including tool names, which
+    are the most actionable input there is. It asks a narrower question
+    with a factual answer: does this input reference anything Pearl
+    knows about, or say anything about what to do?
+
+    `known_terms` is what makes that answerable — pass the registered
+    tool names, so "boom" is recognised as naming a real tool while
+    "lpoe" is not.
+
+    Why it exists: given "lpoe", the planner did not decline. It searched
+    for it, tried to read lpoe.py, failed, searched again, and then
+    created lpoe.py — inventing a file from four random letters, which
+    reflection then reported as "complete, confidence 100%". Every
+    individual step behaved correctly; the run should never have started.
+
+    Guessing at meaningless input is the failure mode worth preventing,
+    because its output looks like success. The gate is narrow on purpose:
+    only a single bare token, since anything longer plausibly carries
+    intent this function cannot see.
+    """
+    if not prompt or not prompt.strip():
+        return True
+
+    text = prompt.strip()
+    words = text.split()
+
+    # More than one word plausibly carries intent even without a verb
+    # Pearl recognises. Falling through to the planner is the safe
+    # direction; it is what happened before this gate existed.
+    if len(words) != 1:
+        return False
+
+    # A greeting is unactionable too, but it has its own handling that
+    # answers conversationally rather than asking what was meant.
+    if needs_no_tools(text):
+        return False
+
+    # A verb, a path, a file extension or code punctuation is intent.
+    if _TASK_SIGNAL.search(text):
+        return False
+
+    # Naming a tool Pearl has is a request to use it.
+    token = words[0].strip("`'\".,!?").lower()
+    if token in {t.lower() for t in known_terms}:
+        return False
+
+    return True
