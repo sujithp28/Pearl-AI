@@ -528,7 +528,7 @@ def test_tool_replace_method_preview_mode_stages_instead_of_writing(
 
 def test_tool_replace_method_raises_when_class_not_found(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "a.py").write_text("class NewFoo: pass\n")
+    (tmp_path / "a.py").write_text("class Foo: pass\n")
 
     with pytest.raises(SymbolNotFoundError):
         replace_method("NonExistent", "some_method", "    pass\n", path=str(tmp_path / "a.py"))

@@ -135,9 +135,9 @@ class TestApplyNormalizedMatch:
 
     def test_normalized_match_updates_content(self, workspace: Path) -> None:
         f = workspace / "f.py"
-        f.write_text("class  NewFoo:\n    pass\n")
+        f.write_text("class  Foo:\n    pass\n")
         editor = SearchReplaceEditor()
-        result = editor.apply("f.py", "class NewFoo:", "class FooBar:")
+        result = editor.apply("f.py", "class Foo:", "class FooBar:")
         assert result.succeeded
         assert "FooBar" in f.read_text()
 

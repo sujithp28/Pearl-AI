@@ -154,7 +154,7 @@ class TestEdgeCases:
         assert r.errors == []
 
     def test_ellipsis_body_class(self, tmp_path: Path) -> None:
-        r = _parse(tmp_path, "stub.pyi", "class NewFoo:\n    ...\n")
+        r = _parse(tmp_path, "stub.pyi", "class Foo:\n    ...\n")
         assert len(r.symbols) == 1
         assert r.symbols[0].kind is SymbolKind.CLASS
 
@@ -171,32 +171,32 @@ class TestEdgeCases:
 
 class TestClassExtraction:
     def test_top_level_class(self, tmp_path: Path) -> None:
-        r = _parse(tmp_path, "m.py", "class NewFoo:\n    pass\n")
+        r = _parse(tmp_path, "m.py", "class Foo:\n    pass\n")
         assert len(r.symbols) == 1
         s = r.symbols[0]
-        assert s.name == "NewFoo"
-        assert s.qualified_name == "NewFoo"
+        assert s.name == "Foo"
+        assert s.qualified_name == "Foo"
         assert s.kind is SymbolKind.CLASS
         assert s.parent is None
 
     def test_class_line_numbers(self, tmp_path: Path) -> None:
-        src = "# line 1\nclass NewFoo:\n    pass\n"
+        src = "# line 1\nclass Foo:\n    pass\n"
         r = _parse(tmp_path, "m.py", src)
         s = r.symbols[0]
         assert s.line_start == 2
         assert s.line_end == 3
 
     def test_class_with_docstring(self, tmp_path: Path) -> None:
-        src = 'class NewFoo:\n    """My docstring."""\n    pass\n'
+        src = 'class Foo:\n    """My docstring."""\n    pass\n'
         r = _parse(tmp_path, "m.py", src)
         assert r.symbols[0].docstring == "My docstring."
 
     def test_class_without_docstring(self, tmp_path: Path) -> None:
-        r = _parse(tmp_path, "m.py", "class NewFoo:\n    x = 1\n")
+        r = _parse(tmp_path, "m.py", "class Foo:\n    x = 1\n")
         assert r.symbols[0].docstring is None
 
     def test_class_is_not_async(self, tmp_path: Path) -> None:
-        r = _parse(tmp_path, "m.py", "class NewFoo:\n    pass\n")
+        r = _parse(tmp_path, "m.py", "class Foo:\n    pass\n")
         assert r.symbols[0].is_async is False
 
     def test_decorated_class(self, tmp_path: Path) -> None:
@@ -206,7 +206,7 @@ class TestClassExtraction:
         assert classes[0].decorators == ["dataclass"]
 
     def test_multiple_decorators_on_class(self, tmp_path: Path) -> None:
-        src = "@one\n@two\nclass NewFoo:\n    pass\n"
+        src = "@one\n@two\nclass Foo:\n    pass\n"
         r = _parse(tmp_path, "m.py", src)
         assert r.symbols[0].decorators == ["one", "two"]
 
@@ -317,46 +317,46 @@ class TestFunctionExtraction:
 
 class TestMethodExtraction:
     def test_method_kind_is_method(self, tmp_path: Path) -> None:
-        src = "class NewFoo:\n    def bar(self):\n        pass\n"
+        src = "class Foo:\n    def bar(self):\n        pass\n"
         r = _parse(tmp_path, "m.py", src)
         by_qn = _syms(r)
-        assert by_qn["NewFoo.bar"].kind is SymbolKind.METHOD
+        assert by_qn["Foo.bar"].kind is SymbolKind.METHOD
 
     def test_async_method(self, tmp_path: Path) -> None:
-        src = "class NewFoo:\n    async def bar(self):\n        pass\n"
+        src = "class Foo:\n    async def bar(self):\n        pass\n"
         r = _parse(tmp_path, "m.py", src)
-        s = _syms(r)["NewFoo.bar"]
+        s = _syms(r)["Foo.bar"]
         assert s.kind is SymbolKind.METHOD
         assert s.is_async is True
 
     def test_method_parent_is_class(self, tmp_path: Path) -> None:
-        src = "class NewFoo:\n    def bar(self):\n        pass\n"
+        src = "class Foo:\n    def bar(self):\n        pass\n"
         r = _parse(tmp_path, "m.py", src)
-        assert _syms(r)["NewFoo.bar"].parent == "NewFoo"
+        assert _syms(r)["Foo.bar"].parent == "Foo"
 
     def test_classmethod_decorator(self, tmp_path: Path) -> None:
-        src = "class NewFoo:\n    @classmethod\n    def create(cls):\n        pass\n"
+        src = "class Foo:\n    @classmethod\n    def create(cls):\n        pass\n"
         r = _parse(tmp_path, "m.py", src)
-        s = _syms(r)["NewFoo.create"]
+        s = _syms(r)["Foo.create"]
         assert s.kind is SymbolKind.METHOD
         assert "classmethod" in s.decorators
 
     def test_staticmethod_decorator(self, tmp_path: Path) -> None:
-        src = "class NewFoo:\n    @staticmethod\n    def helper():\n        pass\n"
+        src = "class Foo:\n    @staticmethod\n    def helper():\n        pass\n"
         r = _parse(tmp_path, "m.py", src)
-        assert "staticmethod" in _syms(r)["NewFoo.helper"].decorators
+        assert "staticmethod" in _syms(r)["Foo.helper"].decorators
 
     def test_property_decorator(self, tmp_path: Path) -> None:
-        src = "class NewFoo:\n    @property\n    def value(self):\n        return 0\n"
+        src = "class Foo:\n    @property\n    def value(self):\n        return 0\n"
         r = _parse(tmp_path, "m.py", src)
-        assert "property" in _syms(r)["NewFoo.value"].decorators
+        assert "property" in _syms(r)["Foo.value"].decorators
 
     def test_nested_function_inside_method_is_function_not_method(
         self, tmp_path: Path
     ) -> None:
-        src = "class NewFoo:\n    def bar(self):\n        def helper():\n            pass\n"
+        src = "class Foo:\n    def bar(self):\n        def helper():\n            pass\n"
         r = _parse(tmp_path, "m.py", src)
-        assert _syms(r)["NewFoo.bar.helper"].kind is SymbolKind.FUNCTION
+        assert _syms(r)["Foo.bar.helper"].kind is SymbolKind.FUNCTION
 
     def test_nested_class_inside_method_methods_are_methods(
         self, tmp_path: Path
@@ -373,14 +373,14 @@ class TestMethodExtraction:
         assert by_qn["Outer.factory.Local.local_method"].kind is SymbolKind.METHOD
 
     def test_dunder_methods_extracted(self, tmp_path: Path) -> None:
-        src = "class NewFoo:\n    def __init__(self):\n        pass\n    def __repr__(self):\n        pass\n"
+        src = "class Foo:\n    def __init__(self):\n        pass\n    def __repr__(self):\n        pass\n"
         r = _parse(tmp_path, "m.py", src)
         by_qn = _syms(r)
-        assert "NewFoo.__init__" in by_qn
-        assert "NewFoo.__repr__" in by_qn
+        assert "Foo.__init__" in by_qn
+        assert "Foo.__repr__" in by_qn
 
     def test_multiple_methods_in_source_order(self, tmp_path: Path) -> None:
-        src = "class NewFoo:\n    def a(self):\n        pass\n    def b(self):\n        pass\n    def c(self):\n        pass\n"
+        src = "class Foo:\n    def a(self):\n        pass\n    def b(self):\n        pass\n    def c(self):\n        pass\n"
         r = _parse(tmp_path, "m.py", src)
         methods = [s for s in r.symbols if s.kind is SymbolKind.METHOD]
         assert [s.name for s in methods] == ["a", "b", "c"]
@@ -419,17 +419,17 @@ class TestVariableConstantExtraction:
         assert r.symbols[0].name == "x"
 
     def test_class_level_variable(self, tmp_path: Path) -> None:
-        src = "class NewFoo:\n    count = 0\n"
+        src = "class Foo:\n    count = 0\n"
         r = _parse(tmp_path, "m.py", src)
         by_qn = _syms(r)
-        assert "NewFoo.count" in by_qn
-        assert by_qn["NewFoo.count"].kind is SymbolKind.VARIABLE
-        assert by_qn["NewFoo.count"].parent == "NewFoo"
+        assert "Foo.count" in by_qn
+        assert by_qn["Foo.count"].kind is SymbolKind.VARIABLE
+        assert by_qn["Foo.count"].parent == "Foo"
 
     def test_class_level_constant(self, tmp_path: Path) -> None:
-        src = "class NewFoo:\n    MAX = 10\n"
+        src = "class Foo:\n    MAX = 10\n"
         r = _parse(tmp_path, "m.py", src)
-        assert _syms(r)["NewFoo.MAX"].kind is SymbolKind.CONSTANT
+        assert _syms(r)["Foo.MAX"].kind is SymbolKind.CONSTANT
 
     def test_local_variable_not_extracted(self, tmp_path: Path) -> None:
         src = "def foo():\n    local = 42\n    ALSO_LOCAL = 99\n"
@@ -468,11 +468,11 @@ class TestVariableConstantExtraction:
         assert r.symbols[0].is_async is False
 
     def test_variable_qualified_name(self, tmp_path: Path) -> None:
-        src = "class NewFoo:\n    BAR = 1\n"
+        src = "class Foo:\n    BAR = 1\n"
         r = _parse(tmp_path, "m.py", src)
         by_qn = _syms(r)
-        assert "NewFoo.BAR" in by_qn
-        assert by_qn["NewFoo.BAR"].qualified_name == "NewFoo.BAR"
+        assert "Foo.BAR" in by_qn
+        assert by_qn["Foo.BAR"].qualified_name == "Foo.BAR"
 
 
 # ---------------------------------------------------------------------------
@@ -619,7 +619,7 @@ class TestErrorHandling:
 
     def test_syntax_error_does_not_raise(self, tmp_path: Path) -> None:
         # Must return ParseResult, not raise
-        result = _parse(tmp_path, "bad.py", "class NewFoo\n    pass\n")
+        result = _parse(tmp_path, "bad.py", "class Foo\n    pass\n")
         assert isinstance(result, ParseResult)
 
     def test_unmatched_parenthesis_error(self, tmp_path: Path) -> None:
@@ -683,8 +683,8 @@ class TestErrorHandling:
 
 class TestQualifiedNames:
     def test_top_level_class_no_parent(self, tmp_path: Path) -> None:
-        r = _parse(tmp_path, "m.py", "class NewFoo:\n    pass\n")
-        assert _syms(r)["NewFoo"].parent is None
+        r = _parse(tmp_path, "m.py", "class Foo:\n    pass\n")
+        assert _syms(r)["Foo"].parent is None
 
     def test_nested_class_parent(self, tmp_path: Path) -> None:
         src = "class A:\n    class B:\n        pass\n"
@@ -692,9 +692,9 @@ class TestQualifiedNames:
         assert _syms(r)["A.B"].parent == "A"
 
     def test_method_parent_is_class_qn(self, tmp_path: Path) -> None:
-        src = "class NewFoo:\n    def bar(self):\n        pass\n"
+        src = "class Foo:\n    def bar(self):\n        pass\n"
         r = _parse(tmp_path, "m.py", src)
-        assert _syms(r)["NewFoo.bar"].parent == "NewFoo"
+        assert _syms(r)["Foo.bar"].parent == "Foo"
 
     def test_nested_function_parent(self, tmp_path: Path) -> None:
         src = "def outer():\n    def inner():\n        pass\n"
@@ -884,7 +884,7 @@ class TestIntegration:
 
     def test_default_registry_parse_returns_result(self, tmp_path: Path) -> None:
         registry = ParserRegistry.default()
-        fi = _fi(tmp_path, "m.py", "class NewFoo:\n    pass\n")
+        fi = _fi(tmp_path, "m.py", "class Foo:\n    pass\n")
         result = registry.parse(fi)
         assert result is not None
         assert any(s.kind is SymbolKind.CLASS for s in result.symbols)

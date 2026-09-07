@@ -279,9 +279,9 @@ class TestLookup:
         assert index.lookup("bar") == []
 
     def test_case_sensitive(self) -> None:
-        index = _build(_pr("a.py", symbols=[_sym("NewFoo")]))
+        index = _build(_pr("a.py", symbols=[_sym("Foo")]))
         assert index.lookup("foo") == []
-        assert index.lookup("NewFoo") != []
+        assert index.lookup("Foo") != []
 
     def test_returns_copy(self) -> None:
         index = _build(_pr("a.py", symbols=[_sym("foo")]))
@@ -290,11 +290,11 @@ class TestLookup:
         assert index.lookup("foo") != []
 
     def test_lookup_by_unqualified_name(self) -> None:
-        sym = _sym("method", qn="NewFoo.method", kind=SymbolKind.METHOD)
+        sym = _sym("method", qn="Foo.method", kind=SymbolKind.METHOD)
         index = _build(_pr("a.py", symbols=[sym]))
         result = index.lookup("method")
         assert len(result) == 1
-        assert result[0].symbol.qualified_name == "NewFoo.method"
+        assert result[0].symbol.qualified_name == "Foo.method"
 
 
 # ---------------------------------------------------------------------------
@@ -304,9 +304,9 @@ class TestLookup:
 
 class TestLookupQualified:
     def test_exact_match(self) -> None:
-        sym = _sym("method", qn="NewFoo.method")
+        sym = _sym("method", qn="Foo.method")
         index = _build(_pr("a.py", symbols=[sym]))
-        entry = index.lookup_qualified("NewFoo.method")
+        entry = index.lookup_qualified("Foo.method")
         assert entry is not None
         assert entry.symbol.name == "method"
 
@@ -382,7 +382,7 @@ class TestSymbolsInFile:
 class TestSymbolsByKind:
     def test_single_kind(self) -> None:
         index = _build(_pr("a.py", symbols=[
-            _sym("NewFoo", kind=SymbolKind.CLASS),
+            _sym("Foo", kind=SymbolKind.CLASS),
             _sym("bar", kind=SymbolKind.FUNCTION),
         ]))
         classes = index.symbols_by_kind(SymbolKind.CLASS)
@@ -450,12 +450,12 @@ class TestSearch:
 
     def test_nested_glob(self) -> None:
         syms = [
-            _sym("method", qn="NewFoo.method", kind=SymbolKind.METHOD),
-            _sym("other", qn="NewFoo.other", kind=SymbolKind.METHOD),
+            _sym("method", qn="Foo.method", kind=SymbolKind.METHOD),
+            _sym("other", qn="Foo.other", kind=SymbolKind.METHOD),
             _sym("top", qn="top"),
         ]
         index = _build(_pr("a.py", symbols=syms))
-        result = index.search("NewFoo.*")
+        result = index.search("Foo.*")
         assert len(result) == 2
 
     def test_question_mark_wildcard(self) -> None:
@@ -478,12 +478,12 @@ class TestSearch:
 
     def test_case_sensitive(self) -> None:
         index = _build(_pr("a.py", symbols=[
-            _sym("NewFoo", qn="NewFoo"),
+            _sym("Foo", qn="Foo"),
             _sym("foo", qn="foo"),
         ]))
-        result = index.search("NewFoo")
+        result = index.search("Foo")
         assert len(result) == 1
-        assert result[0].symbol.name == "NewFoo"
+        assert result[0].symbol.name == "Foo"
 
     def test_double_star_cross_file(self) -> None:
         index = _build(
@@ -744,7 +744,7 @@ class TestPythonParserExtendedFields:
         assert sym.return_type is None
 
     def test_method_signature_extracted(self) -> None:
-        r = self._parse_src("class NewFoo:\n    def bar(self, x: int) -> None:\n        pass\n")
+        r = self._parse_src("class Foo:\n    def bar(self, x: int) -> None:\n        pass\n")
         sym = next(s for s in r.symbols if s.name == "bar")
         assert sym.signature is not None
 
@@ -763,8 +763,8 @@ class TestPythonParserExtendedFields:
         assert sym.raises == []
 
     def test_class_does_not_have_signature(self) -> None:
-        r = self._parse_src("class NewFoo:\n    pass\n")
-        sym = next(s for s in r.symbols if s.name == "NewFoo")
+        r = self._parse_src("class Foo:\n    pass\n")
+        sym = next(s for s in r.symbols if s.name == "Foo")
         assert sym.signature is None
 
     def test_variable_has_no_extended_fields(self) -> None:
@@ -812,7 +812,7 @@ class TestIntegrationPythonParser:
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             (root / "a.py").write_text(
-                "class NewFoo:\n    def bar(self) -> None:\n        pass\n",
+                "class Foo:\n    def bar(self) -> None:\n        pass\n",
                 encoding="utf-8",
             )
             (root / "b.py").write_text("import os\nX = 1\n", encoding="utf-8")
@@ -834,9 +834,9 @@ class TestIntegrationPythonParser:
 
         index = RepositoryIndex.build(results)
 
-        assert index.lookup_qualified("NewFoo") is not None
-        assert index.lookup_qualified("NewFoo.bar") is not None
-        assert index.lookup_qualified("NewFoo.bar").symbol.kind is SymbolKind.METHOD
+        assert index.lookup_qualified("Foo") is not None
+        assert index.lookup_qualified("Foo.bar") is not None
+        assert index.lookup_qualified("Foo.bar").symbol.kind is SymbolKind.METHOD
         assert index.lookup_qualified("X").symbol.kind is SymbolKind.CONSTANT
         assert "import os" in index.imports_for("b.py")
         assert len(index.files_importing("os")) == 1

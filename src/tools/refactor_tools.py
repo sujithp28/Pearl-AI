@@ -121,7 +121,7 @@ def batch_write_files(files: dict[str, str]) -> str:
 @tool(
     description=(
         "Rename a Python symbol (class, function, or variable) across all "
-        "files in the workspace. Uses whole-word matching so 'NewFoo' in 'FooBar' "
+        "files in the workspace. Uses whole-word matching so 'Foo' in 'FooBar' "
         "is not replaced. All changes are staged together for review."
     ),
     parameters={"old_name": "str", "new_name": "str"},

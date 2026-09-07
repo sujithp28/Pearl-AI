@@ -40,7 +40,7 @@ def _with_exts(*extensions: str):
 
 class TestExtensionHallucinationCheck:
     def test_java_extension_rejected_in_python_workspace(self):
-        """src/NewFoo.java must be flagged in a .py-only workspace."""
+        """src/Foo.java must be flagged in a .py-only workspace."""
         steps = [
             _step("read_file", path="src/utils.py"),
             _step("read_file", path="src/ParserRegistry.java"),
@@ -59,7 +59,7 @@ class TestExtensionHallucinationCheck:
         """All bad extensions should appear in one PlanValidationError."""
         steps = [
             _step("read_file", path="src/foo.py"),
-            _step("read_file", path="src/NewFoo.java"),
+            _step("read_file", path="src/Foo.java"),
             _step("write_file", path="src/Bar.rb", content="x"),
         ]
         with _with_exts(".py"):

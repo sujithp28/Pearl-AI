@@ -4,7 +4,7 @@ Ruby parser — regex-based, no native dependencies.
 Ruby is the one supported language that is not brace-delimited: blocks
 close with `end`, so nesting has to be tracked by keyword rather than by
 counting braces. Parent attribution follows the same lexical nesting,
-which is what makes `NewFoo::bar` come out as a method of `NewFoo` rather than
+which is what makes `Foo::bar` come out as a method of `Foo` rather than
 a bare function.
 """
 from __future__ import annotations

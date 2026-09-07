@@ -53,3 +53,35 @@ def _isolated_pearl_home(tmp_path_factory, monkeypatch):
     fake_home = tmp_path_factory.mktemp("pearl_home")
 
     monkeypatch.setenv("HOME", str(fake_home))
+
+
+@pytest.fixture(autouse=True)
+def _clean_workspace_root():
+    """
+    Clear the thread-local workspace root before and after every test.
+
+    Same class of bug as `_isolated_pearl_home` above, on a different
+    global — and it has already caused real damage.
+
+    Tools resolve paths against `get_workspace_root()`, which falls back
+    to the current directory *only when nothing has been set*. Tests
+    written against that fallback use `monkeypatch.chdir(tmp_path)` and
+    assume it applies. It does not, once any earlier test in the process
+    has set the thread-local: the value survives, `chdir` is ignored, and
+    the tool operates on whatever workspace that test chose.
+
+    In practice that meant `tests/test_refactor_tools.py` — which calls
+    `rename_symbol` — ran against this repository instead of its own
+    `tmp_path`, renaming a symbol across 13 real source files. The tests
+    still passed, because they only assert on files inside `tmp_path`.
+    Nothing failed; the damage was only visible in `git status`.
+
+    Clearing before each test restores the fallback these tests rely on.
+    Clearing after keeps one test's explicit `set_workspace_root` from
+    reaching the next.
+    """
+    from src.config.workspace import clear_workspace_root
+
+    clear_workspace_root()
+    yield
+    clear_workspace_root()

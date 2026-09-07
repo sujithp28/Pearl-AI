@@ -648,7 +648,7 @@ class TestParserFrameworkIntegration:
         registry = ParserRegistry()
         registry.register(FakePythonParser())
 
-        fi = _make_file_info(tmp_path, "service.py", content="class NewFoo:\n    pass\n")
+        fi = _make_file_info(tmp_path, "service.py", content="class Foo:\n    pass\n")
         result = registry.parse(fi)
 
         assert result is not None

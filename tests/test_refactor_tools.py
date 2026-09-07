@@ -106,7 +106,7 @@ class TestRenameSymbol:
 
     def test_same_name_returns_nothing_to_do(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        result = rename_symbol("NewFoo", "NewFoo")
+        result = rename_symbol("Foo", "Foo")
         assert "nothing to do" in result.lower()
 
     def test_no_occurrences_returns_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -166,7 +166,7 @@ class TestRenameSymbol:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.chdir(tmp_path)
-        (tmp_path / "a.py").write_text("class NewFoo: pass\nfoo = NewFoo()\n")
+        (tmp_path / "a.py").write_text("class Foo: pass\nfoo = Foo()\n")
 
         from src.tools.patch_manager import ChangeManager
         from src.tools.edit_tools import set_active_patch_manager
@@ -174,11 +174,11 @@ class TestRenameSymbol:
         pm = ChangeManager()
         set_active_patch_manager(pm)
         try:
-            result = rename_symbol("NewFoo", "Bar")
+            result = rename_symbol("Foo", "Bar")
             # Staged for review
             assert "staged for review" in result
             assert len(pm.pending) == 1
             # Original on disk unchanged
-            assert "NewFoo" in (tmp_path / "a.py").read_text()
+            assert "Foo" in (tmp_path / "a.py").read_text()
         finally:
             set_active_patch_manager(None)
