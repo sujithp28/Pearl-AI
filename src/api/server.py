@@ -38,25 +38,61 @@ from pydantic import BaseModel
 
 from src.agent.completion import CompletionService
 from src.api.session import PearlSession, register_loop
+from src.api.tenancy import (
+    LOCAL_USER,
+    AuthenticationError,
+    SessionRegistry,
+    auth_required,
+    public_mode,
+    resolve_user,
+)
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Pearl AI", version="1.2.0-beta")
 
-# Single global session — Pearl is a local single-user application.
+# The workspace every session is built against. Set at startup.
 _session: PearlSession | None = None
+_workspace: Path | None = None
 _UI_DIR = Path(__file__).resolve().parent.parent.parent / "pearl_ui"
 
+# One session per user. With no auth configured every request resolves
+# to LOCAL_USER, so a local run behaves exactly as it did when this was
+# a single module-level session.
+_registry = SessionRegistry()
 
-def get_session() -> PearlSession:
-    if _session is None:
+
+def get_session(request: Request | None = None) -> PearlSession:
+    """
+    Return the calling user's session, creating it on first use.
+
+    `request` is optional so the many existing call sites keep working:
+    without it, the caller is the local user. Endpoints that must
+    distinguish users pass it explicitly.
+    """
+    if _workspace is None:
         raise HTTPException(status_code=503, detail="Pearl session not initialized.")
-    return _session
+
+    header = request.headers.get("authorization") if request is not None else None
+    try:
+        user_id = resolve_user(header)
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    # Single-user path: keep returning the session built at startup, so
+    # nothing about a local run changes.
+    if user_id == LOCAL_USER and _session is not None:
+        return _session
+
+    return _registry.get_or_create(  # type: ignore[return-value]
+        user_id, lambda: PearlSession(_workspace)
+    )
 
 
 def init_session(workspace: Path) -> None:
-    global _session
-    _session = PearlSession(workspace)
+    global _session, _workspace
+    _workspace = workspace.resolve()
+    _session = PearlSession(_workspace)
 
 
 # ------------------------------------------------------------------ startup
@@ -74,11 +110,14 @@ async def _startup() -> None:
     # README says to start it and what any ASGI host would do — has no
     # such step, leaving _session as None so every endpoint behind
     # get_session() answers 503 while the UI shows "Disconnected".
-    global _session
+    global _session, _workspace
     if _session is None:
-        workspace = Path.cwd().resolve()
-        logger.info("No workspace configured; defaulting to %s", workspace)
-        _session = PearlSession(workspace)
+        # _workspace must be set too: get_session() reads it to build
+        # per-user sessions, and leaving it None reintroduces the 503
+        # this block exists to prevent.
+        _workspace = Path.cwd().resolve()
+        logger.info("No workspace configured; defaulting to %s", _workspace)
+        _session = PearlSession(_workspace)
 
     # Surface an unusable model configuration now rather than letting the
     # server look healthy and fail on every request.
@@ -139,8 +178,8 @@ def check_model_ready() -> str | None:
 
 
 @app.get("/api/status")
-async def status() -> JSONResponse:
-    session = get_session()
+async def status(request: Request) -> JSONResponse:
+    session = get_session(request)
     model_error = check_model_ready()
     return JSONResponse({
         "ok": True,
@@ -162,8 +201,8 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/api/chat")
-async def chat(req: ChatRequest) -> StreamingResponse:
-    session = get_session()
+async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
+    session = get_session(request)
     event_queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_event_loop()
 
@@ -202,8 +241,8 @@ class RunRequest(BaseModel):
 
 
 @app.post("/api/run")
-async def run_autonomous(req: RunRequest) -> StreamingResponse:
-    session = get_session()
+async def run_autonomous(req: RunRequest, request: Request) -> StreamingResponse:
+    session = get_session(request)
 
     if session.is_running():
         raise HTTPException(status_code=409, detail="A run is already in progress.")
@@ -242,22 +281,22 @@ def _run_worker(
 
 
 @app.post("/api/approve")
-async def approve() -> JSONResponse:
-    session = get_session()
+async def approve(request: Request) -> JSONResponse:
+    session = get_session(request)
     result = session.approve()
     return JSONResponse(result)
 
 
 @app.post("/api/reject")
-async def reject() -> JSONResponse:
-    session = get_session()
+async def reject(request: Request) -> JSONResponse:
+    session = get_session(request)
     result = session.reject()
     return JSONResponse(result)
 
 
 @app.post("/api/cancel")
-async def cancel() -> JSONResponse:
-    session = get_session()
+async def cancel(request: Request) -> JSONResponse:
+    session = get_session(request)
     cancelled = session.cancel()
     return JSONResponse({"cancelled": cancelled})
 
@@ -266,8 +305,8 @@ async def cancel() -> JSONResponse:
 
 
 @app.get("/api/patches")
-async def patches() -> JSONResponse:
-    session = get_session()
+async def patches(request: Request) -> JSONResponse:
+    session = get_session(request)
     return JSONResponse({
         "files": session.pending_files(),
         "diff": session.pending_diff(),
@@ -279,8 +318,8 @@ async def patches() -> JSONResponse:
 
 
 @app.get("/api/history")
-async def history() -> JSONResponse:
-    session = get_session()
+async def history(request: Request) -> JSONResponse:
+    session = get_session(request)
     return JSONResponse({"messages": session.conversation_history()})
 
 
@@ -288,8 +327,8 @@ async def history() -> JSONResponse:
 
 
 @app.get("/api/workspace")
-async def get_workspace() -> JSONResponse:
-    session = get_session()
+async def get_workspace(request: Request) -> JSONResponse:
+    session = get_session(request)
     return JSONResponse(session.workspace_info())
 
 
@@ -299,11 +338,38 @@ class WorkspaceRequest(BaseModel):
 
 @app.post("/api/workspace")
 async def set_workspace(req: WorkspaceRequest) -> JSONResponse:
-    global _session
+    """
+    Repoint Pearl at another directory. Local use only.
+
+    This accepts any path on the host, so on a reachable instance it is
+    a full filesystem handle: POST {"path": "/"} and every file tool now
+    operates on the whole server. That is acceptable for a tool running
+    on your own laptop, where you already have that access, and is not
+    acceptable anywhere else — so it is refused whenever the instance is
+    shared (auth configured) or declared internet-facing.
+
+    A hosted deployment gives each user a workspace it provisions; it
+    does not let them choose one by absolute path.
+    """
+    global _session, _workspace
+
+    if auth_required() or public_mode():
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Changing the workspace is disabled on a shared instance. "
+                "It would expose the whole host filesystem to any caller."
+            ),
+        )
+
     p = Path(req.path).expanduser().resolve()
     if not p.is_dir():
         raise HTTPException(status_code=400, detail=f"Not a directory: {req.path}")
+
+    _workspace = p
     _session = PearlSession(p)
+    # Other users' sessions were built against the old workspace.
+    _registry.clear()
     return JSONResponse({"ok": True, "workspace": _session.workspace_info()})
 
 
@@ -463,8 +529,8 @@ async def complete(req: CompleteRequest) -> JSONResponse:
 
 
 @app.get("/api/tools")
-async def tools() -> JSONResponse:
-    session = get_session()
+async def tools(request: Request) -> JSONResponse:
+    session = get_session(request)
     tool_list = [
         {"name": t["name"], "description": t.get("description", "")}
         for t in session.registry.get_tools()
@@ -489,9 +555,9 @@ async def list_sessions() -> JSONResponse:
 
 
 @app.post("/api/sessions")
-async def create_session_endpoint() -> JSONResponse:
+async def create_session_endpoint(request: Request) -> JSONResponse:
     """Create a new persistent session for the current workspace."""
-    session = get_session()
+    session = get_session(request)
     manager = get_session_manager()
     sid = manager.create_session(workspace=str(session.workspace))
     return JSONResponse({"session_id": sid})
