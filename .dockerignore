@@ -1,0 +1,45 @@
+# Keep the build context small and free of anything environment-specific
+# or secret. Everything here would either bloat the image, leak, or be
+# rebuilt inside it anyway.
+
+.git
+.github
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.ruff_cache
+*.egg-info
+build
+dist
+
+# Secrets — never in an image.
+.env
+.env.*
+
+# Virtualenvs are host-specific and would break the container's own.
+.venv
+venv
+env
+
+# Node modules for the extension: not part of the server image.
+vscode-extension/node_modules
+vscode-extension/out
+
+# Models are mounted, not baked (~1.1 GB each).
+*.gguf
+finetune/data
+finetune/adapter
+finetune/merged
+
+# Test and scratch artefacts.
+tests
+_e2e_testdir
+test_workspace
+# The compose bind mount. It is a mount point, never image content —
+# and someone who clones a real repository into it would otherwise
+# send the whole thing to the daemon as build context.
+workspace
+benchmarks/repos
+.claude
+htmlcov
+.coverage

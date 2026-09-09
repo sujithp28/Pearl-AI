@@ -295,6 +295,19 @@ The console script installed by `pip install -e .`. Runs the older
 `PearlAgent` loop (no verification/reflection) — kept for backward
 compatibility; the CLI above is the recommended terminal client.
 
+### Running it in Docker
+
+Don't, for local work. The VS Code extension spawns the backend as a
+child process over stdio, and the CLI runs in your shell — a container
+fits neither, and it takes the local model off your GPU.
+
+There is a `Dockerfile` and a `docker-compose.yml`, and they are for
+*deployment*: putting Pearl on a machine someone reaches over HTTP. That
+case has a hard constraint — Pearl runs shell commands as the server
+process, so several users sharing one container share one execution
+environment. Read [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) before
+exposing anything.
+
 ---
 
 ## Local Inference (Default)
