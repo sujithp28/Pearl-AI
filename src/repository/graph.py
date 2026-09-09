@@ -367,8 +367,26 @@ class RepositoryGraph:
 
                 if n_dots > 0 and module_name == "":
                     # "from . import X" style — each imported name may be a
-                    # submodule of the current package.  Try each name first;
-                    # also try the package __init__ itself.
+                    # submodule of the current package. Resolve each name
+                    # to its own file; fall back to the package __init__
+                    # only when none of them resolved.
+                    #
+                    # The fallback used to be unconditional, which added a
+                    # second edge to __init__ alongside the real one. True
+                    # in the sense that Python runs __init__ on the way
+                    # through, but it is not a dependency on anything the
+                    # importer uses, and it accumulates: every module in a
+                    # package that borrows a sibling pointed one at
+                    # __init__, so impact() rated an empty __init__ as
+                    # risky as the file everything actually imports. A risk
+                    # score that cries wolf on the safest file in the
+                    # folder stops being read.
+                    #
+                    # When nothing named resolves — the name is defined in
+                    # __init__ itself — the fallback edge is the only true
+                    # one left, so it stays.
+                    resolved_any = False
+
                     for name in imported_names:
                         tp = _resolve_to_file(n_dots, name, fi.relative_path, module_map)
                         if tp is not None and tp in g._nodes and tp != fi.relative_path:
@@ -378,8 +396,13 @@ class RepositoryGraph:
                                 kind=EdgeKind.IMPORTS,
                                 imported_names=(name,),
                             ))
-                    # Also try the package __init__ if it exists
-                    tp = _resolve_to_file(n_dots, "", fi.relative_path, module_map)
+                            resolved_any = True
+
+                    tp = (
+                        None
+                        if resolved_any
+                        else _resolve_to_file(n_dots, "", fi.relative_path, module_map)
+                    )
                     if tp is not None and tp in g._nodes and tp != fi.relative_path:
                         g._add_edge(Edge(
                             source=fi.relative_path,

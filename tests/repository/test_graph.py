@@ -1493,3 +1493,76 @@ class TestBenchmarks:
         elapsed_ms = (time.monotonic() - t0) * 1000
 
         assert elapsed_ms / 50 < 50, f"impact() avg {elapsed_ms/50:.1f}ms (limit 50ms)"
+
+
+# ---------------------------------------------------------------------------
+# "from . import X" — the package __init__ is a fallback, not an addition
+# ---------------------------------------------------------------------------
+
+
+class TestSiblingImportDoesNotAlsoDependOnInit:
+    """
+    `from . import helpers` used to add two IMPORTS edges: one to
+    helpers.py, and one to the package's __init__.py.
+
+    The second is true in the sense that Python executes __init__ on the
+    way through, but it is not a dependency on anything the importer
+    uses — and it accumulates. Every module in a package that borrows a
+    sibling pointed one at __init__, so impact() rated an empty __init__
+    as risky as the file everything actually imports. A risk score that
+    cries wolf on the safest file in the folder stops being read.
+
+    It stays as a fallback: when no named import resolves, the __init__
+    edge is the only honest thing left to record.
+    """
+
+    PACKAGE = {
+        "pkg/__init__.py": "",
+        "pkg/helpers.py": "def helper():\n    return 1\n",
+        "pkg/mod_a.py": "from . import helpers\n\ndef a():\n    return helpers.helper()\n",
+        "pkg/mod_b.py": "from . import helpers\n\ndef b():\n    return helpers.helper()\n",
+    }
+
+    def test_sibling_edge_is_recorded(self, tmp_path: Path) -> None:
+        graph = _build_graph(tmp_path, self.PACKAGE)
+
+        out = {n.id for n in graph.neighbors_out("pkg/mod_a.py", EdgeKind.IMPORTS)}
+
+        assert "pkg/helpers.py" in out
+
+    def test_no_edge_to_the_package_init(self, tmp_path: Path) -> None:
+        graph = _build_graph(tmp_path, self.PACKAGE)
+
+        out = {n.id for n in graph.neighbors_out("pkg/mod_a.py", EdgeKind.IMPORTS)}
+
+        assert "pkg/__init__.py" not in out
+
+    def test_init_is_not_rated_risky_by_sibling_imports(
+        self, tmp_path: Path
+    ) -> None:
+        graph = _build_graph(tmp_path, self.PACKAGE)
+
+        init = graph.impact("pkg/__init__.py")
+        helpers = graph.impact("pkg/helpers.py")
+
+        assert init.direct_dependents == []
+        assert sorted(helpers.direct_dependents) == ["pkg/mod_a.py", "pkg/mod_b.py"]
+
+    def test_init_edge_remains_as_a_fallback(self, tmp_path: Path) -> None:
+        """
+        Nothing named resolves here — `thing` is defined in __init__
+        itself, not in a sibling module. The __init__ edge is then the
+        only true one, and dropping it would lose the dependency
+        entirely.
+        """
+        graph = _build_graph(
+            tmp_path,
+            {
+                "pkg/__init__.py": "thing = 1\n",
+                "pkg/mod_a.py": "from . import thing\n\ndef a():\n    return thing\n",
+            },
+        )
+
+        out = {n.id for n in graph.neighbors_out("pkg/mod_a.py", EdgeKind.IMPORTS)}
+
+        assert "pkg/__init__.py" in out
