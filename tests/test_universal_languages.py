@@ -344,3 +344,178 @@ class TestHumanLanguages:
         assert "same language" in prompt
         # Code must survive untranslated, or the reply is useless.
         assert "must not be translated" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Every parser, one shape
+#
+# The JS/TS parser shipped emitting no SymbolKind.METHOD at all: its method
+# regex was written and never wired. Nothing caught it because the tests
+# asserted per-language that a class and a function were found, and no
+# language's test asked whether methods were.
+#
+# This asks the same three questions of all thirteen, so a parser that
+# silently stops finding one kind of symbol fails here rather than
+# degrading Pearl's index in the dark.
+# ---------------------------------------------------------------------------
+
+
+# (filename, source, class, method, free function or None where the
+# language has no meaningful top-level function)
+_LANGUAGE_SAMPLES: list[tuple[str, str, str, str, str | None]] = [
+    (
+        "s.py",
+        "class UserService:\n"
+        "    def find_user(self, id):\n"
+        "        return id\n"
+        "\n"
+        "def standalone(x):\n"
+        "    return x + 1\n",
+        "UserService", "find_user", "standalone",
+    ),
+    (
+        "s.js",
+        "class UserService {\n"
+        "  findUser(id) { return id; }\n"
+        "}\n"
+        "function standalone(x) { return x + 1; }\n",
+        "UserService", "findUser", "standalone",
+    ),
+    (
+        "s.ts",
+        "export class UserService {\n"
+        "  public findUser(id: string): string { return id; }\n"
+        "}\n"
+        "export function standalone(x: number): number { return x + 1; }\n",
+        "UserService", "findUser", "standalone",
+    ),
+    (
+        "S.java",
+        "public class UserService {\n"
+        "    public String findUser(String id) { return id; }\n"
+        "}\n",
+        "UserService", "findUser", None,
+    ),
+    (
+        "s.go",
+        "package main\n"
+        "type UserService struct { db int }\n"
+        "func (s *UserService) FindUser(id string) error { return nil }\n"
+        "func Standalone(x int) int { return x + 1 }\n",
+        "UserService", "FindUser", "Standalone",
+    ),
+    (
+        "s.rs",
+        "pub struct UserService { db: u32 }\n"
+        "impl UserService {\n"
+        "    pub fn find_user(&self, id: u32) -> u32 { id }\n"
+        "}\n"
+        "pub fn standalone(x: i32) -> i32 { x + 1 }\n",
+        "UserService", "find_user", "standalone",
+    ),
+    (
+        "s.cpp",
+        "class UserService {\n"
+        "public:\n"
+        "    int findUser(int id) { return id; }\n"
+        "};\n"
+        "int standalone(int x) { return x + 1; }\n",
+        "UserService", "findUser", "standalone",
+    ),
+    (
+        "s.cs",
+        "public class UserService {\n"
+        "    public string FindUser(string id) { return id; }\n"
+        "}\n",
+        "UserService", "FindUser", None,
+    ),
+    (
+        "s.rb",
+        "class UserService\n"
+        "  def find_user(id)\n"
+        "    id\n"
+        "  end\n"
+        "end\n",
+        "UserService", "find_user", None,
+    ),
+    (
+        "s.php",
+        "<?php\n"
+        "class UserService {\n"
+        "    public function findUser($id) { return $id; }\n"
+        "}\n"
+        "function standalone($x) { return $x + 1; }\n",
+        "UserService", "findUser", "standalone",
+    ),
+    (
+        "s.swift",
+        "class UserService {\n"
+        "    func findUser(id: String) -> String { return id }\n"
+        "}\n"
+        "func standalone(x: Int) -> Int { return x + 1 }\n",
+        "UserService", "findUser", "standalone",
+    ),
+    (
+        "s.kt",
+        "class UserService {\n"
+        "    fun findUser(id: String): String = id\n"
+        "}\n"
+        "fun standalone(x: Int): Int = x + 1\n",
+        "UserService", "findUser", "standalone",
+    ),
+]
+
+_SAMPLE_IDS = [name for name, *_ in _LANGUAGE_SAMPLES]
+
+
+class TestEveryParserFindsTheSameShape:
+    @pytest.mark.parametrize(
+        "sample", _LANGUAGE_SAMPLES, ids=_SAMPLE_IDS
+    )
+    def test_class_is_found(self, registry, tmp_path, sample):
+        name, source, class_name, _, _ = sample
+        result = _parse(registry, tmp_path, name, source)
+
+        assert class_name in {s.name for s in result.symbols}
+
+    @pytest.mark.parametrize(
+        "sample", _LANGUAGE_SAMPLES, ids=_SAMPLE_IDS
+    )
+    def test_method_is_found_and_marked_as_a_method(
+        self, registry, tmp_path, sample
+    ):
+        """
+        The exact check the JS/TS parser would have failed from the day
+        it shipped.
+        """
+        name, source, _, method_name, _ = sample
+        result = _parse(registry, tmp_path, name, source)
+
+        methods = {s.name for s in result.symbols if s.kind is SymbolKind.METHOD}
+
+        assert method_name in methods, (
+            f"{name}: expected {method_name!r} as a METHOD, got "
+            f"{[(s.name, s.kind.value) for s in result.symbols]}"
+        )
+
+    @pytest.mark.parametrize(
+        "sample", _LANGUAGE_SAMPLES, ids=_SAMPLE_IDS
+    )
+    def test_free_function_is_found(self, registry, tmp_path, sample):
+        name, source, _, _, function_name = sample
+
+        if function_name is None:
+            pytest.skip(f"{name}: no meaningful top-level function")
+
+        result = _parse(registry, tmp_path, name, source)
+
+        assert function_name in {s.name for s in result.symbols}
+
+    @pytest.mark.parametrize(
+        "sample", _LANGUAGE_SAMPLES, ids=_SAMPLE_IDS
+    )
+    def test_parsing_reports_no_errors(self, registry, tmp_path, sample):
+        name, source, *_ = sample
+        result = _parse(registry, tmp_path, name, source)
+
+        assert not result.errors, f"{name}: {result.errors}"
