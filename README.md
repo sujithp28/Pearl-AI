@@ -8,7 +8,7 @@
 ![Status](https://img.shields.io/badge/Status-Public%20Beta-orange)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 ![Version](https://img.shields.io/badge/Version-1.2.0--beta-informational)
-![Tests](https://img.shields.io/badge/Tests-2%2C769%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-2%2C793%20passing-brightgreen)
 
 ---
 
@@ -87,9 +87,9 @@ adds the pieces that turn "the tools ran" into "the task is verified done":
   served by a small local model with no API key. See
   [Inline Completion](#inline-completion).
 - **Multi-language repository parsing** — Python (AST-based), plus
-  regex-based parsers for JavaScript, TypeScript, Go, Rust, and Java, all
-  registered by default and degrading gracefully (never raising) on
-  malformed input.
+  regex-based parsers for 12 more languages (JavaScript, TypeScript, Go,
+  Rust, Java, C, C++, C#, Ruby, PHP, Swift, Kotlin), all registered by
+  default and degrading gracefully (never raising) on malformed input.
 - **Persistent sessions** — conversations survive a server restart
   (`SessionManager`, `src/agent/session_manager.py`), with the web UI
   synced against the same `/api/sessions` the API exposes.
@@ -166,14 +166,14 @@ adds the pieces that turn "the tools ran" into "the task is verified done":
          AutonomousExecutor
           ├── plan_with_retry()        retry a bad plan once
           ├── validate_plan()          read-before-write, no duplicate writes
-          ├── ApprovalCoordinator      PatchManager + CommandApprovalManager
+          ├── ApprovalCoordinator      ChangeManager + CommandApprovalManager
           ├── CheckpointCoordinator    snapshot before every write batch
           │
           ▼
          Tool Dispatcher  (src/agent/dispatcher.py)
           │
           ▼
-         PatchManager  ──▶ pause for approval ──▶ apply to disk ──▶ Git
+         ChangeManager  ──▶ pause for approval ──▶ apply to disk ──▶ Git
           │
           ▼
          VerificationEngine   git status + impact-selected tests
@@ -522,7 +522,7 @@ newline-delimited JSON-RPC 2.0 over stdio.
    `max_replans`). The failed step and its error are fed back into the
    next planning prompt.
 5. **Approve** — any step that would write a file, or run a shell command,
-   pauses the run for human approval via `PatchManager` /
+   pauses the run for human approval via `ChangeManager` /
    `CommandApprovalManager`. No write reaches disk and no command runs
    without it. A checkpoint is taken immediately before the write batch
    lands, so it can always be undone.
@@ -567,11 +567,23 @@ route through this same policy rather than defining their own bypass.
 
 ## Patch Approval
 
-File-writing tools (`create_file`, `edit_lines`, `patch_file`,
-`replace_in_file`, and the symbol-aware editors) never write to disk
-directly — they stage a unified diff through `PatchManager`
-(`src/tools/patch_manager.py`) and the executor pauses. Only after an
-explicit `approve()` is the patch applied; `reject()` discards it.
+Every tool that changes file content stages a unified diff through
+`ChangeManager` (`src/tools/patch_manager.py`) instead of writing, and
+the executor pauses. Only after an explicit `approve()` is the batch
+applied; `reject()` discards it.
+
+That covers `create_file`, `write_file`, `append_file`, `delete_file`,
+`replace_in_file`, `edit_lines`, `patch_file`, the symbol-aware editors,
+and the multi-file refactoring tools.
+
+Deletions ride the same batch as edits, so a run that rewrites two files
+and removes a third shows you all three in one review rather than
+splitting them across two prompts.
+
+`make_directory` is the one deliberate exception. A staged edit is one
+file's before-and-after text and a directory has neither, so creating an
+empty one is not staged — it destroys nothing, and any file placed
+inside it still goes through the gate.
 
 This is the mechanism that guarantees **no autonomous run modifies your
 working tree without a human in the loop**.
@@ -649,10 +661,18 @@ usually the profile routing it on purpose. `GET /api/provider` (web UI)
 reports what each role actually resolves to.
 
 **A patch never appears for approval.**
-Only the dedicated edit tools stage patches; a step that uses
-`execute_shell` to write a file bypasses `PatchManager` by design —
-shell commands are approved separately via `CommandApprovalManager`, not
-diffed.
+Every content-mutating tool stages a diff, so the usual cause is a step
+that used `execute_shell` to write a file. That bypasses `ChangeManager`
+by design — shell output is not structured enough to diff, so commands
+are approved separately through `CommandApprovalManager`. Creating an
+empty directory is also not staged, for the reason given under
+[Patch Approval](#patch-approval).
+
+**Pearl says the provider rejected its credentials.**
+The message names no vendor because Pearl routes each role to whichever
+provider you configured. Check the key for the provider that role
+resolves to — `GET /api/provider` reports the mapping — or unset
+`PEARL_LLM_PROVIDER` to fall back to the local model, which needs no key.
 
 **A run keeps replanning and never finishes.**
 Bounded by `max_replans` (executor) and `Settings.REFLECTION_MAX_ITERATIONS`
@@ -670,7 +690,7 @@ No — the default provider (`pearl`, with no `PEARL_INFERENCE_API_KEY` set)
 runs fully locally with no external calls.
 
 **Can Pearl modify files without asking?**
-No. Every file-writing tool stages a diff via `PatchManager` and the run
+No. Every file-writing tool stages a diff via `ChangeManager` and the run
 pauses until it's approved or rejected — this is not configurable per-tool
 by design, on any of the three surfaces.
 
