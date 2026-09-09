@@ -500,7 +500,7 @@ incomplete frames produces silent JSON errors.
 |---|---|---|
 | Module | `snake_case` | `repo_tools.py`, `patch_manager.py` |
 | Package | `snake_case` | `src/agent/`, `src/llm/` |
-| Class | `PascalCase` | `AutonomousExecutor`, `PatchManager` |
+| Class | `PascalCase` | `AutonomousExecutor`, `ChangeManager` |
 | Exception | `PascalCase` + `Error` suffix | `ToolExecutionError`, `CheckpointError` |
 | Function | `snake_case` | `build_registry`, `refresh_indexed_file` |
 | Method | `snake_case` | `run_autonomous`, `approve` |
@@ -1211,14 +1211,14 @@ Thread-local state that write tools read to know whether they're inside an auton
 execution context.
 
 ```python
-_ACTIVE_PATCH_MANAGER: ContextVar[PatchManager | None] = ContextVar(
+_ACTIVE_PATCH_MANAGER: ContextVar[ChangeManager | None] = ContextVar(
     "_ACTIVE_PATCH_MANAGER", default=None
 )
 
-def set_active_patch_manager(pm: PatchManager | None) -> None:
+def set_active_patch_manager(pm: ChangeManager | None) -> None:
     _ACTIVE_PATCH_MANAGER.set(pm)
 
-def get_active_patch_manager() -> PatchManager | None:
+def get_active_patch_manager() -> ChangeManager | None:
     return _ACTIVE_PATCH_MANAGER.get()
 ```
 
@@ -1787,7 +1787,7 @@ in the same PR.
 **Rule REF-5:** Public interfaces (tool names, MCP methods, `PearlAgent` public
 methods) MUST NOT be renamed without a deprecation cycle (see Rule EV-1).
 
-**Rule REF-6:** Refactoring the approval flow (`PatchManager`, `AutonomousExecutor`)
+**Rule REF-6:** Refactoring the approval flow (`ChangeManager`, `AutonomousExecutor`)
 requires full re-validation of the approval invariant test suite before merging.
 
 ---
@@ -1932,7 +1932,7 @@ without routing them through `CommandApprovalManager` when in autonomous mode.
 
 **Rule SEC-11:** When writing files, Pearl MUST use atomic writes (write to a temp
 file, then rename) for any file where a partial write would leave a corrupt state.
-`PatchManager` handles this for patch application.
+`ChangeManager` handles this for patch application.
 
 **Rule SEC-12:** Pearl MUST NOT follow symlinks that escape the workspace boundary.
 `_ensure_within_workspace()` MUST resolve symlinks before comparing to the workspace
@@ -1985,7 +1985,7 @@ a model name that appears in 7 files.
 
 **Symptom:** `find_symbol` returns stale results for a symbol that was just written.
 The model's next step uses the wrong line numbers.  
-**Fix:** Every code path that commits a file write (real or via `PatchManager.apply_all()`)
+**Fix:** Every code path that commits a file write (real or via `ChangeManager.apply_all()`)
 MUST call `refresh_indexed_file(path)` for each written file.
 
 ### Mistake 8: Long function with multiple `return` paths and early exits
@@ -2169,7 +2169,7 @@ incorrect API signatures, missing edge cases, hallucinated function names. Verif
 suggestions may be used as a reference or starting point, but the final implementation
 must be reviewed and rewritten line-by-line by the contributor:
 
-- `PatchManager` and `CommandApprovalManager` (approval invariant)
+- `ChangeManager` and `CommandApprovalManager` (approval invariant)
 - `AutonomousExecutor._checkpoint_before_writing()` (data safety)
 - `_ensure_within_workspace()` (security boundary)
 - `_DANGEROUS_PATTERNS` (shell injection prevention)

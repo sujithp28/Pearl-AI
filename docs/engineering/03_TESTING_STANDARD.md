@@ -210,8 +210,8 @@ These specific unit tests MUST exist in every sprint:
 
 ```python
 def test_write_file_stages_to_patch_manager_when_active():
-    """File is staged — not written — when a PatchManager is active."""
-    pm = PatchManager()
+    """File is staged — not written — when a ChangeManager is active."""
+    pm = ChangeManager()
     set_active_patch_manager(pm)
     try:
         write_file("test.py", "content")
@@ -221,7 +221,7 @@ def test_write_file_stages_to_patch_manager_when_active():
         set_active_patch_manager(None)
 
 def test_write_file_writes_directly_when_no_patch_manager():
-    """File is written directly when no PatchManager is active."""
+    """File is written directly when no ChangeManager is active."""
     with temp_workspace() as ws:
         write_file(str(ws / "test.py"), "content")
         assert (ws / "test.py").read_text() == "content"
@@ -368,7 +368,7 @@ Scenario: Cancellation mid-run leaves no partial state
 Given: A scripted plan with multiple steps
 When: cancel_event is set after step 1 completes
 Then: stop_reason == "cancelled"
-AND: No patches remain staged (PatchManager is clean)
+AND: No patches remain staged (ChangeManager is clean)
 AND: context vars are cleared (set_active_patch_manager returns None)
 ```
 
@@ -555,11 +555,11 @@ These tests were added to prevent re-introduction of specific past bugs:
 
 | Test name | Bug prevented | Sprint fixed |
 |---|---|---|
-| `test_planner_run_removed` | `Planner.run()` bypassed PatchManager | Sprint 0 |
-| `test_plan_and_run_removed` | `PearlAgent.plan_and_run()` bypassed PatchManager | Sprint 0 |
+| `test_planner_run_removed` | `Planner.run()` bypassed ChangeManager | Sprint 0 |
+| `test_plan_and_run_removed` | `PearlAgent.plan_and_run()` bypassed ChangeManager | Sprint 0 |
 | `test_pearl_plan_mcp_method_removed` | `pearl/plan` MCP method bypassed approval | Sprint 0 |
 | `test_has_tool_removed_from_dispatcher` | `has_tool()` raised instead of returning False | Sprint 0 |
-| `test_context_vars_cleared_on_cancel` | Active PatchManager leaked into next run | Sprint 0 |
+| `test_context_vars_cleared_on_cancel` | Active ChangeManager leaked into next run | Sprint 0 |
 | `test_emoji_modes_all_distinct` | Three of four emoji modes were identical | Sprint 0 |
 | `test_search_results_capped_at_200` | Unbounded search results crashed planner context | Sprint 0 |
 
@@ -716,7 +716,7 @@ AND: Context vars are cleaned up
 Given: Two simultaneous AutonomousExecutor instances in different threads
 (simulating a multi-client scenario)
 When: Both run concurrently with scripted plans
-Then: Each thread's PatchManager affects only its own staged patches
+Then: Each thread's ChangeManager affects only its own staged patches
 AND: No cross-thread state contamination is observed
 AND: Both runs complete without exceptions
 ```
@@ -836,7 +836,7 @@ Then: No log record at any level contains the raw API key value
 
 ```
 Given: A file containing a credential string
-When: write_file() stages the file in a PatchManager
+When: write_file() stages the file in a ChangeManager
 Then: The raw credential appears only in the diff (expected)
 AND: It is not additionally logged anywhere
 ```
@@ -881,7 +881,7 @@ def test_write_and_read_file_encoding_roundtrip(content, tmp_workspace):
 #### FS-02: Atomic patch application
 
 ```
-Given: PatchManager with a staged diff that modifies 3 files
+Given: ChangeManager with a staged diff that modifies 3 files
 When: apply_all() is called
 Then: Either all 3 files are written or none are (no partial state)
 AND: A simulated write failure mid-apply leaves the workspace unchanged
@@ -918,7 +918,7 @@ AND: The file is written successfully
 #### FS-06: Concurrent write safety
 
 ```
-Given: Two threads attempting to write to the same file via PatchManager
+Given: Two threads attempting to write to the same file via ChangeManager
 When: Both call apply_all() concurrently
 Then: One wins, one gets a conflict error
 AND: The file is not corrupted
@@ -1752,7 +1752,7 @@ Use this checklist when reviewing any PR that adds or modifies tests.
 ### Chaos Engineering
 
 - [ ] LLM provider failure scenario tested (raises replanning or fatal_error correctly)
-- [ ] Filesystem write failure tested (PatchManager rolls back all writes)
+- [ ] Filesystem write failure tested (ChangeManager rolls back all writes)
 - [ ] Subprocess timeout tested (no zombie processes; ToolExecutionError recorded)
 - [ ] Context var state is clean after each chaos scenario
 
@@ -1963,7 +1963,7 @@ Expected:
   - Executor catches the error and attempts a replan
   - Replan budget (DEFAULT_MAX_REPLANS) is respected
   - If replanning fails, stop_reason == "fatal_error"
-  - Context vars (PatchManager, CommandApprovalManager) are cleared
+  - Context vars (ChangeManager, CommandApprovalManager) are cleared
   - No partial patches remain staged
 PASS if: All expected conditions true; no traceback visible to caller
 ```
@@ -1971,10 +1971,10 @@ PASS if: All expected conditions true; no traceback visible to caller
 #### CHAOS-02: Filesystem Write Failure Mid-Patch
 
 ```
-Setup:    Scripted plan that writes 3 files; PatchManager has all 3 staged.
+Setup:    Scripted plan that writes 3 files; ChangeManager has all 3 staged.
 Inject:   Monkeypatch Path.write_text to raise PermissionError on the 2nd file.
 Expected:
-  - PatchManager.apply_all() detects the failure
+  - ChangeManager.apply_all() detects the failure
   - Writes that already succeeded are rolled back (atomic guarantee)
   - Workspace is unchanged from pre-apply state
   - CheckpointError or PermissionError is surfaced to the executor
@@ -2004,7 +2004,7 @@ Expected:
   - Even with the simulated timing issue, get_active_patch_manager() returns None
     after the run completes (context var cleanup must be in a finally block)
   - Subsequent run starts with clean context
-PASS if: Next run's PatchManager is None at start; no stale staged patches
+PASS if: Next run's ChangeManager is None at start; no stale staged patches
 ```
 
 #### CHAOS-05: Checkpoint Shadow Repo Corruption
@@ -2046,7 +2046,7 @@ pytest tests/chaos/ -v --timeout=120
 | Criterion | PASS | FAIL |
 |---|---|---|
 | All 6 scenarios | Expected recovery behavior | Any unexpected exception type, data loss, or zombie |
-| Context var state | Clean after each scenario | Any stale PatchManager reference |
+| Context var state | Clean after each scenario | Any stale ChangeManager reference |
 | Workspace integrity | Identical to pre-chaos state (where expected) | Any unintended write |
 | Clear error messages | Error message identifies cause and scope | Generic "Error" or silent failure |
 

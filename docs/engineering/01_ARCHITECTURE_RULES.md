@@ -77,7 +77,7 @@ stdio. No other inter-process communication is permitted.
 │  • All LLM communication                   │
 │  • All file I/O                             │
 │  • All git operations                       │
-│  • Approval gating (PatchManager)           │
+│  • Approval gating (ChangeManager)           │
 │  • Repository indexing                      │
 │  • Session memory                           │
 └─────────────────────────────────────────────┘
@@ -109,11 +109,13 @@ responsibility. **A layer may only depend on layers below it** — never upward,
 within the same layer.
 
 ```
-Layer 6  ─── Entry Points ────────  src/main.py, src/mcp/__main__.py
+Layer 6  ─── Entry Points ────────  src/main.py, src/mcp/__main__.py,
+                                     src/api/__main__.py, src/cli/
                                      Wires everything together; no logic
 
-Layer 5  ─── Protocol ────────────  src/mcp/server.py
-                                     JSON-RPC dispatch, stdio framing
+Layer 5  ─── Protocol ────────────  src/mcp/server.py, src/api/
+                                     JSON-RPC over stdio (mcp) and HTTP/SSE
+                                     (api). Dispatch and framing only.
 
 Layer 4  ─── Agent ──────────────  src/agent/ (agent.py, executor.py,
                                      planner.py, dispatcher.py)
@@ -122,12 +124,31 @@ Layer 4  ─── Agent ──────────────  src/agent/ 
 Layer 3  ─── Tools ─────────────  src/tools/ (all tool modules)
                                      Pure functions; tool logic only
 
-Layer 2  ─── Infrastructure ─────  src/llm/, src/memory/
-                                     LLM abstraction, session memory
+Layer 2  ─── Infrastructure ─────  src/llm/, src/memory/, src/repository/,
+                                     src/web/, src/personality/
+                                     LLM abstraction, session memory, code
+                                     index and parsers, web retrieval,
+                                     response voice
 
 Layer 1  ─── Foundation ─────────  src/config/, src/prompts/
                                      Settings, prompt templates
 ```
+
+This map names every package under `src/`. It is exhaustive on purpose: an earlier
+version listed eight of the twelve, and a contributor asking "where does this code
+belong?" got no answer for `api`, `cli`, `personality`, `repository` or `web`. When you
+add a package, add it here.
+
+Two placements are worth stating explicitly, because they are the ones people get wrong:
+
+- **`src/api/` is a second protocol surface, not a new layer.** It is a peer of
+  `src/mcp/server.py`, serving HTTP and SSE where the other serves JSON-RPC over stdio.
+  Both dispatch into Layer 4 and neither may hold agent logic. A behaviour that both
+  surfaces need belongs in `src/agent/`, not duplicated across the two.
+- **`src/repository/` is infrastructure, not a tool.** The index, scanner, graph and the
+  per-language parsers live at Layer 2; `src/tools/repo_tools.py` is the Layer 3 wrapper
+  that exposes them to the agent. The same split applies to `src/web/` and
+  `src/tools/web_tools.py`.
 
 ### 2.2 Layer Dependency Rules
 
@@ -194,7 +215,7 @@ This is Pearl's most critical safety property. It is not negotiable under any ci
 ### 3.1 Statement
 
 > **Every write to the user's workspace that is initiated by an autonomous run MUST pass
-> through `PatchManager` and be explicitly approved by the user before reaching disk.**
+> through `ChangeManager` and be explicitly approved by the user before reaching disk.**
 
 ### 3.2 What This Means
 
@@ -223,7 +244,7 @@ This is Pearl's most critical safety property. It is not negotiable under any ci
    understand it is bypassing the approval gate — and in autonomous agent code, that
    is a bug, not a feature.
 
-3. `PatchManager` MUST be the **single chokepoint**. No write tool may have a "fast
+3. `ChangeManager` MUST be the **single chokepoint**. No write tool may have a "fast
    path" that skips staging.
 
 ### 3.3 The Three Execution Modes
@@ -232,14 +253,14 @@ This is Pearl's most critical safety property. It is not negotiable under any ci
 |---|---|---|
 | Direct tool call (CLI tool, test) | `ToolDispatcher.execute()` directly | None — caller is already a human |
 | `tools/call` MCP method | `MCPServer._tools_call()` → `ToolDispatcher` | None — client is making a deliberate call |
-| Autonomous run | `MCPServer._run_autonomous()` → `AutonomousExecutor.run()` | **Required** — PatchManager active |
+| Autonomous run | `MCPServer._run_autonomous()` → `AutonomousExecutor.run()` | **Required** — ChangeManager active |
 
 **Rule A-1:** When `set_active_patch_manager(pm)` is called, ALL subsequent file-writing
 tool calls in that thread context MUST stage to `pm`. No tool may read and ignore the
 active patch manager.
 
 **Rule A-2:** A new execution path that calls write tools autonomously MUST activate a
-`PatchManager` first and MUST NOT bypass it. New MCP methods, new agent modes, and new
+`ChangeManager` first and MUST NOT bypass it. New MCP methods, new agent modes, and new
 CLI commands that execute write tools autonomously are all subject to this rule.
 
 **Rule A-3:** `execute_shell` is the one deliberate exception. Shell commands are
@@ -258,7 +279,7 @@ approval.
 A new feature wants to write a file. Is it...
 │
 ├─ ...invoked autonomously by the agent?
-│   └─ YES → MUST use AutonomousExecutor + PatchManager. No exceptions.
+│   └─ YES → MUST use AutonomousExecutor + ChangeManager. No exceptions.
 │
 ├─ ...a direct user command (CLI built-in, explicit `tools/call`)?
 │   └─ YES → May write directly. Document why in a comment.
@@ -304,7 +325,7 @@ cancellation, and progress streaming. It MUST NOT contain planning logic or LLM 
 **Rule E-2:** `AutonomousExecutor` delegates ALL tool execution to `ToolDispatcher`. It
 MUST NOT invoke tool functions directly.
 
-**Rule E-3:** `AutonomousExecutor` MUST accept `PatchManager` and `CommandApprovalManager`
+**Rule E-3:** `AutonomousExecutor` MUST accept `ChangeManager` and `CommandApprovalManager`
 as constructor parameters (with sensible defaults) — not create them internally with
 no way to substitute them. This is required for both testability and controlled sharing
 (e.g., `MCPServer` passes its `CheckpointManager` in).
@@ -412,7 +433,7 @@ executes file edits autonomously MUST also go through this same pause/approval c
 
 | State | Owner | Lifetime | Shared with |
 |---|---|---|---|
-| `PatchManager` | `AutonomousExecutor` | One run (or pause/resume cycle) | `edit_tools` via context var |
+| `ChangeManager` | `AutonomousExecutor` | One run (or pause/resume cycle) | `edit_tools` via context var |
 | `CommandApprovalManager` | `AutonomousExecutor` | One run | `shell_tools` via context var |
 | `CheckpointManager` | `MCPServer` / `PearlAgent` | Process lifetime | `AutonomousExecutor` (passed in) |
 | `Memory` | `MCPServer` / `PearlAgent` | Process lifetime | — |
@@ -473,11 +494,46 @@ forward its cancellation check. Blocking LLM calls that ignore cancellation degr
 `generate()` in its own retry loop is introducing duplicate behavior that will fight
 with the client's own backoff.
 
+**Rule LLM-7:** A provider classifies its own SDK's exceptions by declaring two tuples
+on itself. `TRANSIENT_ERRORS` are worth retrying with backoff (network, rate limit, 5xx).
+`AUTH_ERRORS` are credential failures, which `LLMClient` translates into
+`ProviderAuthError` (`src/llm/errors.py`) and never retries — a rejected key fails
+identically on the fourth attempt, just more slowly.
+
+Callers above the LLM layer MUST catch `ProviderAuthError`, never a vendor exception.
+Catching a vendor type both violates Rule LLM-1 and silently narrows the handler to one
+provider family: `src/mcp/server.py` previously caught `openai.OpenAIError` to show a
+setup message, so the message never appeared for a Claude, Gemini or local user.
+
+A provider that authenticates nothing (local inference, scripted) leaves both tuples
+empty, which is the inherited default.
+
 ### 8.2 Provider Configuration
 
-**Rule LLM-5:** Provider selection is controlled solely by `Settings.LLM_PROVIDER`.
-No module may select a provider based on other heuristics (model name patterns,
-environment variables other than those `Settings` reads, etc.).
+**Rule LLM-5:** Provider selection is owned by `ModelRouter` (`src/llm/router.py`) and
+nothing else. No other module may select a provider, and no module may select one from
+information `Settings` does not read (model name patterns, ad-hoc environment variables,
+request content).
+
+The router resolves a provider per task role — `planning`, `chat`, `edit`, `condenser`,
+`autocomplete`, `vision`, `reflection` — in this precedence order:
+
+1. An explicit per-role setting (`PEARL_PLANNING_PROVIDER` and friends)
+2. A derived role's inheritance from the role it specialises (`edit`, `condenser` and
+   `reflection` fall back to `CHAT_PROVIDER`)
+3. The active profile from `PEARL_MODEL_PROFILE` (`local`, `hybrid`, `cloud`, or `auto`)
+4. The global `Settings.LLM_PROVIDER`
+
+Two invariants hold regardless of profile. Latency-critical roles (`autocomplete`) stay
+local unless a global provider was explicitly chosen, because a network round-trip
+cannot meet their budget. An unrecognised profile resolves to `local`, which is the safe
+direction since it requires nothing external.
+
+An earlier version of this rule said selection was controlled "solely by
+`Settings.LLM_PROVIDER`" and forbade any other heuristic. That stopped being true when
+per-role routing landed, and the rule as written would have condemned `ModelRouter`
+itself. The constraint that still matters is the one above: one owner, and only from
+configuration.
 
 **Rule LLM-6:** The `scripted` provider (`src/llm/providers/scripted.py`) MUST only be
 selectable via explicit configuration (`PEARL_LLM_PROVIDER=scripted`). It MUST NOT be a
@@ -520,7 +576,7 @@ function is a planning-time correctness bug.
 `_ensure_within_workspace(path)` before any I/O. This is the workspace boundary
 enforcement that prevents path traversal attacks.
 
-**Rule T-5:** A tool MUST NOT read from the active `PatchManager` or
+**Rule T-5:** A tool MUST NOT read from the active `ChangeManager` or
 `CommandApprovalManager` state — only write tools may stage into them. Tools that
 need to report "what's pending" expose that through the executor/server API, not the
 tool itself.
@@ -622,7 +678,7 @@ dispatcher.execute("create_file", path="out.py", content="...")
 
 # FORBIDDEN — writing directly from a tool when a patch manager is active
 def my_tool(path: str, content: str) -> None:
-    Path(path).write_text(content)  # ignores active PatchManager
+    Path(path).write_text(content)  # ignores active ChangeManager
 ```
 
 ### 12.2 Upward Dependency
@@ -714,12 +770,12 @@ document and the exception code.
 
 | Code | Exception | Condition |
 |---|---|---|
-| PE-001 | `execute_shell` bypasses `PatchManager` | Shell output is not structured enough to diff meaningfully; guarded by `CommandApprovalManager` instead |
+| PE-001 | `execute_shell` bypasses `ChangeManager` | Shell output is not structured enough to diff meaningfully; guarded by `CommandApprovalManager` instead |
 | PE-002 | Test helpers write files directly | Test setup/teardown code; MUST NOT use production write-tool code paths |
 | PE-003 | `src/tools/metadata.py` is imported by tool modules | Shared decorator — not a true lateral dependency |
 | PE-004 | `src/tools/file_tools._ensure_within_workspace` is imported by tool modules | Shared security guard — not a true lateral dependency |
 | PE-005 | `MCPServer` holds in-flight `_autonomous_executor` across requests | Required to resolve `approvePatches`/`rejectPatches` on a paused run |
-| PE-006 | `make_directory` bypasses `PatchManager` | A staged edit is one file's before-and-after text and a directory has neither; creating an empty directory destroys nothing, and files placed inside it are still gated |
+| PE-006 | `make_directory` bypasses `ChangeManager` | A staged edit is one file's before-and-after text and a directory has neither; creating an empty directory destroys nothing, and files placed inside it are still gated |
 
 ```python
 # Example of citing a permitted exception in code
@@ -738,10 +794,10 @@ the ADR is referenced here.
 
 | Rule | ADR Reference | Summary |
 |---|---|---|
-| Rule A-2 (Approval invariant) | ADR-001 | `Planner.run()`, `PearlAgent.plan_and_run()`, and `pearl/plan` were confirmed to bypass PatchManager and write files with zero approval. Removed. |
+| Rule A-2 (Approval invariant) | ADR-001 | `Planner.run()`, `PearlAgent.plan_and_run()`, and `pearl/plan` were confirmed to bypass ChangeManager and write files with zero approval. Removed. |
 | Rule I-2 (Single index) | ADR-002 | Multiple walkers diverged from the index and produced stale context; unified on single cache. |
 | Rule C-2 (Settings path resolution) | ADR-003 | `.env` loaded via `cwd` silently failed when Pearl was launched with `cwd` set to a target project; broke all provider settings. |
-| Rule S-1 (Context var cleanup) | ADR-004 | Active PatchManager not cleared after a run leaked into the next run, staging writes that should have executed. |
+| Rule S-1 (Context var cleanup) | ADR-004 | Active ChangeManager not cleared after a run leaked into the next run, staging writes that should have executed. |
 | Rule B-1 (Checkpoints outside workspace) | ADR-005 | Storing checkpoints inside the workspace required editing the user's `.gitignore` and allowed checkpoint git state to be captured in its own checkpoints. |
 
 When writing a new ADR:
@@ -756,14 +812,14 @@ When writing a new ADR:
 These are mistakes that have been made before or that reviewers frequently catch.
 Know them before you submit a PR.
 
-### Mistake 1: New execution path that skips PatchManager
+### Mistake 1: New execution path that skips ChangeManager
 
 **Symptom:** A new MCP method or CLI command that calls tool functions in a loop
 without creating an `AutonomousExecutor`.  
 **Risk:** Files are written without user review — Pearl's core safety guarantee is
 violated.  
 **Detection:** Any code path that iterates over `ToolCall` objects and calls
-`dispatcher.execute()` without an active `PatchManager`.
+`dispatcher.execute()` without an active `ChangeManager`.
 
 ### Mistake 2: Planning with context retrieved in the planner
 
@@ -819,7 +875,7 @@ correct improvements or accepts false regressions.
 ## 16. Architecture Review Checklist
 
 Use this checklist before approving any pull request that touches core architecture
-components (Planner, Executor, Dispatcher, MCP server, PatchManager, RepositoryIndex,
+components (Planner, Executor, Dispatcher, MCP server, ChangeManager, RepositoryIndex,
 tools).
 
 ### Layer and Dependency
@@ -832,7 +888,7 @@ tools).
 
 ### Approval Invariant
 
-- [ ] Any new autonomous execution path activates `PatchManager` before dispatching
+- [ ] Any new autonomous execution path activates `ChangeManager` before dispatching
 - [ ] Any new tool that mutates file content checks `get_active_patch_manager()` and is
       added to the enumerated list in Section 3.2
 - [ ] `set_active_patch_manager(None)` is called when the run ends (all branches)
@@ -918,7 +974,7 @@ change requires an ADR and architect sign-off:
 | New shared mutable global | Yes | Yes |
 | Adding a parameter to an existing public interface | No (if backward-compatible) | No |
 | Removing a public interface | Yes | Yes |
-| Changing the approval invariant or `PatchManager` contract | Yes | Yes — architect + security review |
+| Changing the approval invariant or `ChangeManager` contract | Yes | Yes — architect + security review |
 | New LLM provider | No | No |
 | Changing `Settings` key names | Yes | Yes |
 

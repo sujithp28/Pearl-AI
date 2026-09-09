@@ -20,3 +20,19 @@ class ContextLengthError(RuntimeError):
     the condenser intercept it, compress the conversation, and retry the
     same operation rather than surfacing a cryptic error to the user.
     """
+
+
+class ProviderAuthError(RuntimeError):
+    """
+    The configured provider rejected Pearl's credentials, or has none.
+
+    Providers declare their own SDK's authentication exceptions in
+    ``LLMProvider.AUTH_ERRORS``; ``LLMClient`` catches those and re-raises
+    this instead. That keeps vendor SDK types inside ``src/llm/providers/``
+    — a caller in the protocol or agent layer that wants to show a setup
+    message catches this one type rather than importing ``openai`` to get
+    at ``OpenAIError`` (Rule LLM-1).
+
+    Never retried. A rejected credential is not a transient condition;
+    retrying it just fails again three times more slowly.
+    """

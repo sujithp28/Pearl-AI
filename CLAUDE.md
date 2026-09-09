@@ -110,7 +110,7 @@ For complete details see [`docs/engineering/01_ARCHITECTURE_RULES.md`](docs/engi
 ## 3. When Do I Ask for Approval?
 
 This is Pearl's most important invariant. Every autonomous write to the workspace must
-pass through `PatchManager` and be explicitly approved by the user before reaching disk.
+pass through `ChangeManager` and be explicitly approved by the user before reaching disk.
 This is not a guideline — it is the guarantee Pearl makes to every developer who uses it.
 
 **The three execution modes:**
@@ -119,7 +119,7 @@ When a human types a command directly into the CLI or calls `tools/call` explici
 Pearl executes the tool and writes directly. The human is already present and aware.
 
 When Pearl runs autonomously — any path through `MCPServer._run_autonomous()` and
-`AutonomousExecutor` — every write tool must stage its changes to `PatchManager`. The
+`AutonomousExecutor` — every write tool must stage its changes to `ChangeManager`. The
 changes wait. The user sees a diff. The user approves. Only then does anything reach disk.
 
 Shell commands follow the same principle via `CommandApprovalManager`. They are not
@@ -128,14 +128,14 @@ execution in autonomous mode.
 
 **If you are adding a new execution path that calls write tools autonomously, stop.**
 Read [`docs/engineering/01_ARCHITECTURE_RULES.md`](docs/engineering/01_ARCHITECTURE_RULES.md) Section 3 before writing a line of code.
-A path that writes files without activating `PatchManager` is a P0 safety violation,
+A path that writes files without activating `ChangeManager` is a P0 safety violation,
 not a performance optimisation.
 
 **The test that must always pass:**
 
 ```python
 def test_write_file_stages_to_patch_manager_when_active():
-    pm = PatchManager()
+    pm = ChangeManager()
     set_active_patch_manager(pm)
     try:
         write_file("test.py", "content")
@@ -310,7 +310,7 @@ plan. This makes the executor's behaviour deterministic and testable without API
 network access.
 
 **The approval invariant test is not optional.** Every sprint must have and pass the test
-that verifies a file is staged but not on disk when a `PatchManager` is active. See
+that verifies a file is staged but not on disk when a `ChangeManager` is active. See
 Section 3 of this document.
 
 **Security tests must exercise real boundaries.** A path traversal test that uses a
@@ -433,7 +433,7 @@ before writing code. The specification defines the invariants your change must n
 
 | If you change… | Read this specification |
 |---|---|
-| Approval flow, PatchManager, execution modes | [`01_ARCHITECTURE_RULES.md`](docs/engineering/01_ARCHITECTURE_RULES.md) Section 3 |
+| Approval flow, ChangeManager, execution modes | [`01_ARCHITECTURE_RULES.md`](docs/engineering/01_ARCHITECTURE_RULES.md) Section 3 |
 | Layer boundaries, module imports, MCP methods | [`01_ARCHITECTURE_RULES.md`](docs/engineering/01_ARCHITECTURE_RULES.md) Sections 1–6 |
 | Python or TypeScript code style, async patterns | [`02_CODING_STANDARDS.md`](docs/engineering/02_CODING_STANDARDS.md) |
 | Test strategy, release gates, scripted LLM usage | [`03_TESTING_STANDARD.md`](docs/engineering/03_TESTING_STANDARD.md) |

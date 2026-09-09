@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.config.settings import Settings
+from src.llm.errors import ProviderAuthError
 from src.llm.providers.base import LLMProvider
 from src.llm.providers.factory import create_provider
 
@@ -24,6 +25,18 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 1.0
+
+#: Shown to the user when a provider rejects Pearl's credentials.
+#: Deliberately names no vendor: the active provider is whatever the
+#: router resolved, so telling a Gemini user to set OPENAI_API_KEY would
+#: be worse than saying nothing.
+_AUTH_ERROR_MESSAGE = (
+    "Pearl's model provider rejected the configured credentials.\n"
+    "Check the API key for your selected provider in your .env file, "
+    "then restart.\n"
+    "Pearl also runs with no key at all: unset PEARL_LLM_PROVIDER to "
+    "use the local model."
+)
 
 #: Granularity of the interruptible retry-backoff wait — see
 #: `_interruptible_sleep`.
@@ -165,6 +178,12 @@ class LLMClient:
 
                 logger.info("Received response from provider.")
 
+            except self.provider.AUTH_ERRORS as exc:
+                # Before TRANSIENT_ERRORS on purpose: a rejected
+                # credential is not transient, and retrying it just
+                # fails three more times with backoff in between.
+                raise ProviderAuthError(_AUTH_ERROR_MESSAGE) from exc
+
             except self.provider.TRANSIENT_ERRORS as exc:
                 attempt += 1
 
@@ -230,7 +249,12 @@ class LLMClient:
 
         logger.info("Streaming request to provider...")
 
-        yield from self.provider.complete_stream(messages, temperature, max_new_tokens)
+        try:
+            yield from self.provider.complete_stream(
+                messages, temperature, max_new_tokens
+            )
+        except self.provider.AUTH_ERRORS as exc:
+            raise ProviderAuthError(_AUTH_ERROR_MESSAGE) from exc
 
         logger.info("Stream finished.")
 

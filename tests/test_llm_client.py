@@ -8,6 +8,7 @@ from openai import APIConnectionError
 
 from src.config.settings import Settings
 from src.llm.client import LLMClient
+from src.llm.errors import ProviderAuthError
 from src.llm.providers.openai_compatible import OpenAICompatibleProvider
 
 
@@ -274,3 +275,82 @@ def test_interruptible_sleep_without_a_cancel_check_behaves_like_time_sleep(
     _interruptible_sleep(0.3, cancel_check=None)
 
     assert slept["seconds"] == 0.3
+
+
+# ---------------------------------------------------------------------
+# Auth errors
+#
+# A missing or rejected credential is not transient — retrying it just
+# fails three more times. Providers declare their own SDK's auth
+# exceptions in AUTH_ERRORS; the client translates them to one
+# provider-neutral ProviderAuthError so callers above the LLM layer
+# never import a vendor SDK to catch them.
+# ---------------------------------------------------------------------
+
+
+def _make_auth_error():
+    from openai import AuthenticationError
+
+    response = httpx.Response(
+        401, request=httpx.Request("POST", "http://test"), json={"error": "nope"}
+    )
+    return AuthenticationError("invalid api key", response=response, body=None)
+
+
+def test_generate_translates_provider_auth_errors(monkeypatch):
+    client = LLMClient()
+
+    def always_401(**kwargs):
+        raise _make_auth_error()
+
+    monkeypatch.setattr(client.provider.client.chat.completions, "create", always_401)
+
+    with pytest.raises(ProviderAuthError):
+        client.generate("hi")
+
+
+def test_generate_does_not_retry_auth_errors(monkeypatch):
+    """Retrying a rejected credential just fails three more times."""
+    client = LLMClient()
+    calls = {"count": 0}
+
+    def always_401(**kwargs):
+        calls["count"] += 1
+        raise _make_auth_error()
+
+    monkeypatch.setattr(client.provider.client.chat.completions, "create", always_401)
+
+    with pytest.raises(ProviderAuthError):
+        client.generate("hi")
+
+    assert calls["count"] == 1
+
+
+def test_generate_stream_translates_provider_auth_errors(monkeypatch):
+    client = LLMClient()
+
+    def always_401(**kwargs):
+        raise _make_auth_error()
+
+    monkeypatch.setattr(client.provider.client.chat.completions, "create", always_401)
+
+    with pytest.raises(ProviderAuthError):
+        list(client.generate_stream("hi"))
+
+
+def test_auth_error_message_names_no_vendor(monkeypatch):
+    """
+    The message reaches the UI, and Pearl does not tell a Gemini user to
+    set OPENAI_API_KEY. It points at Pearl's own setup instead.
+    """
+    client = LLMClient()
+
+    def always_401(**kwargs):
+        raise _make_auth_error()
+
+    monkeypatch.setattr(client.provider.client.chat.completions, "create", always_401)
+
+    with pytest.raises(ProviderAuthError) as excinfo:
+        client.generate("hi")
+
+    assert "openai" not in str(excinfo.value).lower()

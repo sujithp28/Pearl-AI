@@ -55,6 +55,7 @@ class PearlInferenceProvider(LLMProvider):
     # Mirror the delegate's transient-error tuple so LLMClient's retry
     # logic retries the same transient conditions.
     TRANSIENT_ERRORS = OpenAICompatibleProvider.TRANSIENT_ERRORS
+    AUTH_ERRORS = OpenAICompatibleProvider.AUTH_ERRORS
 
     def __init__(
         self,

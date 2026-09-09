@@ -169,7 +169,7 @@ prerequisite for understanding every rule in this document.
 │      │     [Progress Event] → user                          │
 │      │                                                      │
 │      ├── write tools only:                                  │
-│      │     [Stage to PatchManager]                          │
+│      │     [Stage to ChangeManager]                          │
 │      │     [Approval Prompt] → user decision                │
 │      │     [Apply or Reject]                                │
 │      │                                                      │
@@ -605,7 +605,7 @@ MAY be parallelized subject to the concurrency limits in
 **Rule EXEC-2:** Write tool calls MUST be executed sequentially, never in parallel.
 Two concurrent write calls to the same file produce undefined behavior. Two
 concurrent write calls to different files may produce a plan state that is
-inconsistent at the PatchManager level.
+inconsistent at the ChangeManager level.
 
 **Rule EXEC-3:** Shell commands MUST be executed after all reads that their output
 depends on, and before any writes that depend on their output. The ordering:
@@ -712,7 +712,7 @@ precedes incomplete writes proves nothing.
 
 **Rule PLAN-18:** Between steps, the workspace must be in a consistent state: no
 partially-applied patches, no half-written functions, no uncommitted staging.
-If an intermediate step fails, the PatchManager MUST be able to roll back to the
+If an intermediate step fails, the ChangeManager MUST be able to roll back to the
 pre-plan state via the checkpoint taken at Rule PLAN-5.
 
 **Rule PLAN-19:** Pearl MUST NOT depend on intermediate staged state as if it
@@ -1212,7 +1212,7 @@ Result: ALL checks PASS → stage the write
 ```
 
 **Rule VERIFY-1:** The pre-write verification pipeline is mandatory and MUST
-run before every `PatchManager.stage()` call. There is no fast path that skips
+run before every `ChangeManager.stage()` call. There is no fast path that skips
 it.
 
 **Rule VERIFY-2:** Patch conflict detection MUST be performed in-memory without
@@ -1497,7 +1497,7 @@ prompt before execution:
 
 | Action | Approval type |
 |---|---|
-| Writing to any file in the workspace | Diff-based approval (PatchManager) |
+| Writing to any file in the workspace | Diff-based approval (ChangeManager) |
 | Executing any shell command in autonomous mode | Command approval (CommandApprovalManager) |
 | Deleting a file | Explicit deletion approval |
 | Installing a new dependency | Dependency approval |
@@ -2065,7 +2065,7 @@ Plan step confidence computed
 **Anti-Pattern AP-AI-11: The Approval Bypasser**
 
 > **Description:** A new execution path, agent mode, or tool invokes write tools
-> without activating a `PatchManager`, effectively writing to disk without approval.
+> without activating a `ChangeManager`, effectively writing to disk without approval.
 >
 > **Symptom:** Files are modified without an approval prompt appearing.
 >
@@ -2073,7 +2073,7 @@ Plan step confidence computed
 > (the Approval Invariant).
 >
 > **Correct approach:** Rule HITL-2. All autonomous write paths MUST activate
-> PatchManager. This is a P0 security and safety violation.
+> ChangeManager. This is a P0 security and safety violation.
 
 ---
 
@@ -2309,14 +2309,14 @@ Resolution: EXEC-7, EXEC-8.
 - [ ] Post-edit file content is served from updated cache, not stale index (Rule CTX-5)
 
 **Verification**
-- [ ] Pre-write verification pipeline runs before every `PatchManager.stage()` (VERIFY-1)
+- [ ] Pre-write verification pipeline runs before every `ChangeManager.stage()` (VERIFY-1)
 - [ ] Syntax is validated before staging for Python and TypeScript (Rule AI-11)
 - [ ] Generated code is linted before staging (Rule VERIFY-12)
 - [ ] All imported symbols exist in codebase or dependencies (Rule VERIFY-7)
 - [ ] Tests are run after writes and result is included in report (Rule VERIFY-5)
 
 **Safety and Approval**
-- [ ] All autonomous write paths activate `PatchManager` (Rule HITL-2)
+- [ ] All autonomous write paths activate `ChangeManager` (Rule HITL-2)
 - [ ] All shell commands in autonomous mode use `CommandApprovalManager` (Rule HITL-1)
 - [ ] Safety prohibitions enforced: no `eval`, `exec`, `shell=True`, system paths (SAFE-1–5)
 - [ ] Scope not exceeded without explicit user confirmation (Rule SAFE-6)
@@ -2337,7 +2337,7 @@ Resolution: EXEC-7, EXEC-8.
 
 ### 30.2 Code Review (Reviewer)
 
-- [ ] No new execution path that writes files without `PatchManager` (HITL-2, AI architecture invariant)
+- [ ] No new execution path that writes files without `ChangeManager` (HITL-2, AI architecture invariant)
 - [ ] No LLM output treated as instructions rather than data (Rule SAFE-3)
 - [ ] No approval prompt skipped or auto-approved by default (Rule HITL-2, SAFE-12)
 - [ ] Reflection phase is present and evidence-based (SELF-9, SELF-10)
@@ -2370,7 +2370,7 @@ AI reasoning quality — verify before release tag:
 ```
 AI safety — verify before release tag:
 
-[ ] No approval bypass path exists (test: autonomous run with PatchManager=None fails safely)
+[ ] No approval bypass path exists (test: autonomous run with ChangeManager=None fails safely)
 [ ] _DANGEROUS_PATTERNS blocks all patterns in the security test suite
 [ ] Path traversal blocked: tool call with "../../../etc/passwd" raises PearlSafetyError
 [ ] API key not logged at any level (log scan: grep -r "api_key" in generated log output)
@@ -2445,7 +2445,7 @@ Use these terms in code, comments, commits, and reviews.
 | **Footprint** | The set of files, symbols, and side effects touched by Pearl's actions. Minimal footprint = minimum necessary scope. |
 | **Scope creep** | Modifying files or symbols not implied by the task, without user approval. |
 | **Approval invariant** | The guarantee from `01_ARCHITECTURE_RULES.md` Section 3: no autonomous write reaches disk without user approval. |
-| **Staged** | A write that has been prepared and is awaiting user approval via the `PatchManager`. Not yet on disk. |
+| **Staged** | A write that has been prepared and is awaiting user approval via the `ChangeManager`. Not yet on disk. |
 | **Checkpoint** | A snapshot of the workspace state, stored in the shadow git repo, used for rollback. |
 | **Recovery** | The structured process of classifying an error and selecting the appropriate remediation action. |
 | **HITL** | Human-In-The-Loop. The requirement for human approval at defined points in the execution. |

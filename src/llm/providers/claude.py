@@ -46,6 +46,11 @@ class ClaudeProvider(LLMProvider):
             _anthropic.InternalServerError,
         )
 
+        self.AUTH_ERRORS = (
+            _anthropic.AuthenticationError,
+            _anthropic.PermissionDeniedError,
+        )
+
     def _get_client(self) -> Any:
         if self._client is None:
             if not self._api_key:

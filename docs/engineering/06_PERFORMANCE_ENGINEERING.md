@@ -1079,7 +1079,7 @@ coordinated produce non-deterministic tool call ordering and break the approval 
 
 **Rule PAR-4:** Parallel operations MUST NOT write to the same file. The file write
 semaphore (limit 8) prevents I/O contention, but it does not prevent multiple
-co-routine paths from targeting the same file. The `PatchManager` MUST validate
+co-routine paths from targeting the same file. The `ChangeManager` MUST validate
 that no two concurrent patches target the same file path before acquiring the write
 semaphore.
 
@@ -1397,7 +1397,7 @@ Indexing MUST NOT compete with the developer's IDE or build tools for CPU.
 | Log rotation | < 5 MB/session | Log files are size-limited |
 
 **Rule IO-10:** Pearl MUST NOT write to the user's workspace except through the
-`PatchManager` after explicit approval. Background tasks (indexing, checkpointing)
+`ChangeManager` after explicit approval. Background tasks (indexing, checkpointing)
 write only to `.pearl/` inside the workspace or to the configured cache directory.
 
 **Rule IO-11:** Log files MUST be capped at **10 MB** with rotation. Pearl MUST
@@ -1542,7 +1542,7 @@ a turn.
 **Rule IO-14:** Do not write intermediate state to disk during a tool call.
 Tool calls are transient; their intermediate state belongs in memory. Write to
 disk only for:
-1. Approved patches (via `PatchManager`)
+1. Approved patches (via `ChangeManager`)
 2. Index persistence (periodic, atomic)
 3. Checkpoints (via shadow git)
 4. Logs (append-only, size-limited)

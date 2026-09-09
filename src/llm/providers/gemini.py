@@ -41,8 +41,13 @@ class GeminiProvider(LLMProvider):
                 google_exceptions.ResourceExhausted,
                 google_exceptions.InternalServerError,
             )
+            self.AUTH_ERRORS = (
+                google_exceptions.Unauthenticated,
+                google_exceptions.PermissionDenied,
+            )
         except ImportError:
             self.TRANSIENT_ERRORS = ()
+            self.AUTH_ERRORS = ()
 
     def complete(
         self,

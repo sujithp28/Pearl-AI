@@ -18,7 +18,6 @@ import sys
 from pathlib import Path
 from typing import IO, Any, Callable
 
-from openai import OpenAIError
 
 from src.agent.completion import CompletionService
 from src.agent.dispatcher import ToolDispatcher, ToolExecutionError, ToolNotFoundError
@@ -31,6 +30,7 @@ from src.agent.executor import (
 from src.agent.planner import Planner
 from src.config.settings import Settings
 from src.llm.client import LLMClient
+from src.llm.errors import ProviderAuthError
 from src.mcp.protocol import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
@@ -538,16 +538,14 @@ class MCPServer:
             ):
                 chunks.append(chunk)
                 notify("pearl/chatChunk", {"chunk": chunk})
-        except OpenAIError as exc:
-            _msg = str(exc)
-            if "credentials" in _msg.lower() or "api_key" in _msg.lower():
-                raise MCPProtocolError(
-                    INTERNAL_ERROR,
-                    "Pearl is not configured: no LLM provider API key found. "
-                    "Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY "
-                    "in your .env file and restart.",
-                ) from exc
-            raise
+        except ProviderAuthError as exc:
+            # The LLM layer already classified this and wrote a message
+            # that fits whichever provider the router actually resolved.
+            # This used to catch `openai.OpenAIError` and string-match on
+            # it, which meant the helpful setup message never fired for a
+            # Claude, Gemini or local user — and it put a vendor SDK
+            # import in the protocol layer, against Rule LLM-1.
+            raise MCPProtocolError(INTERNAL_ERROR, str(exc)) from exc
 
         response = "".join(chunks)
 

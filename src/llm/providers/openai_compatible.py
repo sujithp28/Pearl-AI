@@ -13,8 +13,10 @@ from typing import Any
 from openai import (
     APIConnectionError,
     APITimeoutError,
+    AuthenticationError,
     InternalServerError,
     OpenAI,
+    PermissionDeniedError,
     RateLimitError,
 )
 
@@ -31,6 +33,11 @@ class OpenAICompatibleProvider(LLMProvider):
         APITimeoutError,
         RateLimitError,
         InternalServerError,
+    )
+
+    AUTH_ERRORS = (
+        AuthenticationError,
+        PermissionDeniedError,
     )
 
     def __init__(

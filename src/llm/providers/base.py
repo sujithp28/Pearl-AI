@@ -24,6 +24,14 @@ class LLMProvider(ABC):
     #: retrying with backoff. Empty by default: no retries.
     TRANSIENT_ERRORS: tuple[type[BaseException], ...] = ()
 
+    #: Exception types this provider's SDK raises when the credential is
+    #: missing, malformed, or rejected. `LLMClient` translates these to
+    #: `ProviderAuthError` so no caller above the LLM layer needs the
+    #: vendor SDK to recognise a setup problem. Empty by default, which
+    #: is correct for providers that authenticate nothing (local
+    #: inference, scripted).
+    AUTH_ERRORS: tuple[type[BaseException], ...] = ()
+
     @abstractmethod
     def complete(
         self,

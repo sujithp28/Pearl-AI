@@ -312,7 +312,7 @@ a Pearl instance with no access control between them is a P0 security issue.
 **Rule AUTH-3:** Pearl's workspace root is set at startup and cannot be changed
 during a session. All tool operations are bounded to this root. Any new "open another
 workspace" or "change workspace" feature MUST re-evaluate the workspace boundary and
-cannot reuse a PatchManager or RepositoryIndex from the prior workspace.
+cannot reuse a ChangeManager or RepositoryIndex from the prior workspace.
 
 **Rule AUTH-4:** Pearl MUST NOT automatically discover or index directories outside
 the configured workspace root, even if symlinks or relative paths point to them.
