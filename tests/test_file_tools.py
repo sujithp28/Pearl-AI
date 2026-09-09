@@ -422,3 +422,121 @@ class TestDiffFiles:
                 diff_files(str(a), str(outside))
         finally:
             outside.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------
+# Approval gate — write_file / append_file must stage, not write, when
+# a ChangeManager is active (autonomous mode).
+# ---------------------------------------------------------------------
+
+
+@pytest.fixture
+def _staging():
+    """
+    Activate preview mode for one test and guarantee it is off again
+    afterwards, so a failure can't leak staging into unrelated tests.
+    """
+
+    from src.tools.edit_tools import (
+        get_active_patch_manager,
+        set_active_patch_manager,
+    )
+    from src.tools.patch_manager import ChangeManager
+
+    assert get_active_patch_manager() is None
+    manager = ChangeManager()
+    set_active_patch_manager(manager)
+    try:
+        yield manager
+    finally:
+        set_active_patch_manager(None)
+
+
+def test_write_file_stages_new_file(tmp_path, _staging):
+    file = tmp_path / "staged.txt"
+
+    result = write_file(str(file), "content\n")
+
+    assert not file.exists()
+    assert _staging.pending[0].path == str(file)
+    assert _staging.pending[0].original_content is None
+    assert _staging.pending[0].updated_content == "content\n"
+    assert "Preview" in result
+
+
+def test_write_file_stages_overwrite_with_original(tmp_path, _staging):
+    file = tmp_path / "existing.txt"
+    file.write_text("before\n", encoding="utf-8")
+
+    write_file(str(file), "after\n")
+
+    assert file.read_text(encoding="utf-8") == "before\n"
+    assert _staging.pending[0].original_content == "before\n"
+    assert _staging.pending[0].updated_content == "after\n"
+
+
+def test_append_file_stages_onto_existing_content(tmp_path, _staging):
+    file = tmp_path / "log.txt"
+    file.write_text("first\n", encoding="utf-8")
+
+    write_result = append_file(str(file), "second\n")
+
+    assert file.read_text(encoding="utf-8") == "first\n"
+    assert _staging.pending[0].original_content == "first\n"
+    assert _staging.pending[0].updated_content == "first\nsecond\n"
+    assert "Preview" in write_result
+
+
+def test_append_file_stages_new_file(tmp_path, _staging):
+    file = tmp_path / "fresh.txt"
+
+    append_file(str(file), "line\n")
+
+    assert not file.exists()
+    assert _staging.pending[0].original_content is None
+    assert _staging.pending[0].updated_content == "line\n"
+
+
+def test_write_file_writes_directly_without_manager(tmp_path):
+    """Direct/CLI use is unchanged: no manager active means write now."""
+    file = tmp_path / "direct.txt"
+
+    assert write_file(str(file), "x\n") is None
+    assert file.read_text(encoding="utf-8") == "x\n"
+
+
+def test_delete_file_stages_instead_of_removing(tmp_path, _staging):
+    victim = tmp_path / "victim.txt"
+    victim.write_text("precious\n", encoding="utf-8")
+
+    result = delete_file(str(victim))
+
+    assert victim.exists()
+    assert _staging.pending[0].is_deletion
+    assert _staging.pending[0].original_content == "precious\n"
+    assert "Preview" in result
+
+
+def test_delete_file_staged_diff_shows_the_removed_content(tmp_path, _staging):
+    victim = tmp_path / "victim.txt"
+    victim.write_text("precious\n", encoding="utf-8")
+
+    delete_file(str(victim))
+
+    assert "-precious" in _staging.pending[0].diff
+
+
+def test_delete_file_missing_still_raises_while_staging(tmp_path, _staging):
+    """A delete of a file that isn't there is an error, not a staged no-op."""
+    with pytest.raises(FileNotFoundError):
+        delete_file(str(tmp_path / "absent.txt"))
+
+    assert not _staging.has_pending()
+
+
+def test_delete_file_removes_directly_without_manager(tmp_path):
+    victim = tmp_path / "victim.txt"
+    victim.write_text("x\n", encoding="utf-8")
+
+    assert delete_file(str(victim)) is None
+    assert not victim.exists()

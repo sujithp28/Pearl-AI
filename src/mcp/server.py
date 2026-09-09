@@ -138,6 +138,11 @@ def _execution_report_to_dict(
     `commands` is additive (Phase 26): existing clients that only read
     `patches` are unaffected; a client that also wants to surface
     pending shell commands for approval can read this new field.
+
+    Each patch's `isDeletion` is additive in the same way: a client that
+    ignores it still renders the diff correctly, since a staged deletion
+    already reads as a full-file removal. Reading it lets the client
+    label the entry as a deletion rather than a large edit.
     """
 
     patches: list[dict[str, Any]] = []
@@ -149,6 +154,7 @@ def _execution_report_to_dict(
                 "path": edit.path,
                 "diff": edit.diff,
                 "isNewFile": edit.is_new_file,
+                "isDeletion": edit.is_deletion,
             }
             for edit in executor.patch_manager.pending
         ]

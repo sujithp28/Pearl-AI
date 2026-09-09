@@ -348,3 +348,11 @@ test("getChatHtml shows a spinner while progress is streaming", () => {
   assert.match(html, /className = "progress-spinner"/);
   assert.match(html, /progress-spin/);
 });
+
+test("getChatHtml renders deleted-file patches with a distinct badge", () => {
+  const html = getChatHtml();
+
+  assert.match(html, /file\.isDeletion/);
+  assert.match(html, /className = "patch-file-deleted"/);
+  assert.match(html, /\.patch-file-deleted \{/);
+});

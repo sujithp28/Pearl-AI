@@ -573,7 +573,8 @@ def test_response_shape_matches_the_vscode_client_contract(monkeypatch, workspac
     assert isinstance(result["commands"], list)
 
     patch = result["patches"][0]
-    assert set(patch.keys()) == {"path", "diff", "isNewFile"}
+    assert set(patch.keys()) == {"path", "diff", "isNewFile", "isDeletion"}
     assert isinstance(patch["path"], str)
     assert isinstance(patch["diff"], str)
     assert isinstance(patch["isNewFile"], bool)
+    assert isinstance(patch["isDeletion"], bool)

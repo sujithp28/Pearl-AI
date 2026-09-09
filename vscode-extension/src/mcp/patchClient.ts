@@ -33,6 +33,12 @@ export interface PatchFileSummary {
   path: string;
   diff: string;
   isNewFile: boolean;
+  /**
+   * True when the staged change removes the file rather than writing
+   * content to it. Optional so an older backend that predates staged
+   * deletions still satisfies the type guard; treat absent as false.
+   */
+  isDeletion?: boolean;
 }
 
 export interface ExecutionStepResult {

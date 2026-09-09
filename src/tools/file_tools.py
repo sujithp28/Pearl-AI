@@ -53,6 +53,42 @@ def _refresh_repo_index(file_path: Path) -> None:
     refresh_indexed_file(str(file_path))
 
 
+def _active_patch_manager():
+    """
+    Return the active ChangeManager, or None when not in preview mode.
+
+    Imported lazily for the same reason as `_refresh_repo_index`:
+    `edit_tools` imports this module for path validation, so a
+    top-level import here would be circular.
+    """
+
+    from src.tools.edit_tools import get_active_patch_manager
+
+    return get_active_patch_manager()
+
+
+def _read_for_staging(file_path: Path) -> str | None:
+    """
+    Return the current text of `file_path`, or None when it does not
+    exist yet — the `original_content` a staged edit needs to render a
+    diff. Unreadable bytes stage as a new file rather than failing the
+    run: a diff that shows the whole content is a worse preview than
+    no baseline, but refusing the edit outright is worse still.
+    """
+
+    if not file_path.exists():
+        return None
+
+    try:
+        return file_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        logger.warning(
+            "Could not read %s for a staged diff; staging as new content.",
+            file_path,
+        )
+        return None
+
+
 @tool(
     description="Read the contents of a UTF-8 text file.",
     parameters={
@@ -90,14 +126,30 @@ def read_file(path: str) -> str:
         "path": "str",
         "content": "str",
     },
-    returns="None",
+    returns="None | str",
 )
-def write_file(path: str, content: str) -> None:
+def write_file(path: str, content: str) -> None | str:
     """
     Write text to a UTF-8 file.
+
+    In preview mode (an active ChangeManager) the write is staged for
+    approval and a preview string is returned instead of touching disk.
     """
 
     file_path = _ensure_within_workspace(path)
+
+    manager = _active_patch_manager()
+
+    if manager is not None:
+        logger.info("Previewing write_file: %s", file_path)
+
+        original = _read_for_staging(file_path)
+        manager.propose(str(file_path), original, content)
+
+        verb = "create" if original is None else "overwrite"
+        lines = len(content.splitlines())
+
+        return f"Preview staged: {verb} '{path}' ({lines} line(s))."
 
     if file_path.parent:
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -117,14 +169,29 @@ def write_file(path: str, content: str) -> None:
         "path": "str",
         "content": "str",
     },
-    returns="None",
+    returns="None | str",
 )
-def append_file(path: str, content: str) -> None:
+def append_file(path: str, content: str) -> None | str:
     """
     Append text to a file.
+
+    In preview mode (an active ChangeManager) the append is staged for
+    approval and a preview string is returned instead of touching disk.
     """
 
     file_path = _ensure_within_workspace(path)
+
+    manager = _active_patch_manager()
+
+    if manager is not None:
+        logger.info("Previewing append_file: %s", file_path)
+
+        original = _read_for_staging(file_path)
+        manager.propose(str(file_path), original, (original or "") + content)
+
+        lines = len(content.splitlines())
+
+        return f"Preview staged: append to '{path}' ({lines} line(s))."
 
     if file_path.parent:
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -197,6 +264,14 @@ def list_directory(path: str = ".") -> list[str]:
 def make_directory(path: str) -> None:
     """
     Create a directory.
+
+    Deliberately not staged for approval, unlike the write/delete tools
+    in this module. A ChangeManager edit is one file's before-and-after
+    text, and a directory has neither; representing it would mean a
+    content-free pseudo-edit that renders as an empty diff. Creating an
+    empty directory also destroys nothing, and every file placed inside
+    it still goes through the approval gate — so the worst outcome of
+    a rejected run is an unused empty directory.
     """
 
     directory = _ensure_within_workspace(path)
@@ -214,18 +289,30 @@ def make_directory(path: str) -> None:
     parameters={
         "path": "str",
     },
-    returns="None",
+    returns="None | str",
     risk_level="dangerous",
 )
-def delete_file(path: str) -> None:
+def delete_file(path: str) -> None | str:
     """
     Delete a file.
+
+    In preview mode (an active ChangeManager) the removal is staged for
+    approval and a preview string is returned instead of touching disk.
     """
 
     file_path = _ensure_within_workspace(path)
 
     if not file_path.exists():
         raise FileNotFoundError(path)
+
+    manager = _active_patch_manager()
+
+    if manager is not None:
+        logger.info("Previewing delete_file: %s", file_path)
+
+        manager.propose_deletion(str(file_path), _read_for_staging(file_path))
+
+        return f"Preview staged: delete '{path}'."
 
     file_path.unlink()
     _refresh_repo_index(file_path)

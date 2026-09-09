@@ -245,3 +245,98 @@ def test_apply_all_empty_returns_empty_list(tmp_path):
     """Calling apply_all() with no pending edits is a no-op."""
     manager = ChangeManager()
     assert manager.apply_all() == []
+
+
+# ---------------------------------------------------------------------
+# Deletions
+#
+# A deletion is a staged edit whose `updated_content` is None. It rides
+# the same batch as content edits so the user reviews everything a run
+# wants to do to their workspace in one approval, not two.
+# ---------------------------------------------------------------------
+
+
+def test_propose_deletion_stages_without_touching_disk(tmp_path):
+    victim = tmp_path / "gone.txt"
+    victim.write_text("keep me\n", encoding="utf-8")
+
+    manager = ChangeManager()
+    edit = manager.propose_deletion(str(victim), "keep me\n")
+
+    assert victim.exists()
+    assert edit.is_deletion
+    assert not edit.is_new_file
+    assert edit.updated_content is None
+
+
+def test_deletion_diff_removes_every_line(tmp_path):
+    manager = ChangeManager()
+    edit = manager.propose_deletion(str(tmp_path / "gone.txt"), "one\ntwo\n")
+
+    assert "-one" in edit.diff
+    assert "-two" in edit.diff
+    assert "/dev/null" in edit.diff
+
+
+def test_apply_all_unlinks_a_staged_deletion(tmp_path):
+    victim = tmp_path / "gone.txt"
+    victim.write_text("bye\n", encoding="utf-8")
+
+    manager = ChangeManager()
+    manager.propose_deletion(str(victim), "bye\n")
+
+    assert manager.apply_all() == [str(victim)]
+    assert not victim.exists()
+
+
+def test_deletion_and_edit_apply_in_one_batch(tmp_path):
+    victim = tmp_path / "gone.txt"
+    victim.write_text("bye\n", encoding="utf-8")
+    kept = tmp_path / "kept.txt"
+
+    manager = ChangeManager()
+    manager.propose_deletion(str(victim), "bye\n")
+    manager.propose(str(kept), None, "hello\n")
+
+    manager.apply_all()
+
+    assert not victim.exists()
+    assert kept.read_text(encoding="utf-8") == "hello\n"
+
+
+def test_rollback_restores_a_deleted_file_when_a_later_write_fails(tmp_path):
+    """
+    The dangerous ordering: a deletion succeeds, then a write in the
+    same batch fails. The deleted file must come back.
+    """
+    victim = tmp_path / "gone.txt"
+    victim.write_text("precious\n", encoding="utf-8")
+
+    manager = ChangeManager()
+    manager.propose_deletion(str(victim), "precious\n")
+    manager.propose(str(tmp_path / "next.txt"), None, "x\n")
+
+    # Fail only the first write (next.txt), so the rollback's own
+    # restoring write is still allowed to succeed.
+    real_write = Path.write_text
+    calls = {"n": 0}
+
+    def _fail_first(self, text, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("disk full")
+        return real_write(self, text, **kw)
+
+    with mock.patch.object(Path, "write_text", _fail_first):
+        with pytest.raises(OSError):
+            manager.apply_all()
+
+    assert victim.read_text(encoding="utf-8") == "precious\n"
+
+
+def test_discard_all_reports_a_staged_deletion(tmp_path):
+    manager = ChangeManager()
+    manager.propose_deletion(str(tmp_path / "gone.txt"), "x\n")
+
+    assert manager.discard_all() == [str(tmp_path / "gone.txt")]
+    assert not manager.has_pending()

@@ -615,6 +615,11 @@ export function getChatHtml(): string {
     background: rgba(124,58,237,.14); border: 1px solid rgba(124,58,237,.3);
     color: var(--accent);
   }
+  .patch-file-deleted {
+    font-size: 10px; padding: 1px 6px; border-radius: 8px;
+    background: rgba(239,68,68,.14); border: 1px solid rgba(239,68,68,.3);
+    color: var(--red);
+  }
   .patch-file-copy {
     margin-left: auto; background: none; border: 1px solid var(--border);
     color: var(--muted); border-radius: 5px; padding: 2px 8px;
@@ -1485,7 +1490,12 @@ export function getChatHtml(): string {
         pathEl.className = "patch-file-path";
         pathEl.textContent = file.path;
         fileHeader.appendChild(pathEl);
-        if (file.isNewFile) {
+        if (file.isDeletion) {
+          const deleteBadge = document.createElement("span");
+          deleteBadge.className = "patch-file-deleted";
+          deleteBadge.textContent = "deleted";
+          fileHeader.appendChild(deleteBadge);
+        } else if (file.isNewFile) {
           const newBadge = document.createElement("span");
           newBadge.className = "patch-file-new";
           newBadge.textContent = "new file";

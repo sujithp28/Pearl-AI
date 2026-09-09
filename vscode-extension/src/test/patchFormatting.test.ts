@@ -98,3 +98,20 @@ test("formatPatchFiles handles multiple files independently", () => {
 test("formatPatchFiles handles an empty batch", () => {
   assert.deepEqual(formatPatchFiles([]), []);
 });
+
+test("formatPatchFiles marks a staged deletion", () => {
+  const [file] = formatPatchFiles([
+    { path: "gone.py", diff: "-x = 1", isNewFile: false, isDeletion: true },
+  ]);
+
+  assert.equal(file.isDeletion, true);
+  assert.equal(file.isNewFile, false);
+});
+
+test("formatPatchFiles defaults isDeletion to false when the backend omits it", () => {
+  const [file] = formatPatchFiles([
+    { path: "a.py", diff: SMALL_DIFF, isNewFile: false },
+  ]);
+
+  assert.equal(file.isDeletion, false);
+});

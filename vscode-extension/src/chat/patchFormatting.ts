@@ -21,6 +21,7 @@ export interface FormattedPatchFile {
   path: string;
   diff: string;
   isNewFile: boolean;
+  isDeletion: boolean;
   additions: number;
   removals: number;
   collapsed: boolean;
@@ -93,6 +94,7 @@ export function formatPatchFiles(
       path: file.path,
       diff: file.diff,
       isNewFile: file.isNewFile,
+      isDeletion: file.isDeletion === true,
       additions,
       removals,
       collapsed: lineCount > DIFF_COLLAPSE_LINE_THRESHOLD,

@@ -20,17 +20,18 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def unified_diff(path: str, original: str | None, updated: str) -> str:
+def unified_diff(path: str, original: str | None, updated: str | None) -> str:
     """
     Return a unified diff between `original` (None for a not-yet-
-    existing file) and `updated`, labeled with `path`.
+    existing file) and `updated` (None for a deletion), labeled with
+    `path`.
     """
 
     original_lines = (original or "").splitlines()
-    updated_lines = updated.splitlines()
+    updated_lines = (updated or "").splitlines()
 
     from_file = "/dev/null" if original is None else f"a/{path}"
-    to_file = f"b/{path}"
+    to_file = "/dev/null" if updated is None else f"b/{path}"
 
     diff_lines = difflib.unified_diff(
         original_lines,
@@ -51,7 +52,7 @@ class PendingEdit:
 
     path: str
     original_content: str | None
-    updated_content: str
+    updated_content: str | None
     diff: str
 
     @property
@@ -61,7 +62,16 @@ class PendingEdit:
         yet, as opposed to modifying an existing one.
         """
 
-        return self.original_content is None
+        return self.original_content is None and self.updated_content is not None
+
+    @property
+    def is_deletion(self) -> bool:
+        """
+        Return whether this edit removes the file rather than writing
+        content to it.
+        """
+
+        return self.updated_content is None
 
 
 class ChangeManager:
@@ -91,6 +101,31 @@ class ChangeManager:
             original_content=original_content,
             updated_content=updated_content,
             diff=unified_diff(path, original_content, updated_content),
+        )
+
+        self._pending.append(edit)
+
+        return edit
+
+    def propose_deletion(
+        self,
+        path: str,
+        original_content: str | None,
+    ) -> PendingEdit:
+        """
+        Stage the removal of `path` and return it. Does not touch disk.
+
+        Deletions ride the same pending batch as content edits so the
+        user reviews everything a run wants to do to their workspace in
+        one approval, rather than approving edits in one place and
+        removals in another.
+        """
+
+        edit = PendingEdit(
+            path=path,
+            original_content=original_content,
+            updated_content=None,
+            diff=unified_diff(path, original_content, None),
         )
 
         self._pending.append(edit)
@@ -141,12 +176,14 @@ class ChangeManager:
 
     def apply_all(self) -> list[str]:
         """
-        Write every staged edit to disk atomically, then clear the
-        pending batch. Returns the list of files written, in proposal order.
+        Apply every staged edit to disk atomically, then clear the
+        pending batch. Returns the list of files touched, in proposal
+        order — writes and deletions alike.
 
-        If any write fails, every successfully written file is restored
-        to its pre-apply state (new files are deleted; modified files
-        are written back to their original content) before the exception
+        If any step fails, every file already touched in this batch is
+        restored to its pre-apply state (new files are deleted; modified
+        files are written back to their original content; deleted files
+        are written back from their snapshot) before the exception
         propagates. The pending list is NOT cleared on failure so the
         caller can inspect or retry.
 
@@ -167,6 +204,10 @@ class ChangeManager:
         try:
             for edit in self._pending:
                 file_path = Path(edit.path)
+                if edit.is_deletion:
+                    file_path.unlink(missing_ok=True)
+                    applied.append(edit.path)
+                    continue
                 if file_path.parent:
                     file_path.parent.mkdir(parents=True, exist_ok=True)
                 file_path.write_text(edit.updated_content, encoding="utf-8")

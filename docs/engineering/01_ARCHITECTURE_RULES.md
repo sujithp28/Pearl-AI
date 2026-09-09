@@ -198,10 +198,25 @@ This is Pearl's most critical safety property. It is not negotiable under any ci
 
 ### 3.2 What This Means
 
-1. File-writing tools (`create_file`, `edit_lines`, `patch_file`, `replace_in_file`,
-   `replace_function`, `replace_class`, `insert_after_symbol`, `insert_before_symbol`)
-   MUST call `PatchManager.stage()` when an active patch manager is present, not write
-   to disk directly.
+1. File-writing tools MUST stage when an active patch manager is present, not write to
+   disk directly. This covers every registered tool that mutates file content, across
+   both modules that own them:
+
+   - `src/tools/edit_tools.py` — `create_file`, `replace_in_file`, `edit_lines`,
+     `patch_file`
+   - `src/tools/file_tools.py` — `write_file`, `append_file`, `delete_file`
+   - `src/tools/symbol_editor.py` — `replace_function`, `replace_class`,
+     `insert_after_symbol`, `insert_before_symbol`
+   - `src/tools/refactor_tools.py` — `batch_write_files`, `rename_symbol`
+
+   This list is enumerated rather than described because an earlier version of it named
+   only the `edit_tools` set. The three `file_tools` writers were registered as agent
+   tools but never gated, and an autonomous run could write, append to, or delete a
+   workspace file with no approval prompt. When you add a write tool, add it here.
+
+   A content edit stages via `ChangeManager.propose(path, original, updated)`. A removal
+   stages via `ChangeManager.propose_deletion(path, original)`, which is the same batch,
+   so the user reviews edits and deletions in one approval rather than two.
 
 2. `AutonomousExecutor` is the **only** code path that wires file-writing tools to disk.
    Any caller that invokes a write tool outside an `AutonomousExecutor` context MUST
@@ -378,6 +393,12 @@ MUST always have an `id` matching the request's `id`. These MUST NOT be confused
 **Rule MCP-7:** A new optional field in a response is backward compatible. A new required
 field, a renamed field, or a removed field is a breaking change and requires a version
 bump in `SERVER_VERSION`.
+
+Each entry in a report's `patches` array carries `path`, `diff`, `isNewFile`, and
+`isDeletion`. `isDeletion` is optional on the client under MCP-7: a client that ignores
+it still renders the diff correctly, because a staged deletion already reads as a
+full-file removal. Reading it lets the client label the entry as a deletion rather than
+as a large edit.
 
 **Rule MCP-8:** The `pearl/runAutonomous` → `pearl/approvePatches` / `pearl/rejectPatches`
 flow MUST remain the canonical path for all autonomous file writes. A new method that
@@ -698,6 +719,7 @@ document and the exception code.
 | PE-003 | `src/tools/metadata.py` is imported by tool modules | Shared decorator — not a true lateral dependency |
 | PE-004 | `src/tools/file_tools._ensure_within_workspace` is imported by tool modules | Shared security guard — not a true lateral dependency |
 | PE-005 | `MCPServer` holds in-flight `_autonomous_executor` across requests | Required to resolve `approvePatches`/`rejectPatches` on a paused run |
+| PE-006 | `make_directory` bypasses `PatchManager` | A staged edit is one file's before-and-after text and a directory has neither; creating an empty directory destroys nothing, and files placed inside it are still gated |
 
 ```python
 # Example of citing a permitted exception in code
@@ -811,6 +833,8 @@ tools).
 ### Approval Invariant
 
 - [ ] Any new autonomous execution path activates `PatchManager` before dispatching
+- [ ] Any new tool that mutates file content checks `get_active_patch_manager()` and is
+      added to the enumerated list in Section 3.2
 - [ ] `set_active_patch_manager(None)` is called when the run ends (all branches)
 - [ ] `set_active_command_approver(None)` is called when the run ends (all branches)
 - [ ] At least one test verifies the file was absent before approval and present after

@@ -269,6 +269,77 @@ class TestCreateFileSafety:
         finally:
             set_active_patch_manager(None)
 
+    @pytest.mark.parametrize(
+        "tool_name",
+        [
+            "create_file",
+            "write_file",
+            "append_file",
+            "delete_file",
+            "replace_in_file",
+            "edit_lines",
+            "patch_file",
+        ],
+    )
+    def test_every_content_mutating_tool_stages_in_preview_mode(
+        self, tool_name, tmp_path, monkeypatch
+    ):
+        """
+        The approval invariant, applied to every registered tool that
+        mutates file content — not just `create_file`.
+
+        This is parametrized rather than written once because the gap it
+        guards was exactly a per-tool one: `write_file`, `append_file`
+        and `delete_file` were registered as agent tools while only the
+        `edit_tools` module honoured the gate. A single-tool test passed
+        the whole time. Add a row here when you add a write tool.
+        """
+        monkeypatch.chdir(tmp_path)
+
+        from src.tools import edit_tools, file_tools
+        from src.tools.edit_tools import set_active_patch_manager
+        from src.tools.patch_manager import ChangeManager
+
+        target = tmp_path / "subject.py"
+        target.write_text("original = 1\n", encoding="utf-8")
+        before = target.read_text(encoding="utf-8")
+
+        # Each tool's minimal mutating call, and where it lives.
+        calls = {
+            "create_file": (edit_tools.create_file, (str(tmp_path / "fresh.py"), "x\n")),
+            "write_file": (file_tools.write_file, (str(target), "replaced\n")),
+            "append_file": (file_tools.append_file, (str(target), "added\n")),
+            "delete_file": (file_tools.delete_file, (str(target),)),
+            "replace_in_file": (
+                edit_tools.replace_in_file,
+                (str(target), "original", "changed"),
+            ),
+            "edit_lines": (edit_tools.edit_lines, (str(target), 1, 1, "changed = 2\n")),
+            "patch_file": (
+                edit_tools.patch_file,
+                (str(target), "@@ -1 +1 @@\n-original = 1\n+changed = 2\n"),
+            ),
+        }
+
+        func, args = calls[tool_name]
+
+        pm = ChangeManager()
+        set_active_patch_manager(pm)
+        try:
+            func(*args)
+
+            assert pm.has_pending(), f"{tool_name} must stage its change"
+            assert target.read_text(encoding="utf-8") == before, (
+                f"{tool_name} modified the file on disk while the approval "
+                f"gate was active"
+            )
+            assert not (tmp_path / "fresh.py").exists(), (
+                f"{tool_name} created a file on disk while the approval "
+                f"gate was active"
+            )
+        finally:
+            set_active_patch_manager(None)
+
     def test_create_file_existing_raises(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         from src.tools.edit_tools import create_file, set_active_patch_manager
