@@ -38,17 +38,28 @@ _EXPORTS: dict[str, str] = {
 
 if TYPE_CHECKING:
     # Import eagerly for type checkers and IDE completion only; this
-    # branch never runs.
-    from .claude import ClaudeProvider
-    from .factory import SUPPORTED_PROVIDERS, create_provider
-    from .gemini import GeminiProvider
-    from .local_inference import LocalInferenceProvider, LocalModelNotReadyError
-    from .openai_compatible import OpenAICompatibleProvider
-    from .pearl_inference import (
+    # branch never runs at import time.
+    #
+    # noqa: F401 because `__all__` is built from `_EXPORTS` at runtime,
+    # which a static linter cannot resolve, so it reads these as dead.
+    # They are not: they are what gives an editor completion and a type
+    # checker real signatures for names that `__getattr__` supplies.
+    # `test_every_exported_name_resolves` is the check that actually
+    # matters — it catches a `_EXPORTS` row pointing at the wrong module,
+    # which no linter would see either way.
+    from .claude import ClaudeProvider  # noqa: F401
+    from .factory import SUPPORTED_PROVIDERS, create_provider  # noqa: F401
+    from .gemini import GeminiProvider  # noqa: F401
+    from .local_inference import (  # noqa: F401
+        LocalInferenceProvider,
+        LocalModelNotReadyError,
+    )
+    from .openai_compatible import OpenAICompatibleProvider  # noqa: F401
+    from .pearl_inference import (  # noqa: F401
         PearlInferenceNotConfiguredError,
         PearlInferenceProvider,
     )
-    from .scripted import ScriptedProvider
+    from .scripted import ScriptedProvider  # noqa: F401
 
 
 def __getattr__(name: str) -> Any:

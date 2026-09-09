@@ -7,7 +7,6 @@ LLMProvider instance, reading each provider's own settings.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from src.config.settings import Settings
@@ -36,8 +35,9 @@ def create_provider(name: str) -> LLMProvider:
         if Settings.PEARL_INFERENCE_API_KEY:
             from src.llm.providers.pearl_inference import PearlInferenceProvider
 
-            # Explicit key → use remote inference (OpenRouter in dev, api.pearl.ai in prod).
-            # ModelRouter overrides `model` per task (chat vs planning).
+            # Explicit key → remote inference (OpenRouter in dev,
+            # api.pearl.ai in prod). ModelRouter overrides `model` per
+            # task (chat vs planning).
             return PearlInferenceProvider(
                 api_key=Settings.PEARL_INFERENCE_API_KEY,
                 base_url=Settings.PEARL_INFERENCE_BASE_URL,

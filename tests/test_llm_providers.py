@@ -433,3 +433,29 @@ def test_openai_provider_still_loads_its_sdk():
     )
 
     assert "openai" in loaded
+
+
+def test_every_exported_name_resolves():
+    """
+    The lazy __getattr__ maps each exported name to the module that
+    defines it. A wrong row there fails only when someone imports that
+    one name, which no linter catches — the eager version could not
+    drift this way because the import itself would have failed.
+    """
+    import src.llm.providers as providers
+
+    for name in providers.__all__:
+        assert getattr(providers, name) is not None, name
+
+
+def test_all_matches_the_export_map():
+    import src.llm.providers as providers
+
+    assert set(providers.__all__) == {"LLMProvider", *providers._EXPORTS}
+
+
+def test_unknown_attribute_still_raises_attribute_error():
+    import src.llm.providers as providers
+
+    with pytest.raises(AttributeError):
+        providers.NoSuchProvider
