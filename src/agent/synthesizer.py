@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.agent.executor import ExecutionReport
+    from src.agent.execution_model import ExecutionReport
     from src.llm.client import LLMClient
 
 logger = logging.getLogger(__name__)
