@@ -115,9 +115,11 @@ adds the pieces that turn "the tools ran" into "the task is verified done":
 - **Speaks your language** — chat replies in whatever language you write
   in, and greetings in any language are handled without invoking the
   engineering loop.
-- **Symbol-aware editing** — replace or insert a function/class/method by
-  name via AST (Python) or regex-based parsing (other languages),
-  preserving surrounding formatting exactly.
+- **Symbol-aware editing (Python)** — replace or insert a
+  function/class/method by name via the AST, preserving surrounding
+  formatting exactly. Other languages are indexed and searchable by
+  symbol, but edited with `replace_in_file` / `edit_lines` rather than by
+  name.
 - **Search-replace editing with confidence guards** — exact, then
   whitespace-normalised, then fuzzy matching; below a similarity
   threshold the edit fails rather than silently touching the wrong region.

@@ -339,9 +339,10 @@ def _apply_or_stage(file_path: Path, updated_content: str, summary: str) -> str:
 @tool(
     description=(
         "Replace a method's full definition within a specific class "
-        "(including decorators) with new source, preserving the rest "
-        "of the file exactly. If `path` is omitted, the file is "
-        "located via the repository index."
+        "(including decorators) in a Python file, preserving the "
+        "rest of the file exactly. Python only — for any other "
+        "language use replace_in_file or edit_lines. If `path` is "
+        "omitted, the file is located via the repository index."
     ),
     parameters={
         "path": "str",
@@ -429,9 +430,10 @@ def find_method(class_name: str, method_name: str, path: str = "") -> dict[str, 
 @tool(
     description=(
         "Replace a top-level function's full definition (including "
-        "decorators) with new source, preserving the rest of the "
-        "file exactly. If `path` is omitted, the file is located via "
-        "the repository index."
+        "decorators) in a Python file with new source, preserving "
+        "the rest of the file exactly. Python only — for any other "
+        "language use replace_in_file or edit_lines. If `path` is "
+        "omitted, the file is located via the repository index."
     ),
     parameters={"path": "str", "name": "str", "new_source": "str"},
     returns="str",
@@ -451,9 +453,10 @@ def replace_function(name: str, new_source: str, path: str = "") -> str:
 @tool(
     description=(
         "Replace a top-level class's full definition (including "
-        "decorators) with new source, preserving the rest of the "
-        "file exactly. If `path` is omitted, the file is located via "
-        "the repository index."
+        "decorators) in a Python file with new source, preserving "
+        "the rest of the file exactly. Python only — for any other "
+        "language use replace_in_file or edit_lines. If `path` is "
+        "omitted, the file is located via the repository index."
     ),
     parameters={"path": "str", "name": "str", "new_source": "str"},
     returns="str",
@@ -473,8 +476,9 @@ def replace_class(name: str, new_source: str, path: str = "") -> str:
 @tool(
     description=(
         "Insert new source code immediately after a named top-level "
-        "function or class. If `path` is omitted, the file is "
-        "located via the repository index."
+        "function or class in a Python file. Python only — for any "
+        "other language use replace_in_file or edit_lines. If `path` "
+        "is omitted, the file is located via the repository index."
     ),
     parameters={"path": "str", "name": "str", "new_source": "str"},
     returns="str",
@@ -494,8 +498,9 @@ def insert_after_symbol(name: str, new_source: str, path: str = "") -> str:
 @tool(
     description=(
         "Insert new source code immediately before a named top-level "
-        "function or class. If `path` is omitted, the file is "
-        "located via the repository index."
+        "function or class in a Python file. Python only — for any "
+        "other language use replace_in_file or edit_lines. If `path` "
+        "is omitted, the file is located via the repository index."
     ),
     parameters={"path": "str", "name": "str", "new_source": "str"},
     returns="str",

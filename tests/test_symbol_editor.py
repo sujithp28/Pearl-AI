@@ -532,3 +532,57 @@ def test_tool_replace_method_raises_when_class_not_found(tmp_path, monkeypatch):
 
     with pytest.raises(SymbolNotFoundError):
         replace_method("NonExistent", "some_method", "    pass\n", path=str(tmp_path / "a.py"))
+
+
+# ---------------------------------------------------------------------
+# Tool descriptions
+#
+# These strings are what the planner sees when choosing a tool. Every
+# symbol-editing tool raises UnsupportedLanguageError on a non-.py file,
+# so a description that does not say so invites the planner to pick it
+# for a TypeScript task and burn a replan on the failure.
+#
+# The read-only find_* tools already said "Python file". The five that
+# actually write did not — the wrong half to leave unlabelled.
+# ---------------------------------------------------------------------
+
+
+SYMBOL_TOOLS = [
+    "find_function",
+    "find_class",
+    "find_method",
+    "replace_function",
+    "replace_class",
+    "replace_method",
+    "insert_after_symbol",
+    "insert_before_symbol",
+]
+
+
+@pytest.mark.parametrize("tool_name", SYMBOL_TOOLS)
+def test_description_states_the_python_only_limit(tool_name):
+    from src.tools import symbol_editor
+
+    description = getattr(symbol_editor, tool_name)._tool_description
+
+    assert "Python" in description, (
+        f"{tool_name} is Python-only but its description does not say so, "
+        f"so the planner cannot tell: {description!r}"
+    )
+
+
+@pytest.mark.parametrize("tool_name", SYMBOL_TOOLS)
+def test_every_listed_tool_really_is_python_only(tool_name, tmp_path, monkeypatch):
+    """
+    Guards the list above: if one of these ever gains multi-language
+    support, this fails and the description should stop claiming the
+    limit rather than the limit being quietly wrong.
+    """
+    from src.tools.symbol_editor import UnsupportedLanguageError, _load_editor
+
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "a.ts"
+    target.write_text("class A { m() {} }\n", encoding="utf-8")
+
+    with pytest.raises(UnsupportedLanguageError):
+        _load_editor(target)
