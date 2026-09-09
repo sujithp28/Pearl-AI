@@ -12,12 +12,6 @@ from pathlib import Path
 
 from src.config.settings import Settings
 from src.llm.providers.base import LLMProvider
-from src.llm.providers.claude import ClaudeProvider
-from src.llm.providers.gemini import GeminiProvider
-from src.llm.providers.local_inference import LocalInferenceProvider
-from src.llm.providers.openai_compatible import OpenAICompatibleProvider
-from src.llm.providers.pearl_inference import PearlInferenceProvider
-from src.llm.providers.scripted import ScriptedProvider
 
 SUPPORTED_PROVIDERS = (
     "pearl",
@@ -40,6 +34,8 @@ def create_provider(name: str) -> LLMProvider:
 
     if normalized == "pearl":
         if Settings.PEARL_INFERENCE_API_KEY:
+            from src.llm.providers.pearl_inference import PearlInferenceProvider
+
             # Explicit key → use remote inference (OpenRouter in dev, api.pearl.ai in prod).
             # ModelRouter overrides `model` per task (chat vs planning).
             return PearlInferenceProvider(
@@ -48,6 +44,8 @@ def create_provider(name: str) -> LLMProvider:
                 model=Settings.PEARL_INFERENCE_CHAT_MODEL,
             )
         else:
+            from src.llm.providers.local_inference import LocalInferenceProvider
+
             # No key → zero-configuration local inference.
             # Model auto-downloads from HuggingFace on first run (~491 MB).
             model_path = str(
@@ -60,6 +58,9 @@ def create_provider(name: str) -> LLMProvider:
                 n_ctx=Settings.LOCAL_MODEL_CTX,
                 n_threads=Settings.LOCAL_MODEL_THREADS or None,
             )
+
+    if normalized in ("openai", "openrouter", "custom"):
+        from src.llm.providers.openai_compatible import OpenAICompatibleProvider
 
     if normalized == "openai":
         return OpenAICompatibleProvider(
@@ -83,12 +84,16 @@ def create_provider(name: str) -> LLMProvider:
         )
 
     if normalized in ("claude", "anthropic"):
+        from src.llm.providers.claude import ClaudeProvider
+
         return ClaudeProvider(
             api_key=Settings.ANTHROPIC_API_KEY,
             model=Settings.ANTHROPIC_MODEL,
         )
 
     if normalized == "gemini":
+        from src.llm.providers.gemini import GeminiProvider
+
         return GeminiProvider(
             api_key=Settings.GEMINI_API_KEY,
             model=Settings.GEMINI_MODEL,
@@ -98,6 +103,8 @@ def create_provider(name: str) -> LLMProvider:
     # never a fallback, so a misconfigured real provider can't quietly
     # start serving scripted answers.
     if normalized == "scripted":
+        from src.llm.providers.scripted import ScriptedProvider
+
         return ScriptedProvider()
 
     raise ValueError(

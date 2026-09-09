@@ -370,3 +370,66 @@ def test_scripted_provider_survives_a_malformed_script(monkeypatch, bad):
     response = ScriptedProvider().complete([], 0.2, 100)
 
     assert json.loads(response)["steps"][0]["tool"] == "none"
+
+
+# ---------------------------------------------------------------------
+# Import cost
+#
+# Pearl's default path is the local model with no API key. It should not
+# pay to import vendor SDKs it never calls. Measured in a subprocess
+# because sys.modules is process-global — by the time this test runs,
+# another test has almost certainly imported openai already.
+# ---------------------------------------------------------------------
+
+
+def _modules_after(code: str) -> set[str]:
+    """Run `code` in a clean interpreter, return its loaded module names."""
+    import json as _json
+    import subprocess
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    script = (
+        "import sys, json\n"
+        f"{code}\n"
+        "print(json.dumps(sorted(sys.modules)))"
+    )
+    out = subprocess.run(
+        [_sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=str(_Path(__file__).resolve().parent.parent),
+        timeout=120,
+    )
+    assert out.returncode == 0, out.stderr
+    return set(_json.loads(out.stdout.strip().splitlines()[-1]))
+
+
+def test_importing_the_provider_base_does_not_load_vendor_sdks():
+    loaded = _modules_after("from src.llm.providers.base import LLMProvider")
+
+    assert "openai" not in loaded
+    assert "anthropic" not in loaded
+    assert "llama_cpp" not in loaded
+
+
+def test_local_provider_does_not_load_the_openai_sdk():
+    """The zero-config default must not pay for an SDK it never calls."""
+    loaded = _modules_after(
+        "from src.config.settings import Settings\n"
+        "Settings.PEARL_INFERENCE_API_KEY = ''\n"
+        "from src.llm.providers.factory import create_provider\n"
+        "create_provider('pearl')"
+    )
+
+    assert "openai" not in loaded
+
+
+def test_openai_provider_still_loads_its_sdk():
+    """The lazy import must not break the provider that needs it."""
+    loaded = _modules_after(
+        "from src.llm.providers.factory import create_provider\n"
+        "create_provider('openai')"
+    )
+
+    assert "openai" in loaded
