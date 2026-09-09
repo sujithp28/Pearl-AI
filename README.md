@@ -8,7 +8,7 @@
 ![Status](https://img.shields.io/badge/Status-Public%20Beta-orange)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 ![Version](https://img.shields.io/badge/Version-1.2.0--beta-informational)
-![Tests](https://img.shields.io/badge/Tests-2%2C793%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-2%2C860%20passing-brightgreen)
 
 ---
 
@@ -296,6 +296,14 @@ python -m uvicorn src.api.server:app --reload --port 8000
 
 See [VS Code Extension](#vs-code-extension) below.
 
+### Serving it to someone else
+
+Everything above assumes Pearl runs on your own machine, which is what it
+is built for. If you put it on a box other people reach, read
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) first — Pearl executes shell
+commands as the server process, so several users sharing one instance
+share one execution environment.
+
 ### Option D — Legacy REPL
 
 ```bash
@@ -305,19 +313,6 @@ pearl
 The console script installed by `pip install -e .`. Runs the older
 `PearlAgent` loop (no verification/reflection) — kept for backward
 compatibility; the CLI above is the recommended terminal client.
-
-### Running it in Docker
-
-Don't, for local work. The VS Code extension spawns the backend as a
-child process over stdio, and the CLI runs in your shell — a container
-fits neither, and it takes the local model off your GPU.
-
-There is a `Dockerfile` and a `docker-compose.yml`, and they are for
-*deployment*: putting Pearl on a machine someone reaches over HTTP. That
-case has a hard constraint — Pearl runs shell commands as the server
-process, so several users sharing one container share one execution
-environment. Read [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) before
-exposing anything.
 
 ---
 

@@ -23,24 +23,29 @@ So there are exactly two supported shapes:
 | Shape | Who reaches it | Isolation |
 |---|---|---|
 | **Single-instance** | One trusted party | The approval gate |
-| **Per-user sandbox** | Several users | One container per user |
+| **Per-user sandbox** | Several users | One sandbox per user |
 
 Anything between those is the unsafe middle: several people sharing one
 execution environment, where a plan approved by one runs beside another's
 files.
 
+Pearl does not ship a sandbox. Providing one — a container, a VM, a
+per-user machine — is a deployment decision this project deliberately
+does not make for you, and `PEARL_PUBLIC_MODE` exists so that refusing
+the combination is explicit rather than accidental.
+
 ---
 
-## Local development
+## Local use
 
 You do not need any of this. The VS Code extension spawns the backend as
-a child process over stdio, and the CLI runs in your shell. Neither
-involves a container, and running one for local work only adds latency
-and takes the local model away from your GPU.
+a child process over stdio, and the CLI runs in your shell.
 
 ```bash
 python -m src.api --workspace .
 ```
+
+That serves the web UI on port 7474, bound to localhost.
 
 ---
 
@@ -48,47 +53,15 @@ python -m src.api --workspace .
 
 One Pearl, one trusted party, reachable only from the machine it runs on.
 
-```bash
-docker compose up --build
-```
-
-Then open `http://localhost:7474`.
-
-Before the first run, create the directory the compose file mounts:
-
-```bash
-mkdir -p workspace
-```
-
-Docker creates a missing bind source itself, but it creates it owned by
-root, and the container runs as an unprivileged user. Making it yourself
-avoids a permission failure on first start.
-
-### What the compose file already decides for you
-
-**The port is bound to `127.0.0.1`, not `0.0.0.0`.** An unauthenticated
-Pearl on a reachable port is a remote shell for anyone who finds it. Do
-not change this line without also setting `PEARL_AUTH_TOKENS`.
-
-**Memory is capped at 4 GB.** A runaway plan cannot take the host with
-it. Raise it if you run the local model and a large index together.
-
-**Models and checkpoints are named volumes.** Without them, every
-`up --build` re-downloads about 1.1 GB, and your undo history does not
-survive a restart.
-
-### Use a remote model here
-
-A container is a poor place for on-device inference: slow without GPU
-passthrough, and about a gigabyte of memory per instance. Uncomment one
-of the provider blocks in `docker-compose.yml`, or set
-`PEARL_MODEL_PROFILE=cloud`.
+Keep the listener on localhost. An unauthenticated Pearl on a reachable
+port is a remote shell for anyone who finds it. If you put it behind a
+reverse proxy, set `PEARL_AUTH_TOKENS` in the same change — not after.
 
 ---
 
 ## Several users
 
-Each user needs their own container. Nothing below removes that
+Each user needs their own sandbox. Nothing below removes that
 requirement — it configures who a request belongs to, which is a
 different question from what a request can do.
 
@@ -114,8 +87,9 @@ rather than a dictionary lookup, because a lookup leaks token validity
 through timing.
 
 This is a placeholder for a real identity system. Every request resolves
-its user in one function, `resolve_user`, so replacing it with your own
-database or an OIDC check is the entire change.
+its user in one function, `resolve_user` in `src/api/tenancy.py`, so
+replacing it with your own database or an OIDC check is the entire
+change.
 
 ### Session limits
 
@@ -136,7 +110,7 @@ PEARL_PUBLIC_MODE=true
 This is you asserting that a sandbox exists. Pearl cannot verify one, so
 the flag is an assertion, not a check.
 
-**Do not set it for a single shared container.** Tools run real commands
+**Do not set it for a single shared instance.** Tools run real commands
 there, so it would be a claim that is not true.
 
 Its absence is what lets dangerous endpoints refuse by default rather
@@ -147,32 +121,32 @@ any caller.
 
 ---
 
-## What the image does and does not do
+## Choosing a model
 
-**Does not bake in a model.** The default GGUF is about 1.1 GB and
-changes independently of the code. Mount it, or let Pearl download it on
-first run.
+On-device inference costs about a gigabyte of memory per instance and is
+slow without a GPU. A server handling several users should use a remote
+provider instead:
 
-**Does not run as root.** Pearl executes shell commands as the server
-process, so root here would mean every tool call is root inside the
-container.
+```
+PEARL_MODEL_PROFILE=cloud
+PEARL_LLM_PROVIDER=gemini
+GEMINI_API_KEY=...
+```
 
-**Ships git.** Checkpoints and post-apply verification shell out to it.
-An image without it loses undo and verification silently.
-
-**Health-checks `/api/status`, not `/`.** The UI is a static file and
-would report healthy with the session unusable.
+`GET /api/provider` reports which provider each role actually resolves
+to, which is the fastest way to confirm the routing you think you
+configured.
 
 ---
 
 ## Before you expose anything
 
-- [ ] `PEARL_AUTH_TOKENS` is set, and the port binding was changed in the
-      same edit
-- [ ] Each user has their own container, or exactly one trusted party
-      reaches this one
+- [ ] `PEARL_AUTH_TOKENS` is set, and the listener binding was changed in
+      the same edit
+- [ ] Each user has their own sandbox, or exactly one trusted party
+      reaches this instance
 - [ ] A remote provider is configured, or you accept local inference cost
-- [ ] The workspace mount points where you intend, and exists
+- [ ] The workspace points where you intend
 - [ ] `PEARL_PUBLIC_MODE` is set only if a per-user sandbox genuinely
       exists
 
