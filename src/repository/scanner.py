@@ -45,7 +45,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from src.repository.models import FileInfo, Language, ScanResult, detect_language
+from src.repository.models import FileInfo, ScanResult, detect_language
 
 logger = logging.getLogger(__name__)
 

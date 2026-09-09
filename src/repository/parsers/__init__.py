@@ -479,18 +479,21 @@ class ParserRegistry:
             registry.register(MyCustomParser())
         """
         # Import here to avoid circular imports at module load time.
-        from src.repository.parsers.python_parser import PythonParser  # noqa: PLC0415
-        from src.repository.parsers.js_ts_parser import JavaScriptParser, TypeScriptParser  # noqa: PLC0415
-        from src.repository.parsers.go_parser import GoParser  # noqa: PLC0415
-        from src.repository.parsers.rust_parser import RustParser  # noqa: PLC0415
-        from src.repository.parsers.java_parser import JavaParser  # noqa: PLC0415
         from src.repository.parsers.c_family_parser import (  # noqa: PLC0415
             CParser,
             CppParser,
             CSharpParser,
         )
-        from src.repository.parsers.ruby_parser import RubyParser  # noqa: PLC0415
+        from src.repository.parsers.go_parser import GoParser  # noqa: PLC0415
+        from src.repository.parsers.java_parser import JavaParser  # noqa: PLC0415
+        from src.repository.parsers.js_ts_parser import (  # noqa: PLC0415
+            JavaScriptParser,
+            TypeScriptParser,
+        )
         from src.repository.parsers.php_parser import PhpParser  # noqa: PLC0415
+        from src.repository.parsers.python_parser import PythonParser  # noqa: PLC0415
+        from src.repository.parsers.ruby_parser import RubyParser  # noqa: PLC0415
+        from src.repository.parsers.rust_parser import RustParser  # noqa: PLC0415
         from src.repository.parsers.swift_kotlin_parser import (  # noqa: PLC0415
             KotlinParser,
             SwiftParser,

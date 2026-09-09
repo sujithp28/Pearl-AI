@@ -25,7 +25,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import sys
 import threading
 from pathlib import Path
@@ -33,10 +32,10 @@ from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.agent.completion import CompletionService
+from src.agent.session_manager import get_session_manager
 from src.api.session import PearlSession, register_loop
 from src.api.tenancy import (
     LOCAL_USER,
@@ -540,7 +539,6 @@ async def tools(request: Request) -> JSONResponse:
 
 # ------------------------------------------------------------------ sessions (V2)
 
-from src.agent.session_manager import get_session_manager
 
 
 class RenameSessionRequest(BaseModel):

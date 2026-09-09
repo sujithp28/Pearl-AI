@@ -75,15 +75,7 @@ Each phase is a separate module; importing this package at any phase
 always exposes the most recent public surface.
 """
 
-from src.repository.models import (
-    EXTENSION_TO_LANGUAGE,
-    FileInfo,
-    Language,
-    ScanResult,
-    detect_language,
-)
-from src.repository.scanner import GitignoreRules, RepositoryScanner
-from src.repository.index import IndexStats, RepositoryIndex, SymbolEntry
+from src.repository.context import ContextConfig, RankedFile, SemanticContextBuilder
 from src.repository.graph import (
     Edge,
     EdgeKind,
@@ -93,8 +85,16 @@ from src.repository.graph import (
     NodeKind,
     RepositoryGraph,
 )
+from src.repository.index import IndexStats, RepositoryIndex, SymbolEntry
+from src.repository.models import (
+    EXTENSION_TO_LANGUAGE,
+    FileInfo,
+    Language,
+    ScanResult,
+    detect_language,
+)
+from src.repository.scanner import GitignoreRules, RepositoryScanner
 from src.repository.service import RepositoryService
-from src.repository.context import ContextConfig, RankedFile, SemanticContextBuilder
 
 __all__ = [
     "EXTENSION_TO_LANGUAGE",

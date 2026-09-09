@@ -37,8 +37,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from src.tools.metadata import tool
 from src.config.workspace import get_workspace_root
+from src.tools.metadata import tool
 
 logger = logging.getLogger(__name__)
 

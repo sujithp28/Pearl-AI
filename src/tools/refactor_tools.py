@@ -12,10 +12,9 @@ and presented for user approval before reaching disk.
 
 from __future__ import annotations
 
-import re
 import logging
+import re
 from pathlib import Path
-from typing import Any
 
 from src.config.workspace import get_workspace_root
 from src.tools.edit_tools import get_active_patch_manager

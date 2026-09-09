@@ -15,7 +15,6 @@ import ipaddress
 import logging
 import socket
 import urllib.parse
-from dataclasses import dataclass
 
 import httpx
 

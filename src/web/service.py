@@ -18,7 +18,7 @@ from src.web.extract import ContentExtractor
 from src.web.fetch import FetchError, PageFetcher
 from src.web.models import WebContext, WebDocument, WebSource
 from src.web.rank import rank_and_deduplicate
-from src.web.search import WebSearchError, WebSearcher, create_searcher
+from src.web.search import WebSearcher, WebSearchError, create_searcher
 
 logger = logging.getLogger(__name__)
 

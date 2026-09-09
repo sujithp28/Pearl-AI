@@ -49,7 +49,7 @@ def main() -> None:
         sys.exit(1)
 
     # Initialise the session before starting uvicorn
-    from src.api.server import init_session, app
+    from src.api.server import app, init_session
     init_session(workspace)
 
     import uvicorn

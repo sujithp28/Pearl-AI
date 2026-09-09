@@ -16,8 +16,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import IO, Any, Callable
-
+from typing import IO, TYPE_CHECKING, Any, Callable
 
 from src.agent.completion import CompletionService
 from src.agent.dispatcher import ToolDispatcher, ToolExecutionError, ToolNotFoundError
@@ -53,6 +52,13 @@ from src.tools.checkpoints import (
     RestoreReport,
 )
 from src.tools.registry import ToolRegistry
+
+if TYPE_CHECKING:
+    # Imported for annotations only. Both are constructed lazily inside
+    # the _build_* methods below, so the runtime import stays there and
+    # a workspace that cannot support them never pays for the import.
+    from src.agent.reflection import ReflectionEngine
+    from src.agent.verification import VerificationEngine
 
 logger = logging.getLogger(__name__)
 

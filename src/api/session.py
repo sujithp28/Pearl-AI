@@ -16,25 +16,24 @@ from typing import Any
 
 from src.agent.condenser import CannotCondenseError, Condenser
 from src.agent.context_engine import ContextEngine
+from src.agent.dispatcher import ToolDispatcher
 from src.agent.event_bus import (
-    ApprovalRequiredEvent,
     ContextCondensedEvent,
     EventBus,
     RunCompleteEvent,
     RunFailedEvent,
 )
 from src.agent.executor import AutonomousExecutor, ExecutionReport, ProgressEvent
-from src.agent.reflection import ReflectionEngine
 from src.agent.planner import Planner
-from src.agent.dispatcher import ToolDispatcher
+from src.agent.reflection import ReflectionEngine
 from src.agent.synthesizer import Synthesizer
+from src.agent.verification import VerificationEngine
 from src.config.settings import Settings
 from src.llm.errors import ContextLengthError
 from src.llm.router import ModelRouter
 from src.main import build_registry
 from src.memory import Memory
 from src.prompts.system import build_chat_system_prompt
-from src.agent.verification import VerificationEngine
 from src.repository.context import SemanticContextBuilder
 from src.repository.service import RepositoryService
 from src.tools.checkpoints import CheckpointManager

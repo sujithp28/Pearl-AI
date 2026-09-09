@@ -38,7 +38,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from src.agent.condenser import Condenser, CondensationResult
+from src.agent.condenser import CondensationResult, Condenser
 from src.config.settings import Settings
 from src.llm.context_budget import ContextBudget
 from src.llm.token_budget import estimate_tokens, truncate_to_tokens

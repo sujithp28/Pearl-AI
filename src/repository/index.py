@@ -65,7 +65,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Iterable
 
 from src.repository.models import FileInfo, Language
@@ -148,7 +148,7 @@ class IndexStats:
     error_file_count: int = 0
 
     def __repr__(self) -> str:
-        langs = ", ".join(sorted(l.value for l in self.languages))
+        langs = ", ".join(sorted(lang.value for lang in self.languages))
         return (
             f"IndexStats(files={self.file_count}"
             f" symbols={self.symbol_count}"

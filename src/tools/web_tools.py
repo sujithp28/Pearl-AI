@@ -27,7 +27,6 @@ Security:
 from __future__ import annotations
 
 import logging
-import urllib.parse
 
 from src.config.settings import Settings
 from src.tools.metadata import tool

@@ -46,9 +46,8 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Iterator
 
 from src.repository.index import RepositoryIndex
 from src.repository.parsers import SymbolKind
@@ -370,7 +369,6 @@ class RepositoryGraph:
                     # "from . import X" style — each imported name may be a
                     # submodule of the current package.  Try each name first;
                     # also try the package __init__ itself.
-                    resolved_any = False
                     for name in imported_names:
                         tp = _resolve_to_file(n_dots, name, fi.relative_path, module_map)
                         if tp is not None and tp in g._nodes and tp != fi.relative_path:
@@ -380,7 +378,6 @@ class RepositoryGraph:
                                 kind=EdgeKind.IMPORTS,
                                 imported_names=(name,),
                             ))
-                            resolved_any = True
                     # Also try the package __init__ if it exists
                     tp = _resolve_to_file(n_dots, "", fi.relative_path, module_map)
                     if tp is not None and tp in g._nodes and tp != fi.relative_path:

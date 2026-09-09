@@ -30,7 +30,6 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

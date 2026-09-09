@@ -8,7 +8,6 @@ Implementations are swapped by setting PEARL_WEB_SEARCH_PROVIDER.
 from __future__ import annotations
 
 import logging
-import re
 import urllib.parse
 from typing import Protocol
 

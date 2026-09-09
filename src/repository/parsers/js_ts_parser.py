@@ -76,13 +76,9 @@ class JsTsParser(BaseParser):
 
         imports = [m.group(0).strip() for m in _IMPORT_RE.finditer(source)]
 
-        current_class: str | None = None
-        current_class_indent: int = -1
-
         for match in _CLASS_RE.finditer(source):
             name = match.group("name")
             line_no = source[: match.start()].count("\n") + 1
-            indent = len(match.group("indent"))
             qname = name
             symbols.append(SymbolDef(
                 name=name,
@@ -133,7 +129,6 @@ def _estimate_end(lines: list[str], start_idx: int, max_scan: int = 200) -> int:
     """
     if start_idx >= len(lines):
         return start_idx + 1
-    base_indent = len(lines[start_idx]) - len(lines[start_idx].lstrip())
     depth = 0
     for i in range(start_idx, min(start_idx + max_scan, len(lines))):
         depth += lines[i].count("{") - lines[i].count("}")
