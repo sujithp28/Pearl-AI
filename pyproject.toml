@@ -27,9 +27,27 @@ dependencies = [
     "openai>=1.0",
     "httpx>=0.25",
     "beautifulsoup4>=4.12",
+    # The HTTP API and the web UI are a primary interface, and
+    # src/api/server.py imports these at module level — an install
+    # without them fails at startup, not at some optional edge.
+    # requirements.txt already listed them; pyproject did not, so the
+    # documented `pip install -e .` produced a broken install.
+    "fastapi>=0.100",
+    "uvicorn>=0.20",
+    "pydantic>=2.0",
+    # Lazily imported by the repository graph, but repository
+    # intelligence is core to what Pearl does, so it ships by default.
+    "networkx>=3.0",
 ]
 
 [project.optional-dependencies]
+# Zero-config on-device inference. huggingface_hub belongs with it:
+# it is what downloads the model on first run, so installing one
+# without the other yields a provider that cannot fetch its weights.
+local = [
+    "llama-cpp-python>=0.3",
+    "huggingface_hub>=0.20",
+]
 claude = ["anthropic>=0.30"]
 gemini = ["google-generativeai>=0.5"]
 dev = [
@@ -37,7 +55,7 @@ dev = [
     "pyflakes>=3.0",
     "ruff>=0.16",
 ]
-all = ["pearl-agent[claude,gemini,dev]"]
+all = ["pearl-agent[local,claude,gemini,dev]"]
 
 [project.urls]
 Homepage = "https://github.com/sujithp28/Pearl-AI"

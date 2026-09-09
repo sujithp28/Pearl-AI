@@ -216,7 +216,15 @@ Install Pearl in editable mode:
 pip install -e .
 ```
 
-Install local inference support (downloads model on first run):
+Install local inference support (downloads the model on first run):
+
+```bash
+pip install -e ".[local]"
+```
+
+If that fails to build, install the prebuilt wheel instead —
+`llama-cpp-python` compiles from source unless it finds one for your
+platform:
 
 ```bash
 pip install llama-cpp-python \
@@ -231,6 +239,9 @@ pip install -e ".[gemini]"    # Gemini provider
 pip install -e ".[dev]"       # pytest, ruff, pyflakes — for contributing
 pip install -e ".[all]"       # everything above
 ```
+
+`[all]` and `[local]` both pull `llama-cpp-python`, so both need a
+compiler or the wheel index above. The other extras are pure Python.
 
 ---
 

@@ -1,8 +1,21 @@
 # Core dependencies. For an editable install with a `pearl` command,
-# prefer `pip install -e .` (uses pyproject.toml) instead.
+# prefer `pip install -e .` (uses pyproject.toml) instead. This file is
+# kept for environments that cannot use it, and must stay in step with
+# pyproject's `dependencies` list.
 openai>=1.0
+httpx>=0.25
+beautifulsoup4>=4.12
 fastapi>=0.100
 uvicorn>=0.20
+pydantic>=2.0
+networkx>=3.0
+
+# Zero-config on-device inference — `pip install -e ".[local]"`.
+# Compiles from source unless a wheel exists for your platform:
+#   pip install llama-cpp-python \
+#       --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+# llama-cpp-python>=0.3
+# huggingface_hub>=0.20
 
 # Optional, only needed if you set PEARL_LLM_PROVIDER=claude or gemini:
 # anthropic>=0.30
@@ -11,3 +24,4 @@ uvicorn>=0.20
 # Development / testing:
 pytest>=7.0
 pyflakes>=3.0
+ruff>=0.16
