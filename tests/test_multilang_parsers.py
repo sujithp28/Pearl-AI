@@ -487,3 +487,70 @@ export class Repo {
 
         assert by_name["standalone"].kind is SymbolKind.FUNCTION
         assert by_name["standalone"].qualified_name == "standalone"
+
+    def test_methods_beyond_the_block_scan_window_are_still_found(self, tmp_path):
+        """
+        Class spans were estimated with _estimate_end's 200-line cap, so in
+        a class longer than that every method past the window fell outside
+        its own class and was dropped. Real example: MCPConnection in the
+        VS Code extension starts at line 40 and yielded 8 of its 15
+        methods — the 7 missing ones all sat past line 240.
+        """
+        filler = "\n".join(f"    // padding line {i}" for i in range(300))
+        source = (
+            "class Big {\n"
+            "  early() { return 1; }\n"
+            f"{filler}\n"
+            "  late() { return 2; }\n"
+            "}\n"
+        )
+
+        symbols = self._symbols(tmp_path, source=source)
+        qnames = {s.name: s.qualified_name for s in symbols}
+
+        assert qnames.get("early") == "Big.early"
+        assert qnames.get("late") == "Big.late", (
+            "a method past the 200-line scan window was dropped"
+        )
+
+    def test_method_with_a_wrapping_signature_is_found(self, tmp_path):
+        """
+        About 14% of method declarations in the project's own TypeScript
+        wrap their parameter list. Missing them loses one method in seven.
+        """
+        source = """\
+class Client {
+  sendRequest(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<void> {
+    return this.send(method, params);
+  }
+}
+"""
+        qnames = {s.name: s.qualified_name for s in self._symbols(
+            tmp_path, name="c.ts", source=source
+        )}
+
+        assert qnames.get("sendRequest") == "Client.sendRequest"
+
+    def test_a_wrapping_call_is_still_not_a_method(self, tmp_path):
+        """Allowing newlines must not let multi-line calls through."""
+        source = """\
+class Runner {
+  start() {
+    doSomething(
+      alpha,
+      beta,
+    );
+    withCallback(
+      () => { return 1; },
+    );
+  }
+}
+"""
+        names = {s.name for s in self._symbols(tmp_path, source=source)}
+
+        assert "start" in names
+        assert "doSomething" not in names
+        assert "withCallback" not in names

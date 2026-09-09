@@ -42,6 +42,10 @@ _IMPORT_RE = re.compile(
 )
 _EXPORT_RE = re.compile(r"^export\s+(?:default\s+)?(?:const|let|var|function|class)\s+(\w+)", re.MULTILINE)
 
+#: How far a parameter list may wrap before the match is treated as
+#: an unbalanced paren rather than a signature.
+_MAX_SIGNATURE_LINES = 12
+
 _BUILTIN_NAMES = frozenset({"if", "else", "for", "while", "switch", "try", "catch", "return", "constructor"})
 
 
@@ -83,7 +87,14 @@ class JsTsParser(BaseParser):
         for match in _CLASS_RE.finditer(source):
             name = match.group("name")
             line_no = source[: match.start()].count("\n") + 1
-            line_end = _estimate_end(lines, line_no - 1)
+            # Scanned to the end of the file rather than with the default
+            # 200-line window. A class span decides which methods belong
+            # to it, so a truncated span silently drops every method past
+            # the window — MCPConnection in the VS Code extension starts
+            # at line 40 and lost 7 of its 15 methods that way. The
+            # default cap still applies to method bodies, where it only
+            # affects a reported end line.
+            line_end = _estimate_end(lines, line_no - 1, max_scan=len(lines) or 1)
             symbols.append(SymbolDef(
                 name=name,
                 qualified_name=name,
@@ -171,19 +182,31 @@ def _opens_a_body(source: str, after_open_paren: int) -> bool:
         async findUser(id) { return this.db.get(id); }
                           ^ this one, not the one after `get(id`
 
-    A signature whose parameters wrap across lines returns False and the
-    method is missed. That is the standing trade-off of a regex parser
-    that must never raise on input an AST parser would reject.
+    Parameters may wrap across lines — about one method declaration in
+    seven does in this project's own TypeScript, so refusing those loses
+    real symbols. A multi-line *call* is still rejected, because what is
+    checked is what follows the closing paren, not how far away it was:
+
+        doSomething(
+          alpha,
+          beta,
+        );          <- `;`, not `{`
+
+    The scan is bounded so a stray unbalanced paren cannot walk the whole
+    file looking for a match that is not there.
     """
 
     depth = 1
     i = after_open_paren
+    newlines = 0
 
     while i < len(source) and depth:
         char = source[i]
         if char == "\n":
-            return False
-        if char == "(":
+            newlines += 1
+            if newlines > _MAX_SIGNATURE_LINES:
+                return False
+        elif char == "(":
             depth += 1
         elif char == ")":
             depth -= 1
