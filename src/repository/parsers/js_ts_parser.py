@@ -76,16 +76,52 @@ class JsTsParser(BaseParser):
 
         imports = [m.group(0).strip() for m in _IMPORT_RE.finditer(source)]
 
+        # (name, indent, first line, last line) for every class, so a
+        # method match below can be attributed to the class it sits in.
+        class_spans: list[tuple[str, int, int, int]] = []
+
         for match in _CLASS_RE.finditer(source):
             name = match.group("name")
             line_no = source[: match.start()].count("\n") + 1
-            qname = name
+            line_end = _estimate_end(lines, line_no - 1)
             symbols.append(SymbolDef(
                 name=name,
-                qualified_name=qname,
+                qualified_name=name,
                 kind=SymbolKind.CLASS,
                 line_start=line_no,
+                line_end=line_end,
+            ))
+            class_spans.append(
+                (name, len(match.group("indent")), line_no, line_end)
+            )
+
+        for match in _METHOD_RE.finditer(source):
+            name = match.group("name")
+            line_no = source[: match.start()].count("\n") + 1
+            indent = len(match.group("indent"))
+
+            owner = _enclosing_class(class_spans, line_no, indent)
+            if owner is None:
+                continue
+
+            # `constructor` is in _BUILTIN_NAMES to stop it matching
+            # outside a class; inside one it is a real symbol.
+            if name in _BUILTIN_NAMES and name != "constructor":
+                continue
+
+            # _METHOD_RE is deliberately loose — `name(` also matches a
+            # bare call statement like `doSomething(1);`. What separates
+            # a signature from a call is that a signature opens a body.
+            if not _opens_a_body(source, match.end()):
+                continue
+
+            symbols.append(SymbolDef(
+                name=name,
+                qualified_name=f"{owner}.{name}",
+                kind=SymbolKind.METHOD,
+                line_start=line_no,
                 line_end=_estimate_end(lines, line_no - 1),
+                is_async="async" in match.group(0),
             ))
 
         for match in _FUNC_DECL_RE.finditer(source):
@@ -120,6 +156,76 @@ class JsTsParser(BaseParser):
 
         symbols.sort(key=lambda s: s.line_start)
         return ParseResult(file_info=file_info, symbols=symbols, imports=imports, errors=errors)
+
+
+def _opens_a_body(source: str, after_open_paren: int) -> bool:
+    """
+    Return whether the parameter list starting at `after_open_paren` is
+    followed by `{` on the same line — i.e. this is a method signature
+    rather than a call statement that happens to look like one.
+
+    Walks to the parameter list's own matching `)` with depth counting,
+    rather than taking the last `)` on the line, so a method whose body
+    contains a call still resolves to the right paren:
+
+        async findUser(id) { return this.db.get(id); }
+                          ^ this one, not the one after `get(id`
+
+    A signature whose parameters wrap across lines returns False and the
+    method is missed. That is the standing trade-off of a regex parser
+    that must never raise on input an AST parser would reject.
+    """
+
+    depth = 1
+    i = after_open_paren
+
+    while i < len(source) and depth:
+        char = source[i]
+        if char == "\n":
+            return False
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        i += 1
+
+    if depth:
+        return False
+
+    line_end = source.find("\n", i)
+    rest = source[i:] if line_end == -1 else source[i:line_end]
+
+    brace = rest.find("{")
+    if brace == -1:
+        return False
+
+    semicolon = rest.find(";")
+
+    return semicolon == -1 or brace < semicolon
+
+
+def _enclosing_class(
+    class_spans: list[tuple[str, int, int, int]],
+    line_no: int,
+    indent: int,
+) -> str | None:
+    """
+    Return the name of the class whose body contains `line_no`, or None.
+
+    Requires the candidate to be indented deeper than the class header,
+    which is what separates a method from the `class` line itself and
+    from anything that follows the closing brace. The innermost matching
+    class wins, so a class nested inside another attributes correctly.
+    """
+
+    best: tuple[int, str] | None = None
+
+    for name, class_indent, start, end in class_spans:
+        if start < line_no <= end and indent > class_indent:
+            if best is None or class_indent > best[0]:
+                best = (class_indent, name)
+
+    return best[1] if best else None
 
 
 def _estimate_end(lines: list[str], start_idx: int, max_scan: int = 200) -> int:

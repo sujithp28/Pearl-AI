@@ -9,6 +9,8 @@ the documented command left `_session` as None and every endpoint behind
 """
 from __future__ import annotations
 
+import re
+import uuid
 from pathlib import Path
 
 import pytest
@@ -65,8 +67,13 @@ class TestStartupInitialisesSession:
         assert response.status_code == 200
         session_id = response.json()["session_id"]
         # A real server id, not the UI's local "c<timestamp>" placeholder.
-        assert not session_id.startswith("c")
+        #
+        # Matched against the placeholder's actual shape rather than its
+        # first character: "c" is a hex digit, so one UUID in sixteen
+        # starts with one and this failed about 6% of runs.
+        assert not re.fullmatch(r"c\d+", session_id), "got the UI placeholder id"
         assert len(session_id) == 36, "expected a UUID"
+        uuid.UUID(session_id)  # raises if it is not one
 
     def test_created_session_can_then_be_renamed(self, uninitialised_app):
         """The PATCH that was 404-ing must succeed end to end."""

@@ -377,3 +377,113 @@ interface Serializable {
         reg = ParserRegistry.default()
         result = reg.parse(fi)
         assert isinstance(result, ParseResult)
+
+
+# ---------------------------------------------------------------------------
+# Class methods
+#
+# JS/TS were the only two of the thirteen languages whose parser emitted no
+# SymbolKind.METHOD at all: _METHOD_RE was defined but never used, so every
+# method in every class was invisible to the index.
+# ---------------------------------------------------------------------------
+
+
+class TestJsTsClassMethods:
+    SOURCE = """\
+class UserService {
+  constructor(db) { this.db = db; }
+  async findUser(id) { return this.db.get(id); }
+  deleteUser(id) {
+    return this.db.remove(id);
+  }
+}
+
+function standalone(x) { return x + 1; }
+"""
+
+    def _symbols(self, tmp_path, name="svc.js", source=None):
+        fi = _make_file_info(tmp_path, name, source or self.SOURCE)
+        return ParserRegistry.default().parse(fi).symbols
+
+    def test_methods_are_found(self, tmp_path):
+        names = {s.name for s in self._symbols(tmp_path)}
+
+        assert {"findUser", "deleteUser"} <= names
+
+    def test_methods_are_kind_method_not_function(self, tmp_path):
+        kinds = {s.name: s.kind for s in self._symbols(tmp_path)}
+
+        assert kinds["findUser"] is SymbolKind.METHOD
+        assert kinds["standalone"] is SymbolKind.FUNCTION
+
+    def test_methods_are_qualified_by_their_class(self, tmp_path):
+        qnames = {s.name: s.qualified_name for s in self._symbols(tmp_path)}
+
+        assert qnames["findUser"] == "UserService.findUser"
+        assert qnames["standalone"] == "standalone"
+
+    def test_constructor_is_indexed(self, tmp_path):
+        qnames = {s.name: s.qualified_name for s in self._symbols(tmp_path)}
+
+        assert qnames.get("constructor") == "UserService.constructor"
+
+    def test_async_methods_are_marked_async(self, tmp_path):
+        by_name = {s.name: s for s in self._symbols(tmp_path)}
+
+        assert by_name["findUser"].is_async is True
+        assert by_name["deleteUser"].is_async is False
+
+    def test_statements_inside_a_method_are_not_mistaken_for_methods(self, tmp_path):
+        """
+        _METHOD_RE is loose — `name(` matches a bare call too. A call
+        statement in a method body must not be indexed as a method.
+        """
+        source = """\
+class Runner {
+  start() {
+    doSomething(1);
+    this.helper(2);
+  }
+}
+"""
+        names = {s.name for s in self._symbols(tmp_path, source=source)}
+
+        assert "start" in names
+        assert "doSomething" not in names
+
+    def test_control_flow_is_not_indexed(self, tmp_path):
+        source = """\
+class Guard {
+  check(x) {
+    if (x) {
+      return 1;
+    }
+    for (let i = 0; i < 3; i++) {}
+  }
+}
+"""
+        names = {s.name for s in self._symbols(tmp_path, source=source)}
+
+        assert "check" in names
+        assert not ({"if", "for", "while", "switch"} & names)
+
+    def test_typescript_methods_too(self, tmp_path):
+        source = """\
+export class Repo {
+  private async load(id: string): Promise<void> {
+    return;
+  }
+}
+"""
+        qnames = {s.name: s.qualified_name for s in self._symbols(
+            tmp_path, name="repo.ts", source=source
+        )}
+
+        assert qnames.get("load") == "Repo.load"
+
+    def test_top_level_function_is_not_qualified(self, tmp_path):
+        """A function outside any class must keep its bare name."""
+        by_name = {s.name: s for s in self._symbols(tmp_path)}
+
+        assert by_name["standalone"].kind is SymbolKind.FUNCTION
+        assert by_name["standalone"].qualified_name == "standalone"
