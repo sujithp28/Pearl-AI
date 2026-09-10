@@ -32,6 +32,7 @@ from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.agent.completion import CompletionService
@@ -140,6 +141,20 @@ async def serve_ui() -> HTMLResponse:
     if not ui_file.exists():
         return HTMLResponse("<h1>Pearl UI not found</h1>", status_code=404)
     return HTMLResponse(ui_file.read_text(encoding="utf-8"))
+
+
+# The browser loads the UI as ES modules, so index.html is no longer the
+# whole front end and cannot be served on its own.
+#
+# Mounted at /js rather than at / so it cannot shadow an API route: a
+# static mount at the root would answer before every /api/* handler
+# below it.
+_UI_JS_DIR = _UI_DIR / "js"
+
+if _UI_JS_DIR.is_dir():
+    app.mount("/js", StaticFiles(directory=_UI_JS_DIR), name="ui-js")
+else:  # pragma: no cover - only in a truncated checkout
+    logger.warning("Pearl UI modules not found at %s.", _UI_JS_DIR)
 
 
 # ------------------------------------------------------------------ status

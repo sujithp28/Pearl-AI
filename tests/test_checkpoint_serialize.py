@@ -8,6 +8,7 @@ tests assert the exact key set for that reason: a test that only checked
 "some dict came back" would let a rename through silently, which is how
 the two adapters drifted apart in the first place.
 """
+
 from __future__ import annotations
 
 from src.tools.checkpoint_serialize import (

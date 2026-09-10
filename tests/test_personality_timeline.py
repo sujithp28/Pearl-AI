@@ -7,6 +7,7 @@ will key off the same names. The event kinds behind them decide the
 wording each stage gets, so a wrong mapping shows the user "still
 thinking" while Pearl is waiting for their approval.
 """
+
 from __future__ import annotations
 
 from src.personality import EventKind

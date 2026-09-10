@@ -15,6 +15,7 @@ sends to the VS Code extension. Matching Python's snake_case here would
 have meant either breaking that client or translating in one adapter and
 not the other.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any

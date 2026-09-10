@@ -41,3 +41,24 @@ jobs:
       # the model itself runs for real. See tests/test_e2e_mcp.py.
       - name: End-to-end tests (real subprocess, real stdio)
         run: pytest -q tests/test_e2e_mcp.py
+
+  # The browser UI's pure helpers. Its own job rather than a step in the
+  # matrix above: the result does not depend on the Python version, so
+  # running it three times would only slow the build down.
+  ui:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # No install step and no package.json on purpose. These modules
+      # are plain ES modules with no dependencies, run by Node's own
+      # test runner. See docs/superpowers/specs for why pearl_ui has no
+      # build step.
+      - name: UI tests
+        run: node --test pearl_ui/js/*.test.js

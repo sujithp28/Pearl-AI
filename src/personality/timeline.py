@@ -11,6 +11,7 @@ doing.
 Keys are the stage names a client renders. Values select the wording the
 configured personality supplies for that stage.
 """
+
 from __future__ import annotations
 
 from src.personality.emoji import EventKind
