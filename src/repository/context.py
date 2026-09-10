@@ -46,6 +46,7 @@ Usage::
 from __future__ import annotations
 
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -130,6 +131,46 @@ def _estimate_tokens(text: str) -> int:
 
 def _tokenize(text: str) -> set[str]:
     return {m.group(0).lower() for m in _WORD_RE.finditer(text)} - _STOPWORDS
+
+
+def _first_line(text: str) -> str:
+    """First line of a docstring, without splitting on an escape."""
+    return text.splitlines()[0] if text else ""
+
+
+def _symbol_score(tier_hits: dict[float, int], symbol_count: int) -> float:
+    """
+    Score one file's symbol matches.
+
+    Two corrections to counting each match separately, both of which
+    were measured on this repository rather than guessed at.
+
+    Saturation. A tier's contribution grows with the logarithm of its
+    match count, not linearly. One match scores exactly what it used to;
+    twenty score about four times a single match rather than twenty
+    times. Without this, score tracked how many symbols a file contains
+    more than how relevant it is, and the PageRank stage further down
+    became decorative, since its deliberate 1.5-point cap cannot move a
+    ranking whose scores run into the hundreds.
+
+    Density. The result is scaled by the square root of the fraction of
+    the file's symbols that matched. Twenty matches out of twenty-five
+    symbols is a file about the subject; twenty out of four hundred is a
+    file that mentions it. Square root rather than the raw fraction so a
+    large, thorough file is dampened rather than eliminated.
+
+    `symbol_count` of 0 is treated as 1, so a file with matches but no
+    counted symbols cannot divide by zero.
+    """
+    if not tier_hits:
+        return 0.0
+
+    saturated = sum(
+        weight * (1.0 + math.log(count)) for weight, count in tier_hits.items()
+    )
+    matches = sum(tier_hits.values())
+    density = matches / max(symbol_count, 1)
+    return saturated * math.sqrt(density)
 
 
 def _term_matches(haystack: str, terms: set[str]) -> bool:
@@ -276,22 +317,45 @@ class SemanticContextBuilder:
             reasons.setdefault(file, []).append(reason)
 
         # --- Symbol matching ---
+        #
+        # Matches are counted per file and scored once, below, instead of
+        # being added up one symbol at a time. Adding them up made a
+        # file's score grow linearly with how many symbols it happens to
+        # contain, so a file with sixty loosely matching symbols buried
+        # the file that actually defines the thing being asked about.
+        #
+        # Test files lose nothing here for being tests. They won because
+        # a test name is a sentence, so they carry more matching symbols
+        # than the source they exercise. A large source file with many
+        # matching methods behaves the same way.
+        tier_hits: dict[str, dict[float, int]] = {}
+        symbol_counts: dict[str, int] = {}
+
+        def record(fp: str, weight: float, reason: str, entry: SymbolEntry) -> None:
+            tier_hits.setdefault(fp, {})
+            tier_hits[fp][weight] = tier_hits[fp].get(weight, 0) + 1
+            reasons.setdefault(fp, []).append(reason)
+            matched.setdefault(fp, []).append(entry)
+
         for entry in self._all_entries(index):
             fp = entry.relative_path
             sym = entry.symbol
+            symbol_counts[fp] = symbol_counts.get(fp, 0) + 1
 
             # Qualified name (e.g. "ChangeManager.stage")
             if _term_matches(sym.qualified_name, terms):
-                boost(fp, 4.0, f"symbol: {sym.qualified_name}")
-                matched.setdefault(fp, []).append(entry)
+                record(fp, 4.0, f"symbol: {sym.qualified_name}", entry)
             # Unqualified name (e.g. "stage")
             elif _term_matches(sym.name, terms):
-                boost(fp, 3.0, f"symbol: {sym.name}")
-                matched.setdefault(fp, []).append(entry)
+                record(fp, 3.0, f"symbol: {sym.name}", entry)
             # Docstring first line
-            elif sym.docstring and _term_matches(sym.docstring.split("\n")[0], terms):
-                boost(fp, 1.5, f"docstring match: {sym.name}")
-                matched.setdefault(fp, []).append(entry)
+            elif sym.docstring and _term_matches(_first_line(sym.docstring), terms):
+                record(fp, 1.5, f"docstring match: {sym.name}", entry)
+
+        for fp, tiers in tier_hits.items():
+            scores[fp] = scores.get(fp, 0.0) + _symbol_score(
+                tiers, symbol_counts.get(fp, 1)
+            )
 
         # --- Filename stem matching ---
         for fi in index.indexed_files():
