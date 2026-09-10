@@ -56,7 +56,14 @@ class PearlSession:
         self.registry = build_registry()
         self.dispatcher = ToolDispatcher(self.registry)
         self.memory = Memory()
-        self.checkpoints = CheckpointManager()
+        # Bound to this session's workspace, not to the process working
+        # directory. The bare `CheckpointManager()` defaults to
+        # `Path.cwd()`, which is the same directory only when Pearl was
+        # launched from inside the project — so it looked right in
+        # ordinary use while snapshotting the wrong tree whenever
+        # `--workspace` pointed elsewhere, or after the workspace was
+        # changed from the settings dialog.
+        self.checkpoints = CheckpointManager(self.workspace)
 
         router = ModelRouter()
         self._planning_llm = router.planning_client()

@@ -1,6 +1,10 @@
 // Entry point: publish the two inline-handler globals, bind the
 // document's controls, and boot.
 
+import {
+  closeCheckpoints,
+  openCheckpoints,
+} from "./checkpoints.js";
 import { applyMode, initCodeMode } from "./code.js";
 import {
   cancel,
@@ -52,6 +56,9 @@ function wire() {
   g('new-chat-btn').addEventListener('click', () => newChat());
   g('ws-badge').addEventListener('click', openSettings);
   g('settings-btn').addEventListener('click', openSettings);
+  g('cp-btn').addEventListener('click', openCheckpoints);
+  g('cp-close').addEventListener('click', closeCheckpoints);
+  g('cp-modal').addEventListener('click', e => { if (e.target === g('cp-modal')) closeCheckpoints(); });
   g('sd-cancel').addEventListener('click', closeSettings);
   g('sd-save').addEventListener('click', saveSettings);
   g('settings-modal').addEventListener('click', e => { if (e.target === g('settings-modal')) closeSettings(); });
@@ -76,7 +83,7 @@ function wire() {
     c.addEventListener('click', () => { inputTxt.value = c.dataset.prompt; resize(); submit(); });
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeSettings();
+    if (e.key === 'Escape') { closeSettings(); closeCheckpoints(); }
     if (e.key === '/' && document.activeElement !== inputTxt && !g('settings-modal').classList.contains('open')) {
       e.preventDefault(); inputTxt.focus();
     }

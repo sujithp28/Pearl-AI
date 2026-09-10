@@ -30,7 +30,7 @@ import threading
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -46,6 +46,11 @@ from src.api.tenancy import (
     public_mode,
     resolve_user,
 )
+from src.tools.checkpoint_serialize import (
+    checkpoint_to_dict,
+    restore_report_to_dict,
+)
+from src.tools.checkpoints import CheckpointError
 
 logger = logging.getLogger(__name__)
 
@@ -313,6 +318,46 @@ async def cancel(request: Request) -> JSONResponse:
     session = get_session(request)
     cancelled = session.cancel()
     return JSONResponse({"cancelled": cancelled})
+
+
+# ------------------------------------------------------------------ checkpoints
+
+
+@app.get("/api/checkpoints")
+async def checkpoints_list(
+    request: Request,
+    limit: int = Query(50, gt=0, description="Newest N checkpoints."),
+) -> JSONResponse:
+    """
+    List this workspace's checkpoints, newest first.
+
+    Includes the ones Pearl takes automatically before every approved
+    write, which the browser has never been able to see.
+    """
+    session = get_session(request)
+    checkpoints = session.checkpoints.list(limit=limit)
+    return JSONResponse(
+        {"checkpoints": [checkpoint_to_dict(c) for c in checkpoints]}
+    )
+
+
+@app.get("/api/checkpoints/{checkpoint_id}/restore-preview")
+async def checkpoint_restore_preview(
+    checkpoint_id: str, request: Request
+) -> JSONResponse:
+    """
+    Report what restoring would change, without changing anything.
+
+    Separate from the restore itself because restoring can delete files
+    created since the snapshot. The browser shows this and asks, the
+    same way Pearl shows a diff before writing.
+    """
+    session = get_session(request)
+    try:
+        report = session.checkpoints.preview_restore(checkpoint_id)
+    except CheckpointError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(restore_report_to_dict(report))
 
 
 # ------------------------------------------------------------------ patches

@@ -42,6 +42,7 @@ class TestModuleServing:
         """
         modules = [
             "api.js",
+            "checkpoints.js",
             "code.js",
             "conversation.js",
             "format.js",
