@@ -656,7 +656,10 @@ class CheckpointManager:
 
             for checkpoint in checkpoints:
                 try:
-                    created = datetime.fromisoformat(checkpoint.created_at)
+                    created_at = checkpoint.created_at
+                    if created_at.endswith("Z"):
+                        created_at = f"{created_at[:-1]}+00:00"
+                    created = datetime.fromisoformat(created_at)
                 except ValueError:
                     continue
 
