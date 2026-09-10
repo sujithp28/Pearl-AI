@@ -6,6 +6,7 @@ declaration shape (`keyword Name`, `fun`/`func name(...)`) and differ
 only in vocabulary. Each contributes its own patterns; nothing is shared
 by guessing.
 """
+
 from __future__ import annotations
 
 import re
@@ -144,15 +145,11 @@ class _BraceLangParser(BaseParser):
         return ParseResult(
             file_info=file_info,
             symbols=symbols,
-            imports=[
-                f"import {m.group(1)}" for m in self._IMPORT_RE.finditer(source)
-            ],
+            imports=[f"import {m.group(1)}" for m in self._IMPORT_RE.finditer(source)],
         )
 
 
-def _innermost(
-    containers: list[tuple[int, int, str]], line_no: int
-) -> str | None:
+def _innermost(containers: list[tuple[int, int, str]], line_no: int) -> str | None:
     best: tuple[int, str] | None = None
     for start, end, name in containers:
         if start < line_no <= end and (best is None or start > best[0]):

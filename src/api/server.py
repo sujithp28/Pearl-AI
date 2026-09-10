@@ -202,16 +202,18 @@ def check_model_ready() -> str | None:
 async def status(request: Request) -> JSONResponse:
     session = get_session(request)
     model_error = check_model_ready()
-    return JSONResponse({
-        "ok": True,
-        "workspace": session.workspace_info(),
-        "running": session.is_running(),
-        "awaiting_approval": session.is_awaiting_approval(),
-        # False means requests will fail; the UI should say so rather
-        # than showing a healthy "Connected".
-        "model_ready": model_error is None,
-        "model_error": model_error,
-    })
+    return JSONResponse(
+        {
+            "ok": True,
+            "workspace": session.workspace_info(),
+            "running": session.is_running(),
+            "awaiting_approval": session.is_awaiting_approval(),
+            # False means requests will fail; the UI should say so rather
+            # than showing a healthy "Connected".
+            "model_ready": model_error is None,
+            "model_error": model_error,
+        }
+    )
 
 
 # ------------------------------------------------------------------ chat
@@ -394,9 +396,7 @@ async def checkpoints_list(
     """
     session = get_session(request)
     checkpoints = session.checkpoints.list(limit=limit)
-    return JSONResponse(
-        {"checkpoints": [checkpoint_to_dict(c) for c in checkpoints]}
-    )
+    return JSONResponse({"checkpoints": [checkpoint_to_dict(c) for c in checkpoints]})
 
 
 def _refuse_on_shared_instance() -> None:
@@ -583,11 +583,13 @@ async def memory(request: Request) -> JSONResponse:
 @app.get("/api/patches")
 async def patches(request: Request) -> JSONResponse:
     session = get_session(request)
-    return JSONResponse({
-        "files": session.pending_files(),
-        "diff": session.pending_diff(),
-        "awaiting_approval": session.is_awaiting_approval(),
-    })
+    return JSONResponse(
+        {
+            "files": session.pending_files(),
+            "diff": session.pending_diff(),
+            "awaiting_approval": session.is_awaiting_approval(),
+        }
+    )
 
 
 # ------------------------------------------------------------------ history
@@ -672,6 +674,7 @@ def _local_inference_available() -> bool:
     """True when llama-cpp-python is importable (local model can run)."""
     try:
         import llama_cpp  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -679,6 +682,7 @@ def _local_inference_available() -> bool:
 
 def _provider_configured(name: str) -> bool:
     from src.config.settings import Settings
+
     if name == "pearl":
         # Pearl is always "configured": either via explicit key (remote)
         # or via local inference (auto-downloaded model, no key needed).
@@ -698,6 +702,7 @@ def _provider_configured(name: str) -> bool:
 
 def _provider_model(name: str) -> str | None:
     from src.config.settings import Settings
+
     if name == "pearl":
         if Settings.PEARL_INFERENCE_API_KEY:
             return Settings.PEARL_INFERENCE_CHAT_MODEL
@@ -715,6 +720,7 @@ def _provider_model(name: str) -> str | None:
 @app.get("/api/provider")
 async def provider_info() -> JSONResponse:
     from src.config.settings import Settings
+
     name = Settings.LLM_PROVIDER.lower()
     payload = {
         "provider": name,
@@ -726,6 +732,7 @@ async def provider_info() -> JSONResponse:
     # rather than one global provider name. Names only — never keys.
     try:
         from src.llm.router import ModelRouter
+
         roles = ModelRouter().describe()
         payload["profile"] = roles.pop("profile", "")
         payload["roles"] = roles
@@ -754,11 +761,13 @@ async def set_provider(req: ProviderRequest) -> JSONResponse:
     if _session is not None:
         _session = PearlSession(_session.workspace)
 
-    return JSONResponse({
-        "ok": True,
-        "provider": name,
-        "display": _provider_display(name),
-    })
+    return JSONResponse(
+        {
+            "ok": True,
+            "provider": name,
+            "display": _provider_display(name),
+        }
+    )
 
 
 # ------------------------------------------------------------------ completion
@@ -794,11 +803,13 @@ async def complete(req: CompleteRequest) -> JSONResponse:
         req.suffix,
         req.language,
     )
-    return JSONResponse({
-        "completion": result.text,
-        "cached": result.cached,
-        "declined_reason": result.declined_reason,
-    })
+    return JSONResponse(
+        {
+            "completion": result.text,
+            "cached": result.cached,
+            "declined_reason": result.declined_reason,
+        }
+    )
 
 
 # ------------------------------------------------------------------ tools
@@ -815,7 +826,6 @@ async def tools(request: Request) -> JSONResponse:
 
 
 # ------------------------------------------------------------------ sessions (V2)
-
 
 
 class RenameSessionRequest(BaseModel):

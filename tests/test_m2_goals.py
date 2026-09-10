@@ -56,7 +56,9 @@ class TestPlanRetryMalformedJSON:
 
     def test_replan_receives_error_message(self):
         executor = _executor()
-        executor.planner.plan.side_effect = json.JSONDecodeError("Unexpected token", "", 5)
+        executor.planner.plan.side_effect = json.JSONDecodeError(
+            "Unexpected token", "", 5
+        )
         executor.planner.replan.return_value = [_tc()]
 
         executor._plan_with_retry("find bug", "", [], [])
@@ -99,7 +101,9 @@ class TestPlanRetryValidationError:
     def test_missing_required_field_error_retried(self):
         executor = _executor()
         tc = _tc()
-        executor.planner.plan.side_effect = ValueError("missing required argument: path")
+        executor.planner.plan.side_effect = ValueError(
+            "missing required argument: path"
+        )
         executor.planner.replan.return_value = [tc]
 
         result = executor._plan_with_retry("task", "", [], [])
@@ -197,6 +201,7 @@ class TestBuildIndexNoChdirG3:
         run in concurrent background threads.
         """
         from src.api.session import PearlSession
+
         source = inspect.getsource(PearlSession._build_index)
         assert "os.chdir" not in source, (
             "_build_index() still calls os.chdir() — G3 regression"
@@ -205,6 +210,7 @@ class TestBuildIndexNoChdirG3:
     def test_build_index_passes_workspace_to_startup_index(self):
         """_build_index must use the explicit workspace path, not cwd."""
         from src.api.session import PearlSession
+
         source = inspect.getsource(PearlSession._build_index)
         # The workspace path (self.workspace) must be passed to build_startup_index.
         assert "self.workspace" in source or "workspace" in source
@@ -302,7 +308,10 @@ class TestCreateFileSafety:
 
         # Each tool's minimal mutating call, and where it lives.
         calls = {
-            "create_file": (edit_tools.create_file, (str(tmp_path / "fresh.py"), "x\n")),
+            "create_file": (
+                edit_tools.create_file,
+                (str(tmp_path / "fresh.py"), "x\n"),
+            ),
             "write_file": (file_tools.write_file, (str(target), "replaced\n")),
             "append_file": (file_tools.append_file, (str(target), "added\n")),
             "delete_file": (file_tools.delete_file, (str(target),)),
@@ -330,8 +339,7 @@ class TestCreateFileSafety:
                 f"gate was active"
             )
             assert not (tmp_path / "fresh.py").exists(), (
-                f"{tool_name} created a file on disk while the approval "
-                f"gate was active"
+                f"{tool_name} created a file on disk while the approval gate was active"
             )
         finally:
             set_active_patch_manager(None)

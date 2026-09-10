@@ -6,6 +6,7 @@ plus `use`/`require` imports. Visibility modifiers are optional in PHP,
 so the method pattern must match a bare `function foo()` inside a class
 as readily as `public static function foo()`.
 """
+
 from __future__ import annotations
 
 import re
@@ -69,9 +70,7 @@ class PhpParser(BaseParser):
         for match in _FUNC_RE.finditer(source):
             line_no = source[: match.start()].count("\n") + 1
             name = match.group("name")
-            parent = next(
-                (c for s, e, c in containers if s < line_no <= e), None
-            )
+            parent = next((c for s, e, c in containers if s < line_no <= e), None)
             symbols.append(
                 SymbolDef(
                     name=name,

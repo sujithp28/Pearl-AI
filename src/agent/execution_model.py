@@ -179,7 +179,7 @@ def _describe_planning_failure(exc: Exception) -> str:
             "I couldn't turn that into a plan I could run. This usually "
             "means the request was too vague for the current model, or it "
             "isn't a coding task. Try rephrasing it as a concrete action — "
-            "for example \"add a docstring to parse_config in src/utils.py\" "
+            'for example "add a docstring to parse_config in src/utils.py" '
             "— or switch to Chat mode to just talk."
         )
 

@@ -111,7 +111,9 @@ class TestWebFetch:
             result = web_fetch("http://192.168.1.1/admin")
 
         assert "error" in result
-        assert "private" in result["error"].lower() or "blocked" in result["error"].lower()
+        assert (
+            "private" in result["error"].lower() or "blocked" in result["error"].lower()
+        )
 
     def test_unsupported_scheme_returns_error_dict(self) -> None:
         mock_fetcher = MagicMock()
@@ -157,7 +159,9 @@ class TestWebContext:
         mock_svc = MagicMock()
         mock_svc.build_context.return_value = WebContext(
             query="python version",
-            sources=[WebSource(url="https://python.org", title="Python", domain="python.org")],
+            sources=[
+                WebSource(url="https://python.org", title="Python", domain="python.org")
+            ],
             evidence=["Python 3.12 was released."],
             total_chars=26,
         )
@@ -185,7 +189,11 @@ class TestWebContext:
         mock_svc = MagicMock()
         mock_svc.build_context.return_value = WebContext(
             query="q",
-            sources=[WebSource(url="https://target.com/doc", title="Doc", domain="target.com")],
+            sources=[
+                WebSource(
+                    url="https://target.com/doc", title="Doc", domain="target.com"
+                )
+            ],
             evidence=["Relevant content here."],
             total_chars=22,
         )
@@ -199,7 +207,11 @@ class TestWebContext:
         mock_svc.build_context.return_value = WebContext(
             query="kubernetes version",
             sources=[
-                WebSource(url="https://kubernetes.io/", title="Kubernetes", domain="kubernetes.io"),
+                WebSource(
+                    url="https://kubernetes.io/",
+                    title="Kubernetes",
+                    domain="kubernetes.io",
+                ),
             ],
             evidence=["Kubernetes 1.30 released."],
             total_chars=25,

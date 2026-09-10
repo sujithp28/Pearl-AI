@@ -124,7 +124,7 @@ def _get_shared_llm(model_path: str, n_ctx: int, n_threads: int) -> Any:
                 "  python -m src.api\n"
                 "  python -m uvicorn src.api.server:app --reload\n\n"
                 "Otherwise install it into that interpreter:\n"
-                f"  \"{sys.executable}\" -m pip install llama-cpp-python "
+                f'  "{sys.executable}" -m pip install llama-cpp-python '
                 "--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu"
             ) from exc
 
@@ -173,6 +173,7 @@ def reset_model_cache() -> None:
 
 
 # ── Model download ────────────────────────────────────────────────────────────
+
 
 class ModelDownloadError(RuntimeError):
     """Raised when the model file cannot be downloaded."""
@@ -230,6 +231,7 @@ def _reraise_if_context_length(exc: ValueError) -> None:
 
 
 # ── Provider ──────────────────────────────────────────────────────────────────
+
 
 class LocalModelNotReadyError(RuntimeError):
     """Raised when the model is still downloading or failed to load."""

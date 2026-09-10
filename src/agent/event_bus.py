@@ -19,6 +19,7 @@ so events never bleed across concurrent sessions.
 Every event is a plain dict after serialization so the SSE layer needs
 no special handling.
 """
+
 from __future__ import annotations
 
 import queue
@@ -27,6 +28,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 # ── Base ────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class PearlEvent:
@@ -38,6 +40,7 @@ class PearlEvent:
 
 
 # ── Typed events ─────────────────────────────────────────────────────────────
+
 
 @dataclass
 class SessionStartEvent(PearlEvent):
@@ -142,7 +145,7 @@ class ReflectionStartEvent(PearlEvent):
 @dataclass
 class ReflectionCompleteEvent(PearlEvent):
     type: str = "reflection_complete"
-    status: str = ""      # "complete" | "retry" | "replan" | "blocked"
+    status: str = ""  # "complete" | "retry" | "replan" | "blocked"
     confidence: float = 0.0
     reason: str = ""
     iteration: int = 0
@@ -177,6 +180,7 @@ class CancellationEvent(PearlEvent):
 
 
 # ── Bus ──────────────────────────────────────────────────────────────────────
+
 
 class EventBus:
     """

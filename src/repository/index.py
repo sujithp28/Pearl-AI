@@ -418,7 +418,9 @@ class RepositoryIndex:
         for rp, imports in sorted(self._imports_by_file.items()):
             for imp in imports:
                 # word-boundary match to avoid "os" matching "os.path"
-                words = imp.replace(",", " ").replace("(", " ").replace(")", " ").split()
+                words = (
+                    imp.replace(",", " ").replace("(", " ").replace(")", " ").split()
+                )
                 if module_or_name in words:
                     fi = self._file_infos.get(rp)
                     if fi is not None:

@@ -12,6 +12,7 @@ than one person:
 And, just as importantly, that a local run with no configuration is
 completely unchanged.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -88,9 +89,7 @@ class TestAuthenticatedIsolation:
     def test_repeat_requests_reuse_the_same_session(self, authed):
         with TestClient(authed.app) as client:
             for _ in range(3):
-                client.get(
-                    "/api/status", headers={"Authorization": "Bearer tok-alice"}
-                )
+                client.get("/api/status", headers={"Authorization": "Bearer tok-alice"})
 
         assert len(authed._registry) == 1
 
@@ -135,9 +134,7 @@ class TestWorkspaceEndpointIsGated:
 
         assert response.status_code == 403
 
-    def test_root_cannot_be_selected_on_a_shared_instance(
-        self, server, monkeypatch
-    ):
+    def test_root_cannot_be_selected_on_a_shared_instance(self, server, monkeypatch):
         """The specific attack, stated plainly."""
         monkeypatch.setenv("PEARL_PUBLIC_MODE", "true")
 

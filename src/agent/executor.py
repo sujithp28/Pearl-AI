@@ -103,6 +103,7 @@ __all__ = [
     "StopReason",
 ]
 
+
 class CheckpointCoordinator:
     """
     Manages checkpoint creation around approval writes.
@@ -416,15 +417,17 @@ class AutonomousExecutor:
             affected_commands,
         )
 
-        self.approval_coordinator.pause(_PausedState(
-            prompt=prompt,
-            pending=pending,
-            steps=steps,
-            events=events,
-            completed_for_replan=completed_for_replan,
-            replans_used=replans_used,
-            iteration=iteration,
-        ))
+        self.approval_coordinator.pause(
+            _PausedState(
+                prompt=prompt,
+                pending=pending,
+                steps=steps,
+                events=events,
+                completed_for_replan=completed_for_replan,
+                replans_used=replans_used,
+                iteration=iteration,
+            )
+        )
 
         self._emit(
             events,
@@ -960,20 +963,22 @@ class AutonomousExecutor:
         completed = self._last_completed_for_replan
 
         try:
-            revised = list(self.planner.replan(
-                self._current_prompt,
-                completed=completed,
-                failed={
-                    "tool": "reflection",
-                    "error": f"Task judged incomplete: {refl.reason}",
-                    "error_type": "incomplete_task",
-                    "suggestion": (
-                        f"Address the remaining requirements: {missing}. "
-                        "Do not repeat steps already completed."
-                    ),
-                },
-                cancel_check=self.is_cancelled,
-            ))
+            revised = list(
+                self.planner.replan(
+                    self._current_prompt,
+                    completed=completed,
+                    failed={
+                        "tool": "reflection",
+                        "error": f"Task judged incomplete: {refl.reason}",
+                        "error_type": "incomplete_task",
+                        "suggestion": (
+                            f"Address the remaining requirements: {missing}. "
+                            "Do not repeat steps already completed."
+                        ),
+                    },
+                    cancel_check=self.is_cancelled,
+                )
+            )
         except Exception as exc:
             logger.warning(
                 "Reflection-driven replan failed (%s); finalizing as-is.", exc
@@ -1024,11 +1029,13 @@ class AutonomousExecutor:
         raises the odds it invents something.
         """
         try:
-            return list(self.planner.plan(
-                prompt,
-                workspace_context=workspace_context,
-                cancel_check=self.is_cancelled,
-            ))
+            return list(
+                self.planner.plan(
+                    prompt,
+                    workspace_context=workspace_context,
+                    cancel_check=self.is_cancelled,
+                )
+            )
         except (LLMCancelled, AmbiguousRequestError):
             raise
         except Exception as first_exc:
@@ -1050,20 +1057,22 @@ class AutonomousExecutor:
                 current_action=self._personality.format(EventKind.REPLANNING),
             )
             # Feed the validation failure back to the model as a replan prompt.
-            return list(self.planner.replan(
-                prompt,
-                completed=[],
-                failed={
-                    "tool": "planning",
-                    "error": str(first_exc)[:400],
-                    "error_type": "validation",
-                    "suggestion": (
-                        "Your previous plan was malformed or invalid. "
-                        "Return a fresh, correctly structured JSON plan."
-                    ),
-                },
-                cancel_check=self.is_cancelled,
-            ))
+            return list(
+                self.planner.replan(
+                    prompt,
+                    completed=[],
+                    failed={
+                        "tool": "planning",
+                        "error": str(first_exc)[:400],
+                        "error_type": "validation",
+                        "suggestion": (
+                            "Your previous plan was malformed or invalid. "
+                            "Return a fresh, correctly structured JSON plan."
+                        ),
+                    },
+                    cancel_check=self.is_cancelled,
+                )
+            )
 
     @staticmethod
     def _recovery_suggestion(tool_name: str, exc: Exception) -> str:
@@ -1323,8 +1332,13 @@ class AutonomousExecutor:
                     )
 
                     awaiting = self._check_awaiting_approval(
-                        prompt, pending, steps, events,
-                        completed_for_replan, replans_used, iteration,
+                        prompt,
+                        pending,
+                        steps,
+                        events,
+                        completed_for_replan,
+                        replans_used,
+                        iteration,
                     )
                     if awaiting is not None:
                         return awaiting

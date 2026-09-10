@@ -32,9 +32,9 @@ _BLOCKED_NETWORKS: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = [
     ipaddress.ip_network("192.168.0.0/16"),
     ipaddress.ip_network("127.0.0.0/8"),
     ipaddress.ip_network("169.254.0.0/16"),  # link-local
-    ipaddress.ip_network("::1/128"),          # IPv6 loopback
-    ipaddress.ip_network("fc00::/7"),         # IPv6 ULA
-    ipaddress.ip_network("fe80::/10"),        # IPv6 link-local
+    ipaddress.ip_network("::1/128"),  # IPv6 loopback
+    ipaddress.ip_network("fc00::/7"),  # IPv6 ULA
+    ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
 ]
 
 _ALLOWED_CONTENT_TYPES = {
@@ -162,7 +162,9 @@ class PageFetcher:
                 ct_raw = resp.headers.get("content-type", "text/html")
                 content_type = ct_raw.split(";")[0].strip().lower()
 
-                logger.debug("Fetched %s — %d bytes, %s", final_url, len(body), content_type)
+                logger.debug(
+                    "Fetched %s — %d bytes, %s", final_url, len(body), content_type
+                )
 
                 return RawPage(
                     url=final_url,
@@ -171,7 +173,12 @@ class PageFetcher:
                     original_url=url,
                 )
 
-        except (FetchError, ResponseTooLargeError, PrivateAddressError, UnsupportedSchemeError):
+        except (
+            FetchError,
+            ResponseTooLargeError,
+            PrivateAddressError,
+            UnsupportedSchemeError,
+        ):
             raise
         except httpx.TimeoutException as exc:
             raise FetchError(f"Request timed out for {url}: {exc}") from exc

@@ -23,6 +23,7 @@ Usage::
     else:
         # surface approval to user / block
 """
+
 from __future__ import annotations
 
 import logging
@@ -95,9 +96,8 @@ class ExecutionPolicy:
             return f"Auto-approved: read-only tool in {self.mode} mode."
         if self.mode == "ci":
             return "CI mode: staged writes blocked unless configured."
-        return (
-            f"Headless mode, staged policy={self.staged_policy!r}: "
-            + ("auto-approved." if self.staged_policy == "approve" else "blocked.")
+        return f"Headless mode, staged policy={self.staged_policy!r}: " + (
+            "auto-approved." if self.staged_policy == "approve" else "blocked."
         )
 
 

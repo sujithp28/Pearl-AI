@@ -44,12 +44,16 @@ class TestRepositoryServiceCache:
     def teardown_method(self) -> None:
         RepositoryService.clear_cache()
 
-    def test_get_or_build_returns_same_object_for_same_root(self, tmp_path: Path) -> None:
+    def test_get_or_build_returns_same_object_for_same_root(
+        self, tmp_path: Path
+    ) -> None:
         svc1 = RepositoryService.get_or_build(tmp_path)
         svc2 = RepositoryService.get_or_build(tmp_path)
         assert svc1 is svc2
 
-    def test_get_or_build_different_roots_different_objects(self, tmp_path: Path) -> None:
+    def test_get_or_build_different_roots_different_objects(
+        self, tmp_path: Path
+    ) -> None:
         root_a = tmp_path / "a"
         root_b = tmp_path / "b"
         root_a.mkdir()
@@ -58,7 +62,9 @@ class TestRepositoryServiceCache:
         svc_b = RepositoryService.get_or_build(root_b)
         assert svc_a is not svc_b
 
-    def test_get_or_build_resolves_relative_dot_to_absolute(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_get_or_build_resolves_relative_dot_to_absolute(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         svc_dot = RepositoryService.get_or_build(Path("."))
         svc_abs = RepositoryService.get_or_build(tmp_path)

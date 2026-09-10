@@ -23,6 +23,7 @@ def _step(tool: str, **kwargs) -> ToolCall:
 # Helper: mock workspace extension scanner
 # ---------------------------------------------------------------------------
 
+
 def _with_exts(*extensions: str):
     """
     Return a context manager that makes _extensions_in_workspace() return
@@ -37,6 +38,7 @@ def _with_exts(*extensions: str):
 # ---------------------------------------------------------------------------
 # Extension hallucination detection
 # ---------------------------------------------------------------------------
+
 
 class TestExtensionHallucinationCheck:
     def test_java_extension_rejected_in_python_workspace(self):
@@ -123,6 +125,7 @@ class TestExtensionHallucinationCheck:
 # ---------------------------------------------------------------------------
 # Pre-existing checks must still work alongside the new one
 # ---------------------------------------------------------------------------
+
 
 class TestExistingChecksStillPass:
     def test_empty_plan_still_raises(self):

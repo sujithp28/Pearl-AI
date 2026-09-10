@@ -27,6 +27,7 @@ def _force_openai_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(Settings, "LLM_PROVIDER", "openai")
     monkeypatch.setattr(Settings, "OPENAI_API_KEY", "dummy-test-key")
 
+
 # ---------------------------------------------------------------------
 # The prompt itself
 # ---------------------------------------------------------------------

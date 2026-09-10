@@ -30,6 +30,7 @@ Utilities (internal, used by other Pearl modules):
   git_undo_last()             — soft reset HEAD~1
   get_git_status_summary()    — dict used by VerificationEngine/ContextEngine
 """
+
 from __future__ import annotations
 
 import logging
@@ -257,12 +258,12 @@ def git_commit(message: str) -> str:
     if status["clean"]:
         raise GitError("Repository is clean — nothing to commit.")
     if not status["staged"]:
-        raise GitError(
-            "No staged changes. Stage files first before committing."
-        )
+        raise GitError("No staged changes. Stage files first before committing.")
 
     result = _run(["commit", "-m", message])
-    first_line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else "committed"
+    first_line = (
+        result.stdout.strip().splitlines()[0] if result.stdout.strip() else "committed"
+    )
     return f"Committed: {first_line}"
 
 
@@ -305,7 +306,9 @@ def git_restore(files: list[str] | None = None) -> str:
     """Discard unstaged working-tree changes. Never touches staged changes."""
     _ensure_git_repo()
     if files is not None and len(files) == 0:
-        raise ValueError("files must be None (restore all) or a non-empty list of paths.")
+        raise ValueError(
+            "files must be None (restore all) or a non-empty list of paths."
+        )
 
     if files is None:
         status = git_status()

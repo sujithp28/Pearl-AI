@@ -15,7 +15,11 @@ class TestWebContextFormatForLlm:
     def test_single_source_formatted_correctly(self) -> None:
         ctx = WebContext(
             query="python version",
-            sources=[WebSource(url="https://example.com", title="Example", domain="example.com")],
+            sources=[
+                WebSource(
+                    url="https://example.com", title="Example", domain="example.com"
+                )
+            ],
             evidence=["Python 3.12 was released."],
             total_chars=26,
         )

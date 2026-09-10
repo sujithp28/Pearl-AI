@@ -1,6 +1,7 @@
 """
 Tests for src/agent/headless.py — ExecutionPolicy
 """
+
 from __future__ import annotations
 
 from src.agent.headless import ExecutionPolicy, get_execution_policy
@@ -141,6 +142,7 @@ class TestGetExecutionPolicy:
         monkeypatch.setenv("PEARL_HEADLESS_STAGED_POLICY", "block")
         # Need to reload settings to pick up monkeypatch
         from src.config.settings import Settings
+
         monkeypatch.setattr(Settings, "EXECUTION_MODE", "interactive")
         monkeypatch.setattr(Settings, "HEADLESS_STAGED_POLICY", "block")
         policy = get_execution_policy()
@@ -148,6 +150,7 @@ class TestGetExecutionPolicy:
 
     def test_headless_env_produces_headless_policy(self, monkeypatch) -> None:
         from src.config.settings import Settings
+
         monkeypatch.setattr(Settings, "EXECUTION_MODE", "headless")
         monkeypatch.setattr(Settings, "HEADLESS_STAGED_POLICY", "approve")
         policy = get_execution_policy()

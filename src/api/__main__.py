@@ -50,6 +50,7 @@ def main() -> None:
 
     # Initialise the session before starting uvicorn
     from src.api.server import app, init_session
+
     init_session(workspace)
 
     import uvicorn
@@ -61,9 +62,11 @@ def main() -> None:
     if not args.no_browser:
         import threading
         import time
+
         def _open():
             time.sleep(1.2)
             webbrowser.open(url)
+
         threading.Thread(target=_open, daemon=True).start()
 
     uvicorn.run(

@@ -85,7 +85,7 @@ _ALWAYS_IGNORE_DIRS: frozenset[str] = frozenset(
         "build",
         ".build",
         "out",
-        "target",          # Rust / Maven
+        "target",  # Rust / Maven
         # Caches and tool state
         ".cache",
         ".DS_Store",
@@ -96,9 +96,9 @@ _ALWAYS_IGNORE_DIRS: frozenset[str] = frozenset(
         ".vscode",
         # Misc generated
         "__MACOSX",
-        ".next",           # Next.js
-        ".nuxt",           # Nuxt.js
-        ".svelte-kit",     # SvelteKit
+        ".next",  # Next.js
+        ".nuxt",  # Nuxt.js
+        ".svelte-kit",  # SvelteKit
     }
 )
 
@@ -339,9 +339,7 @@ class RepositoryScanner:
         max_file_size_bytes: int = _DEFAULT_MAX_FILE_SIZE_BYTES,
     ) -> None:
         if not root.is_dir():
-            raise NotADirectoryError(
-                f"Repository root is not a directory: {root}"
-            )
+            raise NotADirectoryError(f"Repository root is not a directory: {root}")
 
         self._root: Path = root.resolve()
         self._ignore_dirs: frozenset[str] = _ALWAYS_IGNORE_DIRS | frozenset(
@@ -437,8 +435,7 @@ class RepositoryScanner:
 
         with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
             futures = {
-                pool.submit(_collect_file_info, p, self._root): p
-                for p in file_paths
+                pool.submit(_collect_file_info, p, self._root): p for p in file_paths
             }
             for future in as_completed(futures):
                 fpath = futures[future]

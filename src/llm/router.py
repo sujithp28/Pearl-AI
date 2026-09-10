@@ -108,9 +108,7 @@ def resolve_profile() -> str:
     if profile in ("local", "hybrid", "cloud"):
         return profile
 
-    logger.warning(
-        "Unknown PEARL_MODEL_PROFILE=%r; falling back to 'local'.", profile
-    )
+    logger.warning("Unknown PEARL_MODEL_PROFILE=%r; falling back to 'local'.", profile)
     return "local"
 
 
@@ -316,9 +314,7 @@ class ModelRouter:
         local_file = _local_model_file(provider_name, task)
         if local_file is not None:
             provider = _create_local_provider(local_file, task)
-            logger.info(
-                "ModelRouter: task=%r → local model %r", task, local_file
-            )
+            logger.info("ModelRouter: task=%r → local model %r", task, local_file)
             return LLMClient(provider=provider)
 
         if model_override:
@@ -347,8 +343,13 @@ class ModelRouter:
         actually running.  Never includes credentials — only names.
         """
         roles = (
-            "planning", "chat", "edit", "condenser",
-            "autocomplete", "reflection", "vision",
+            "planning",
+            "chat",
+            "edit",
+            "condenser",
+            "autocomplete",
+            "reflection",
+            "vision",
         )
         out: dict[str, str] = {"profile": resolve_profile()}
         for role in roles:
@@ -458,6 +459,9 @@ class ModelRouter:
             return False
         # Pearl uses different model tiers for planning vs chat — separate clients.
         if _effective_provider("planning") == "pearl":
-            if Settings.PEARL_INFERENCE_PLAN_MODEL != Settings.PEARL_INFERENCE_CHAT_MODEL:
+            if (
+                Settings.PEARL_INFERENCE_PLAN_MODEL
+                != Settings.PEARL_INFERENCE_CHAT_MODEL
+            ):
                 return False
         return True

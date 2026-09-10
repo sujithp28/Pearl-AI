@@ -61,10 +61,10 @@ def _jaccard_similarity(a: str, b: str) -> float:
 
 
 def rank_and_deduplicate(
-    docs: list,   # list[WebDocument]
+    docs: list,  # list[WebDocument]
     query: str,
     max_results: int = 5,
-) -> list:        # list[WebDocument]
+) -> list:  # list[WebDocument]
     """
     Score, deduplicate, and return up to max_results WebDocuments.
 

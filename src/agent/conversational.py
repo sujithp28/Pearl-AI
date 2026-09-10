@@ -21,6 +21,7 @@ The bar for matching is deliberately high. A false positive silently
 refuses to do real work, which is far worse than a false negative —
 those merely fall through to normal planning, exactly as before.
 """
+
 from __future__ import annotations
 
 import re
@@ -41,10 +42,11 @@ class AmbiguousRequestError(ValueError):
         self.prompt = prompt
         super().__init__(
             f"I'm not sure what you'd like me to do with {prompt.strip()!r}. "
-            "Could you describe the task — for example \"add a docstring to "
-            "parse_config in src/utils.py\" or \"run the tests\"? "
+            'Could you describe the task — for example "add a docstring to '
+            'parse_config in src/utils.py" or "run the tests"? '
             "If you just want to talk, switch to Chat mode."
         )
+
 
 # Whole-input courtesy phrases. Anchored: these must be the *entire*
 # message, so "hi, delete the build directory" is never caught by "hi".

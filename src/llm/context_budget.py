@@ -10,6 +10,7 @@ Priority order (CLAUDE.md §5):
   3. Workspace / repository context          (fills remaining budget)
   4. Response headroom                        (reserved for model output)
 """
+
 from __future__ import annotations
 
 _CHARS_PER_TOKEN = 4  # 4 UTF-8 chars ≈ 1 BPE token (conservative for code/JSON)

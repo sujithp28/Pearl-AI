@@ -18,6 +18,7 @@ This is a keyword heuristic, not a security boundary. The workspace
 path validator and ChangeManager approval gate remain the real enforcement
 points; this filter only shapes the planning prompt for quality.
 """
+
 from __future__ import annotations
 
 import re
@@ -27,13 +28,15 @@ from typing import Any
 # Always included — the minimum viable tool set for any autonomous task.
 # ---------------------------------------------------------------------------
 
-_CORE: frozenset[str] = frozenset({
-    "read_file",
-    "list_directory",
-    "search_text",
-    "find_symbol",
-    "execute_shell",
-})
+_CORE: frozenset[str] = frozenset(
+    {
+        "read_file",
+        "list_directory",
+        "search_text",
+        "find_symbol",
+        "execute_shell",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Keyword-gated groups: (keywords, tool_names)
@@ -78,7 +81,13 @@ _GROUPS: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     # Code search / navigation
     (
         ("function", "def ", "method", "class ", "symbol", "reference"),
-        ("find_function", "find_class", "find_method", "find_references", "find_symbol"),
+        (
+            "find_function",
+            "find_class",
+            "find_method",
+            "find_references",
+            "find_symbol",
+        ),
     ),
     (
         ("grep", "search code", "search for", "find in", "locate", "where is"),
@@ -86,17 +95,32 @@ _GROUPS: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     ),
     # Repository understanding
     (
-        ("explain", "understand", "purpose", "describe", "overview", "architecture",
-         "what does", "how does", "summarize"),
+        (
+            "explain",
+            "understand",
+            "purpose",
+            "describe",
+            "overview",
+            "architecture",
+            "what does",
+            "how does",
+            "summarize",
+        ),
         ("explain_file", "summarize_project", "index_repository"),
     ),
     # Refactoring
     (
         ("refactor", "rename", "extract", "move symbol"),
         (
-            "rename_symbol", "replace_function", "replace_class", "replace_method",
-            "insert_after_symbol", "insert_before_symbol",
-            "find_function", "find_class", "find_method",
+            "rename_symbol",
+            "replace_function",
+            "replace_class",
+            "replace_method",
+            "insert_after_symbol",
+            "insert_before_symbol",
+            "find_function",
+            "find_class",
+            "find_method",
         ),
     ),
     (
@@ -105,8 +129,18 @@ _GROUPS: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     ),
     # Shell / execution
     (
-        ("run", "execute", "test", "pytest", "pip", "install", "command", "terminal",
-         "shell", "script"),
+        (
+            "run",
+            "execute",
+            "test",
+            "pytest",
+            "pip",
+            "install",
+            "command",
+            "terminal",
+            "shell",
+            "script",
+        ),
         ("execute_shell", "run_python"),
     ),
     (
@@ -123,11 +157,28 @@ _GROUPS: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     ),
     # Git
     (
-        ("git", "commit", "diff", "stage", "branch", "checkout",
-         "history", "log", "revert", "stash"),
         (
-            "git_status", "git_diff", "git_log", "git_commit", "git_stage",
-            "git_create_branch", "git_restore", "git_blame", "summarize_changes",
+            "git",
+            "commit",
+            "diff",
+            "stage",
+            "branch",
+            "checkout",
+            "history",
+            "log",
+            "revert",
+            "stash",
+        ),
+        (
+            "git_status",
+            "git_diff",
+            "git_log",
+            "git_commit",
+            "git_stage",
+            "git_create_branch",
+            "git_restore",
+            "git_blame",
+            "summarize_changes",
         ),
     ),
     (
@@ -136,19 +187,40 @@ _GROUPS: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     ),
     # Web — only unlocked when the user explicitly asks for external info
     (
-        ("web", "internet", "online", "documentation", "docs", "latest version",
-         "current version", "external", "lookup", "google", "search online"),
+        (
+            "web",
+            "internet",
+            "online",
+            "documentation",
+            "docs",
+            "latest version",
+            "current version",
+            "external",
+            "lookup",
+            "google",
+            "search online",
+        ),
         ("web_search", "web_fetch", "web_context"),
     ),
 ]
 
 # Fallback when no keyword matches — richer than _CORE, covers the most
 # common agentic tasks without triggering the full 48-tool list.
-_FALLBACK: frozenset[str] = frozenset({
-    "read_file", "create_file", "write_file", "replace_in_file",
-    "list_directory", "ls", "search_text", "find_symbol",
-    "execute_shell", "git_status", "git_diff",
-})
+_FALLBACK: frozenset[str] = frozenset(
+    {
+        "read_file",
+        "create_file",
+        "write_file",
+        "replace_in_file",
+        "list_directory",
+        "ls",
+        "search_text",
+        "find_symbol",
+        "execute_shell",
+        "git_status",
+        "git_diff",
+    }
+)
 
 
 def _normalise(text: str) -> str:

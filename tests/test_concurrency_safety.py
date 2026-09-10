@@ -28,6 +28,7 @@ class TestInferenceLock:
     def test_inference_lock_is_a_real_lock(self):
         """The per-model lock must be a real lock, not a no-op."""
         import src.llm.providers.local_inference as mod
+
         lock = mod._get_inference_lock("fake.gguf", 512)
         assert hasattr(lock, "acquire") and hasattr(lock, "release"), (
             "per-model inference lock must have acquire/release"
@@ -36,6 +37,7 @@ class TestInferenceLock:
     def test_same_model_returns_the_same_lock(self):
         """Two providers on one model must share a lock, or they'd race."""
         import src.llm.providers.local_inference as mod
+
         a = mod._get_inference_lock("same.gguf", 512)
         b = mod._get_inference_lock("same.gguf", 512)
         assert a is b, "the same model must map to the same lock object"
@@ -43,6 +45,7 @@ class TestInferenceLock:
     def test_different_models_get_different_locks(self):
         """Distinct models must not serialize against each other."""
         import src.llm.providers.local_inference as mod
+
         a = mod._get_inference_lock("small.gguf", 512)
         b = mod._get_inference_lock("large.gguf", 512)
         assert a is not b, (
@@ -53,6 +56,7 @@ class TestInferenceLock:
     def test_inference_lock_blocks_a_second_thread(self):
         """A held lock must block another thread, not deadlock or pass."""
         import src.llm.providers.local_inference as mod
+
         lock = mod._get_inference_lock("blocking.gguf", 512)
         results: list[str] = []
 
@@ -118,8 +122,7 @@ class TestInferenceLock:
 
         assert lock_acquired_during_call, "check did not run"
         assert lock_acquired_during_call[0], (
-            "the model's inference lock was NOT held during "
-            "create_chat_completion()"
+            "the model's inference lock was NOT held during create_chat_completion()"
         )
 
 
@@ -130,6 +133,7 @@ class TestChatStreamNoChdirG4:
         run_autonomous_stream() which also changes cwd.
         """
         from src.api.session import PearlSession
+
         source = inspect.getsource(PearlSession.chat_stream)
         assert "os.chdir" not in source, (
             "chat_stream() still calls os.chdir() — remove it (G4 fix)"
@@ -153,6 +157,7 @@ class TestWorkspaceIsolationConcurrent:
         import inspect
 
         from src.tools.repo_tools import build_startup_index
+
         source = inspect.getsource(build_startup_index)
         # build_startup_index should use the `path` parameter, not cwd.
         # It passes the path to index_repository() which uses it directly.

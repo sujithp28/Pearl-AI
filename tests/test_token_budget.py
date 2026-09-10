@@ -93,7 +93,9 @@ class TestPlannerTokenBudgetIntegration:
         registry.get_tools.return_value = []
         dispatcher = MagicMock()
         client = MagicMock()
-        client.load_prompt.return_value = "Plan: {tools}\n{user_prompt}\n{workspace_root}"
+        client.load_prompt.return_value = (
+            "Plan: {tools}\n{user_prompt}\n{workspace_root}"
+        )
 
         planner = Planner(registry, dispatcher, client)
 
@@ -119,7 +121,9 @@ class TestPlannerTokenBudgetIntegration:
         registry.get_tools.return_value = []
         dispatcher = MagicMock()
         client = MagicMock()
-        client.load_prompt.return_value = "Plan: {tools}\n{user_prompt}\n{workspace_root}"
+        client.load_prompt.return_value = (
+            "Plan: {tools}\n{user_prompt}\n{workspace_root}"
+        )
 
         planner = Planner(registry, dispatcher, client)
         small_context = "tiny context"

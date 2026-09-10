@@ -50,9 +50,7 @@ class TestLocalInferenceProviderConstruction:
     def test_starts_background_download_when_model_missing(self, tmp_path):
         model_path = str(tmp_path / "missing.gguf")
 
-        with patch(
-            "src.llm.providers.local_inference._download_model"
-        ) as mock_dl:
+        with patch("src.llm.providers.local_inference._download_model") as mock_dl:
             mock_dl.side_effect = lambda **kwargs: None
 
             provider = LocalInferenceProvider(
@@ -80,6 +78,7 @@ class TestLocalInferenceProviderConstruction:
 
     def test_threads_defaults_to_cpu_count_minus_one(self, tmp_path):
         import os
+
         model_file = tmp_path / "m.gguf"
         model_file.write_bytes(b"fake")
 
@@ -145,7 +144,9 @@ class TestLocalInferenceProviderComplete:
             filename="model.gguf",
         )
 
-        with patch("src.llm.providers.local_inference._get_shared_llm", return_value=mock_llm):
+        with patch(
+            "src.llm.providers.local_inference._get_shared_llm", return_value=mock_llm
+        ):
             return provider
 
     def test_complete_returns_stripped_content(self, tmp_path):
@@ -161,7 +162,9 @@ class TestLocalInferenceProviderComplete:
             filename="model.gguf",
         )
 
-        with patch("src.llm.providers.local_inference._get_shared_llm", return_value=mock_llm):
+        with patch(
+            "src.llm.providers.local_inference._get_shared_llm", return_value=mock_llm
+        ):
             result = provider.complete([{"role": "user", "content": "hi"}], 0.2, 64)
 
         assert result == "hello"
@@ -179,17 +182,21 @@ class TestLocalInferenceProviderComplete:
             filename="model.gguf",
         )
 
-        with patch("src.llm.providers.local_inference._get_shared_llm", return_value=mock_llm):
+        with patch(
+            "src.llm.providers.local_inference._get_shared_llm", return_value=mock_llm
+        ):
             with pytest.raises(ValueError, match="empty response"):
                 provider.complete([{"role": "user", "content": "hi"}], 0.2, 64)
 
     def test_complete_stream_yields_content_chunks(self, tmp_path):
         mock_llm = MagicMock()
-        mock_llm.create_chat_completion.return_value = iter([
-            _make_stream_chunk("Hello"),
-            _make_stream_chunk(" world"),
-            _make_stream_chunk(None),  # no content — should be skipped
-        ])
+        mock_llm.create_chat_completion.return_value = iter(
+            [
+                _make_stream_chunk("Hello"),
+                _make_stream_chunk(" world"),
+                _make_stream_chunk(None),  # no content — should be skipped
+            ]
+        )
 
         model_file = tmp_path / "model.gguf"
         model_file.write_bytes(b"fake")
@@ -200,7 +207,9 @@ class TestLocalInferenceProviderComplete:
             filename="model.gguf",
         )
 
-        with patch("src.llm.providers.local_inference._get_shared_llm", return_value=mock_llm):
+        with patch(
+            "src.llm.providers.local_inference._get_shared_llm", return_value=mock_llm
+        ):
             chunks = list(
                 provider.complete_stream([{"role": "user", "content": "hi"}], 0.2, 64)
             )
@@ -212,7 +221,9 @@ class TestLocalInferenceProviderComplete:
 
 
 class TestFactoryRouting:
-    def test_pearl_without_key_creates_local_inference_provider(self, monkeypatch, tmp_path):
+    def test_pearl_without_key_creates_local_inference_provider(
+        self, monkeypatch, tmp_path
+    ):
         monkeypatch.setattr(Settings, "PEARL_INFERENCE_API_KEY", "")
         monkeypatch.setattr(Settings, "LOCAL_MODEL_DIR", str(tmp_path))
         monkeypatch.setattr(Settings, "LOCAL_MODEL_FILE", "model.gguf")
@@ -226,6 +237,7 @@ class TestFactoryRouting:
 
     def test_pearl_with_key_creates_pearl_inference_provider(self, monkeypatch):
         from src.llm.providers.pearl_inference import PearlInferenceProvider
+
         monkeypatch.setattr(Settings, "PEARL_INFERENCE_API_KEY", "sk-or-v1-test")
 
         provider = create_provider("pearl")

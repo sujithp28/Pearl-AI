@@ -104,9 +104,7 @@ def topological_sort(steps: list[ToolCall]) -> list[ToolCall]:
 
     # Kahn's algorithm: start with all zero-in-degree nodes, sorted by
     # original position so ties in readiness break deterministically.
-    queue: deque[int] = deque(
-        sorted(i for i in range(n) if in_degree[i] == 0)
-    )
+    queue: deque[int] = deque(sorted(i for i in range(n) if in_degree[i] == 0))
 
     result: list[ToolCall] = []
 

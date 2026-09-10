@@ -10,6 +10,7 @@ Tests for Pearl understanding languages universally, in both senses:
   English, so "namaste" was planned as engineering work and could end
   the run in an error.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -51,10 +52,19 @@ class TestRegistryCoverage:
     @pytest.mark.parametrize(
         "language",
         [
-            Language.PYTHON, Language.JAVASCRIPT, Language.TYPESCRIPT,
-            Language.JAVA, Language.GO, Language.RUST,
-            Language.C, Language.CPP, Language.CSHARP,
-            Language.RUBY, Language.PHP, Language.SWIFT, Language.KOTLIN,
+            Language.PYTHON,
+            Language.JAVASCRIPT,
+            Language.TYPESCRIPT,
+            Language.JAVA,
+            Language.GO,
+            Language.RUST,
+            Language.C,
+            Language.CPP,
+            Language.CSHARP,
+            Language.RUBY,
+            Language.PHP,
+            Language.SWIFT,
+            Language.KOTLIN,
         ],
     )
     def test_language_has_a_parser(self, registry, language):
@@ -71,8 +81,13 @@ class TestRegistryCoverage:
             for ext, lang in EXTENSION_TO_LANGUAGE.items()
             if lang
             in {
-                Language.C, Language.CPP, Language.CSHARP, Language.RUBY,
-                Language.PHP, Language.SWIFT, Language.KOTLIN,
+                Language.C,
+                Language.CPP,
+                Language.CSHARP,
+                Language.RUBY,
+                Language.PHP,
+                Language.SWIFT,
+                Language.KOTLIN,
             }
             and not registry.supports(lang)
         }
@@ -244,9 +259,7 @@ class TestOtherLanguages:
         names = {s.name for s in result.symbols}
         assert {"ContentView", "init", "render", "title"} <= names
 
-    def test_kotlin_extracts_suspend_and_top_level_functions(
-        self, registry, tmp_path
-    ):
+    def test_kotlin_extracts_suspend_and_top_level_functions(self, registry, tmp_path):
         result = _parse(
             registry,
             tmp_path,
@@ -254,9 +267,9 @@ class TestOtherLanguages:
             "import kotlinx.coroutines.*\n"
             "data class Point(val x: Int, val y: Int)\n"
             "class Repo {\n"
-            "    suspend fun fetch(id: String): String { return \"x\" }\n"
+            '    suspend fun fetch(id: String): String { return "x" }\n'
             "}\n"
-            "fun main() { println(\"hi\") }\n",
+            'fun main() { println("hi") }\n',
         )
         names = {s.name for s in result.symbols}
         assert {"Point", "Repo", "fetch", "main"} <= names
@@ -297,18 +310,47 @@ class TestHumanLanguages:
         "greeting",
         [
             # Romanised South Asian
-            "namaste", "namaskar", "vanakkam", "shukriya", "dhanyavaad",
+            "namaste",
+            "namaskar",
+            "vanakkam",
+            "shukriya",
+            "dhanyavaad",
             "kaise ho",
             # European
-            "hola", "gracias", "bonjour", "merci", "hallo", "danke",
-            "ciao", "olá", "obrigado", "privet", "spasibo",
+            "hola",
+            "gracias",
+            "bonjour",
+            "merci",
+            "hallo",
+            "danke",
+            "ciao",
+            "olá",
+            "obrigado",
+            "privet",
+            "spasibo",
             # Middle East / East Asia
-            "salam", "shukran", "merhaba",
-            "konnichiwa", "arigatou", "annyeonghaseyo", "ni hao", "xiexie",
+            "salam",
+            "shukran",
+            "merhaba",
+            "konnichiwa",
+            "arigatou",
+            "annyeonghaseyo",
+            "ni hao",
+            "xiexie",
             # Native scripts
-            "नमस्ते", "धन्यवाद", "வணக்கம்", "நன்றி", "నమస్కారం",
-            "こんにちは", "ありがとう", "안녕하세요", "你好", "谢谢",
-            "مرحبا", "привет", "спасибо",
+            "नमस्ते",
+            "धन्यवाद",
+            "வணக்கம்",
+            "நன்றி",
+            "నమస్కారం",
+            "こんにちは",
+            "ありがとう",
+            "안녕하세요",
+            "你好",
+            "谢谢",
+            "مرحبا",
+            "привет",
+            "спасибо",
         ],
     )
     def test_greetings_in_any_language_need_no_tools(self, greeting):
@@ -328,9 +370,7 @@ class TestHumanLanguages:
             "merci, now add a test",
         ],
     )
-    def test_a_greeting_carrying_a_request_still_reaches_the_planner(
-        self, prompt
-    ):
+    def test_a_greeting_carrying_a_request_still_reaches_the_planner(self, prompt):
         """Politeness in front of real work must not swallow the work."""
         assert needs_no_tools(prompt) is False
 
@@ -371,7 +411,9 @@ _LANGUAGE_SAMPLES: list[tuple[str, str, str, str, str | None]] = [
         "\n"
         "def standalone(x):\n"
         "    return x + 1\n",
-        "UserService", "find_user", "standalone",
+        "UserService",
+        "find_user",
+        "standalone",
     ),
     (
         "s.js",
@@ -379,7 +421,9 @@ _LANGUAGE_SAMPLES: list[tuple[str, str, str, str, str | None]] = [
         "  findUser(id) { return id; }\n"
         "}\n"
         "function standalone(x) { return x + 1; }\n",
-        "UserService", "findUser", "standalone",
+        "UserService",
+        "findUser",
+        "standalone",
     ),
     (
         "s.ts",
@@ -387,14 +431,18 @@ _LANGUAGE_SAMPLES: list[tuple[str, str, str, str, str | None]] = [
         "  public findUser(id: string): string { return id; }\n"
         "}\n"
         "export function standalone(x: number): number { return x + 1; }\n",
-        "UserService", "findUser", "standalone",
+        "UserService",
+        "findUser",
+        "standalone",
     ),
     (
         "S.java",
         "public class UserService {\n"
         "    public String findUser(String id) { return id; }\n"
         "}\n",
-        "UserService", "findUser", None,
+        "UserService",
+        "findUser",
+        None,
     ),
     (
         "s.go",
@@ -402,7 +450,9 @@ _LANGUAGE_SAMPLES: list[tuple[str, str, str, str, str | None]] = [
         "type UserService struct { db int }\n"
         "func (s *UserService) FindUser(id string) error { return nil }\n"
         "func Standalone(x int) int { return x + 1 }\n",
-        "UserService", "FindUser", "Standalone",
+        "UserService",
+        "FindUser",
+        "Standalone",
     ),
     (
         "s.rs",
@@ -411,7 +461,9 @@ _LANGUAGE_SAMPLES: list[tuple[str, str, str, str, str | None]] = [
         "    pub fn find_user(&self, id: u32) -> u32 { id }\n"
         "}\n"
         "pub fn standalone(x: i32) -> i32 { x + 1 }\n",
-        "UserService", "find_user", "standalone",
+        "UserService",
+        "find_user",
+        "standalone",
     ),
     (
         "s.cpp",
@@ -420,23 +472,25 @@ _LANGUAGE_SAMPLES: list[tuple[str, str, str, str, str | None]] = [
         "    int findUser(int id) { return id; }\n"
         "};\n"
         "int standalone(int x) { return x + 1; }\n",
-        "UserService", "findUser", "standalone",
+        "UserService",
+        "findUser",
+        "standalone",
     ),
     (
         "s.cs",
         "public class UserService {\n"
         "    public string FindUser(string id) { return id; }\n"
         "}\n",
-        "UserService", "FindUser", None,
+        "UserService",
+        "FindUser",
+        None,
     ),
     (
         "s.rb",
-        "class UserService\n"
-        "  def find_user(id)\n"
-        "    id\n"
-        "  end\n"
-        "end\n",
-        "UserService", "find_user", None,
+        "class UserService\n  def find_user(id)\n    id\n  end\nend\n",
+        "UserService",
+        "find_user",
+        None,
     ),
     (
         "s.php",
@@ -445,7 +499,9 @@ _LANGUAGE_SAMPLES: list[tuple[str, str, str, str, str | None]] = [
         "    public function findUser($id) { return $id; }\n"
         "}\n"
         "function standalone($x) { return $x + 1; }\n",
-        "UserService", "findUser", "standalone",
+        "UserService",
+        "findUser",
+        "standalone",
     ),
     (
         "s.swift",
@@ -453,7 +509,9 @@ _LANGUAGE_SAMPLES: list[tuple[str, str, str, str, str | None]] = [
         "    func findUser(id: String) -> String { return id }\n"
         "}\n"
         "func standalone(x: Int) -> Int { return x + 1 }\n",
-        "UserService", "findUser", "standalone",
+        "UserService",
+        "findUser",
+        "standalone",
     ),
     (
         "s.kt",
@@ -461,7 +519,9 @@ _LANGUAGE_SAMPLES: list[tuple[str, str, str, str, str | None]] = [
         "    fun findUser(id: String): String = id\n"
         "}\n"
         "fun standalone(x: Int): Int = x + 1\n",
-        "UserService", "findUser", "standalone",
+        "UserService",
+        "findUser",
+        "standalone",
     ),
 ]
 
@@ -469,21 +529,15 @@ _SAMPLE_IDS = [name for name, *_ in _LANGUAGE_SAMPLES]
 
 
 class TestEveryParserFindsTheSameShape:
-    @pytest.mark.parametrize(
-        "sample", _LANGUAGE_SAMPLES, ids=_SAMPLE_IDS
-    )
+    @pytest.mark.parametrize("sample", _LANGUAGE_SAMPLES, ids=_SAMPLE_IDS)
     def test_class_is_found(self, registry, tmp_path, sample):
         name, source, class_name, _, _ = sample
         result = _parse(registry, tmp_path, name, source)
 
         assert class_name in {s.name for s in result.symbols}
 
-    @pytest.mark.parametrize(
-        "sample", _LANGUAGE_SAMPLES, ids=_SAMPLE_IDS
-    )
-    def test_method_is_found_and_marked_as_a_method(
-        self, registry, tmp_path, sample
-    ):
+    @pytest.mark.parametrize("sample", _LANGUAGE_SAMPLES, ids=_SAMPLE_IDS)
+    def test_method_is_found_and_marked_as_a_method(self, registry, tmp_path, sample):
         """
         The exact check the JS/TS parser would have failed from the day
         it shipped.
@@ -498,9 +552,7 @@ class TestEveryParserFindsTheSameShape:
             f"{[(s.name, s.kind.value) for s in result.symbols]}"
         )
 
-    @pytest.mark.parametrize(
-        "sample", _LANGUAGE_SAMPLES, ids=_SAMPLE_IDS
-    )
+    @pytest.mark.parametrize("sample", _LANGUAGE_SAMPLES, ids=_SAMPLE_IDS)
     def test_free_function_is_found(self, registry, tmp_path, sample):
         name, source, _, _, function_name = sample
 
@@ -511,9 +563,7 @@ class TestEveryParserFindsTheSameShape:
 
         assert function_name in {s.name for s in result.symbols}
 
-    @pytest.mark.parametrize(
-        "sample", _LANGUAGE_SAMPLES, ids=_SAMPLE_IDS
-    )
+    @pytest.mark.parametrize("sample", _LANGUAGE_SAMPLES, ids=_SAMPLE_IDS)
     def test_parsing_reports_no_errors(self, registry, tmp_path, sample):
         name, source, *_ = sample
         result = _parse(registry, tmp_path, name, source)

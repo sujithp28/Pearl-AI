@@ -48,9 +48,7 @@ def create_provider(name: str) -> LLMProvider:
 
             # No key → zero-configuration local inference.
             # Model auto-downloads from HuggingFace on first run (~491 MB).
-            model_path = str(
-                Path(Settings.LOCAL_MODEL_DIR) / Settings.LOCAL_MODEL_FILE
-            )
+            model_path = str(Path(Settings.LOCAL_MODEL_DIR) / Settings.LOCAL_MODEL_FILE)
             return LocalInferenceProvider(
                 model_path=model_path,
                 repo_id=Settings.LOCAL_MODEL_REPO,

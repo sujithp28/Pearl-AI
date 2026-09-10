@@ -10,6 +10,7 @@ Coverage:
 - context_block combines repo + exec results
 - tokens_used doesn't exceed budget
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -183,7 +184,9 @@ class TestExecutionResults:
 
     def test_failed_step_marked(self) -> None:
         engine = _make_engine()
-        step = SimpleNamespace(tool_name="write_file", succeeded=False, summary="Permission denied")
+        step = SimpleNamespace(
+            tool_name="write_file", succeeded=False, summary="Permission denied"
+        )
         ctx = engine.build(task="task", execution_results=[step])
         assert "write_file" in ctx.context_block
 

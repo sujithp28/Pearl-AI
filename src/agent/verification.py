@@ -121,9 +121,13 @@ class VerificationEngine:
         tests_run = tests_passed = tests_failed = 0
         if test_files:
             cmd = [
-                "python", "-m", "pytest",
+                "python",
+                "-m",
+                "pytest",
                 *test_files,
-                "--tb=short", "-q", "--no-header",
+                "--tb=short",
+                "-q",
+                "--no-header",
             ]
             evidence.append(f"test_cmd={' '.join(cmd)}")
             out, passed, failed, run_errors = self._run_tests(cmd)
@@ -235,9 +239,7 @@ class VerificationEngine:
     # Test runner
     # ------------------------------------------------------------------
 
-    def _run_tests(
-        self, cmd: list[str]
-    ) -> tuple[str, int, int, list[str]]:
+    def _run_tests(self, cmd: list[str]) -> tuple[str, int, int, list[str]]:
         errors: list[str] = []
         try:
             result = subprocess.run(
@@ -315,10 +317,7 @@ def _compute_risk(
     if tests_failed > 0:
         return RiskLevel.HIGH
 
-    critical_unexpected = [
-        f for f in unexpected
-        if f.startswith(("src/", "src\\"))
-    ]
+    critical_unexpected = [f for f in unexpected if f.startswith(("src/", "src\\"))]
     if critical_unexpected:
         return RiskLevel.HIGH
 

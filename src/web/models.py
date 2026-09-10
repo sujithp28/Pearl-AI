@@ -24,7 +24,7 @@ class SearchResult:
 class RawPage:
     """Raw HTTP response for a URL before content extraction."""
 
-    url: str          # final URL after redirects
+    url: str  # final URL after redirects
     content_type: str
     body: bytes
     original_url: str  # the URL that was requested (before redirects)
@@ -36,12 +36,10 @@ class WebDocument:
 
     url: str
     title: str
-    text: str                           # clean prose, no HTML
+    text: str  # clean prose, no HTML
     headings: list[str] = field(default_factory=list)
-    retrieved_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
-    relevance_score: float = 0.0        # set by rank.py
+    retrieved_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    relevance_score: float = 0.0  # set by rank.py
 
 
 @dataclass
@@ -65,7 +63,7 @@ class WebContext:
 
     query: str
     sources: list[WebSource]
-    evidence: list[str]      # formatted per-source blocks, same order as sources
+    evidence: list[str]  # formatted per-source blocks, same order as sources
     total_chars: int
 
     def format_for_llm(self) -> str:

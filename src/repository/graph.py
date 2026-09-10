@@ -70,11 +70,11 @@ class NodeKind(str, Enum):
 class EdgeKind(str, Enum):
     """The five directed relationship types between graph nodes."""
 
-    IMPORTS = "imports"     # FILE → FILE   — file imports another file
-    DEFINES = "defines"     # FILE → SYMBOL — file defines a symbol
-    CONTAINS = "contains"   # SYMBOL → SYMBOL — parent symbol contains child
-    INHERITS = "inherits"   # SYMBOL → SYMBOL — class → base class
-    CALLS = "calls"         # SYMBOL → SYMBOL — reserved for Phase 7
+    IMPORTS = "imports"  # FILE → FILE   — file imports another file
+    DEFINES = "defines"  # FILE → SYMBOL — file defines a symbol
+    CONTAINS = "contains"  # SYMBOL → SYMBOL — parent symbol contains child
+    INHERITS = "inherits"  # SYMBOL → SYMBOL — class → base class
+    CALLS = "calls"  # SYMBOL → SYMBOL — reserved for Phase 7
 
 
 # ---------------------------------------------------------------------------
@@ -340,21 +340,25 @@ class RepositoryGraph:
                 g._add_node(sym_node)
 
                 # DEFINES: file → symbol (top-level and nested)
-                g._add_edge(Edge(
-                    source=fi.relative_path,
-                    target=node_id,
-                    kind=EdgeKind.DEFINES,
-                ))
+                g._add_edge(
+                    Edge(
+                        source=fi.relative_path,
+                        target=node_id,
+                        kind=EdgeKind.DEFINES,
+                    )
+                )
 
                 # CONTAINS: parent symbol → this symbol
                 if sym.parent is not None:
                     parent_id = f"{fi.relative_path}#{sym.parent}"
                     if parent_id in g._nodes:
-                        g._add_edge(Edge(
-                            source=parent_id,
-                            target=node_id,
-                            kind=EdgeKind.CONTAINS,
-                        ))
+                        g._add_edge(
+                            Edge(
+                                source=parent_id,
+                                target=node_id,
+                                kind=EdgeKind.CONTAINS,
+                            )
+                        )
 
         # Step 4: IMPORTS edges — resolve import strings to file paths
         for fi in index.indexed_files():
@@ -388,14 +392,18 @@ class RepositoryGraph:
                     resolved_any = False
 
                     for name in imported_names:
-                        tp = _resolve_to_file(n_dots, name, fi.relative_path, module_map)
+                        tp = _resolve_to_file(
+                            n_dots, name, fi.relative_path, module_map
+                        )
                         if tp is not None and tp in g._nodes and tp != fi.relative_path:
-                            g._add_edge(Edge(
-                                source=fi.relative_path,
-                                target=tp,
-                                kind=EdgeKind.IMPORTS,
-                                imported_names=(name,),
-                            ))
+                            g._add_edge(
+                                Edge(
+                                    source=fi.relative_path,
+                                    target=tp,
+                                    kind=EdgeKind.IMPORTS,
+                                    imported_names=(name,),
+                                )
+                            )
                             resolved_any = True
 
                     tp = (
@@ -404,12 +412,14 @@ class RepositoryGraph:
                         else _resolve_to_file(n_dots, "", fi.relative_path, module_map)
                     )
                     if tp is not None and tp in g._nodes and tp != fi.relative_path:
-                        g._add_edge(Edge(
-                            source=fi.relative_path,
-                            target=tp,
-                            kind=EdgeKind.IMPORTS,
-                            imported_names=imported_names,
-                        ))
+                        g._add_edge(
+                            Edge(
+                                source=fi.relative_path,
+                                target=tp,
+                                kind=EdgeKind.IMPORTS,
+                                imported_names=imported_names,
+                            )
+                        )
                     continue
 
                 target_path = _resolve_to_file(
@@ -419,12 +429,14 @@ class RepositoryGraph:
                     # Avoid self-import edges (can happen with __init__.py)
                     if target_path == fi.relative_path:
                         continue
-                    g._add_edge(Edge(
-                        source=fi.relative_path,
-                        target=target_path,
-                        kind=EdgeKind.IMPORTS,
-                        imported_names=imported_names,
-                    ))
+                    g._add_edge(
+                        Edge(
+                            source=fi.relative_path,
+                            target=target_path,
+                            kind=EdgeKind.IMPORTS,
+                            imported_names=imported_names,
+                        )
+                    )
 
         # Step 5: INHERITS edges — resolve base class names to SYMBOL nodes
         for fi in index.indexed_files():
@@ -439,12 +451,14 @@ class RepositoryGraph:
                 for base_name in base_classes:
                     target_id = _find_symbol_node(base_name, class_node_id, g._nodes)
                     if target_id is not None:
-                        g._add_edge(Edge(
-                            source=class_node_id,
-                            target=target_id,
-                            kind=EdgeKind.INHERITS,
-                            base_name=base_name,
-                        ))
+                        g._add_edge(
+                            Edge(
+                                source=class_node_id,
+                                target=target_id,
+                                kind=EdgeKind.INHERITS,
+                                base_name=base_name,
+                            )
+                        )
 
         # Step 6: compute cycle count
         cycles = g.detect_cycles()
@@ -454,12 +468,24 @@ class RepositoryGraph:
         g._stats = GraphStats(
             node_count=len(g._nodes),
             edge_count=len(g._edge_set),
-            file_node_count=sum(1 for n in g._nodes.values() if n.kind is NodeKind.FILE),
-            symbol_node_count=sum(1 for n in g._nodes.values() if n.kind is NodeKind.SYMBOL),
-            imports_edge_count=sum(1 for _, _, k in g._edge_set if k is EdgeKind.IMPORTS),
-            defines_edge_count=sum(1 for _, _, k in g._edge_set if k is EdgeKind.DEFINES),
-            contains_edge_count=sum(1 for _, _, k in g._edge_set if k is EdgeKind.CONTAINS),
-            inherits_edge_count=sum(1 for _, _, k in g._edge_set if k is EdgeKind.INHERITS),
+            file_node_count=sum(
+                1 for n in g._nodes.values() if n.kind is NodeKind.FILE
+            ),
+            symbol_node_count=sum(
+                1 for n in g._nodes.values() if n.kind is NodeKind.SYMBOL
+            ),
+            imports_edge_count=sum(
+                1 for _, _, k in g._edge_set if k is EdgeKind.IMPORTS
+            ),
+            defines_edge_count=sum(
+                1 for _, _, k in g._edge_set if k is EdgeKind.DEFINES
+            ),
+            contains_edge_count=sum(
+                1 for _, _, k in g._edge_set if k is EdgeKind.CONTAINS
+            ),
+            inherits_edge_count=sum(
+                1 for _, _, k in g._edge_set if k is EdgeKind.INHERITS
+            ),
             cycle_count=len(cycles),
             build_duration_ms=elapsed_ms,
         )
@@ -513,15 +539,13 @@ class RepositoryGraph:
     def edges_out(self, node_id: str, kind: EdgeKind | None = None) -> list[Edge]:
         """Return outgoing edges from *node_id*, optionally filtered by *kind*."""
         return [
-            e for e in self._adj_out.get(node_id, [])
-            if kind is None or e.kind is kind
+            e for e in self._adj_out.get(node_id, []) if kind is None or e.kind is kind
         ]
 
     def edges_in(self, node_id: str, kind: EdgeKind | None = None) -> list[Edge]:
         """Return incoming edges to *node_id*, optionally filtered by *kind*."""
         return [
-            e for e in self._adj_in.get(node_id, [])
-            if kind is None or e.kind is kind
+            e for e in self._adj_in.get(node_id, []) if kind is None or e.kind is kind
         ]
 
     def neighbors_out(self, node_id: str, kind: EdgeKind | None = None) -> list[Node]:
@@ -872,9 +896,7 @@ class RepositoryGraph:
         if personalization:
             # Normalise so all weights sum to 1.0 (nx.pagerank requirement).
             baseline = 1.0
-            weighted = {
-                nid: personalization.get(nid, baseline) for nid in g.nodes()
-            }
+            weighted = {nid: personalization.get(nid, baseline) for nid in g.nodes()}
             total = sum(weighted.values())
             if total > 0:
                 nx_personalization = {k: v / total for k, v in weighted.items()}
@@ -886,6 +908,7 @@ class RepositoryGraph:
             from networkx.algorithms.link_analysis.pagerank_alg import (
                 _pagerank_python,
             )
+
             scores: dict[str, float] = _pagerank_python(
                 g,
                 alpha=alpha,

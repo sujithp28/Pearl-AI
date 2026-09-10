@@ -531,7 +531,9 @@ def test_tool_replace_method_raises_when_class_not_found(tmp_path, monkeypatch):
     (tmp_path / "a.py").write_text("class Foo: pass\n")
 
     with pytest.raises(SymbolNotFoundError):
-        replace_method("NonExistent", "some_method", "    pass\n", path=str(tmp_path / "a.py"))
+        replace_method(
+            "NonExistent", "some_method", "    pass\n", path=str(tmp_path / "a.py")
+        )
 
 
 # ---------------------------------------------------------------------

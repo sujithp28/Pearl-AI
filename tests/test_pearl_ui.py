@@ -6,6 +6,7 @@ and key JavaScript patterns. They run without a browser (no Playwright/Selenium)
 
 Visual acceptance of the UI must be done manually in a real browser.
 """
+
 from __future__ import annotations
 
 from html.parser import HTMLParser
@@ -23,15 +24,14 @@ HTML = UI_FILE.read_text(encoding="utf-8")
 # `HTML` still means the page alone: the structural tests parse it as
 # markup, and a module's source is not markup.
 _MODULES = sorted(
-    path
-    for path in UI_DIR.glob("js/*.js")
-    if not path.name.endswith(".test.js")
+    path for path in UI_DIR.glob("js/*.js") if not path.name.endswith(".test.js")
 )
 JS = "\n".join(path.read_text(encoding="utf-8") for path in _MODULES)
 SOURCE = HTML + "\n" + JS
 
 
 # ─── HTML parser helper ───────────────────────────────────────────────────────
+
 
 class TagCollector(HTMLParser):
     def __init__(self) -> None:
@@ -70,6 +70,7 @@ def by_class(collector: TagCollector, cls: str) -> list[dict]:
 
 # ─── 1. Initial render ───────────────────────────────────────────────────────
 
+
 class TestInitialRender:
     def test_html_file_exists(self) -> None:
         assert UI_FILE.exists(), "pearl_ui/index.html must exist"
@@ -96,7 +97,7 @@ class TestInitialRender:
         # Dark token --bg defined on :root
         assert "--bg:" in SOURCE
         # Light token defined in [data-theme="light"] or media query
-        assert "[data-theme=\"light\"]" in SOURCE or "prefers-color-scheme" in SOURCE
+        assert '[data-theme="light"]' in SOURCE or "prefers-color-scheme" in SOURCE
 
     def test_accent_color_defined(self) -> None:
         assert "--acc:" in SOURCE
@@ -104,6 +105,7 @@ class TestInitialRender:
 
 
 # ─── 2. Sidebar ──────────────────────────────────────────────────────────────
+
 
 class TestSidebar:
     def test_sidebar_element_exists(self) -> None:
@@ -152,7 +154,9 @@ class TestSidebar:
         el = by_id(p, "sb-list")
         assert el is not None
         # Should be navigation or list
-        assert el.get("role") or el.get("aria-label"), "sb-list needs role or aria-label"
+        assert el.get("role") or el.get("aria-label"), (
+            "sb-list needs role or aria-label"
+        )
 
     def test_workspace_badge(self) -> None:
         p = parse()
@@ -183,6 +187,7 @@ class TestSidebar:
 
 # ─── 3. New chat ─────────────────────────────────────────────────────────────
 
+
 class TestNewChat:
     def test_new_chat_js_function(self) -> None:
         assert "newChat" in SOURCE or "new-chat" in SOURCE
@@ -210,6 +215,7 @@ class TestNewChat:
 
 
 # ─── 4. Sending a message ────────────────────────────────────────────────────
+
 
 class TestSendMessage:
     def test_input_textarea(self) -> None:
@@ -239,7 +245,11 @@ class TestSendMessage:
         assert "shiftKey" in SOURCE
 
     def test_submit_function(self) -> None:
-        assert "function submit" in SOURCE or "submit()" in SOURCE or "function submit" in SOURCE
+        assert (
+            "function submit" in SOURCE
+            or "submit()" in SOURCE
+            or "function submit" in SOURCE
+        )
 
     def test_auto_resize_input(self) -> None:
         assert "resize" in SOURCE
@@ -247,9 +257,14 @@ class TestSendMessage:
 
 # ─── 5. Streaming response ───────────────────────────────────────────────────
 
+
 class TestStreaming:
     def test_sse_parser(self) -> None:
-        assert "async function* sse" in SOURCE or "parseSSE" in SOURCE or "function* sse" in SOURCE
+        assert (
+            "async function* sse" in SOURCE
+            or "parseSSE" in SOURCE
+            or "function* sse" in SOURCE
+        )
 
     def test_streaming_cursor_css(self) -> None:
         assert ".cursor" in SOURCE
@@ -279,6 +294,7 @@ class TestStreaming:
 
 # ─── 6. Markdown rendering ───────────────────────────────────────────────────
 
+
 class TestMarkdown:
     def test_renderMd_function(self) -> None:
         assert "renderMd" in SOURCE or "renderMd(" in SOURCE
@@ -293,7 +309,7 @@ class TestMarkdown:
         assert "<em>" in SOURCE
 
     def test_links_handled(self) -> None:
-        assert "target=\"_blank\"" in SOURCE or "target='_blank'" in SOURCE
+        assert 'target="_blank"' in SOURCE or "target='_blank'" in SOURCE
 
     def test_lists_handled(self) -> None:
         assert "<ul>" in SOURCE and "<ol>" in SOURCE
@@ -312,6 +328,7 @@ class TestMarkdown:
 
 
 # ─── 7. Code blocks ──────────────────────────────────────────────────────────
+
 
 class TestCodeBlocks:
     def test_fenced_code_regex(self) -> None:
@@ -341,6 +358,7 @@ class TestCodeBlocks:
 
 # ─── 8. Tool activity card ───────────────────────────────────────────────────
 
+
 class TestToolActivity:
     def test_tool_group_css(self) -> None:
         assert ".tool-group" in SOURCE
@@ -369,6 +387,7 @@ class TestToolActivity:
 
 # ─── 9. Tool success state ───────────────────────────────────────────────────
 
+
 class TestToolSuccess:
     def test_success_color_token(self) -> None:
         assert "--suc:" in SOURCE
@@ -384,6 +403,7 @@ class TestToolSuccess:
 
 
 # ─── 10. Tool failure state ──────────────────────────────────────────────────
+
 
 class TestToolFailure:
     def test_error_color_token(self) -> None:
@@ -401,6 +421,7 @@ class TestToolFailure:
 
 # ─── 11. Plan card ───────────────────────────────────────────────────────────
 
+
 class TestPlanCard:
     def test_plan_card_css(self) -> None:
         assert ".plan-card" in SOURCE
@@ -416,6 +437,7 @@ class TestPlanCard:
 
 
 # ─── 12. Diff viewer ─────────────────────────────────────────────────────────
+
 
 class TestDiffViewer:
     def test_diff_card_css(self) -> None:
@@ -442,6 +464,7 @@ class TestDiffViewer:
 
 # ─── 13. Approve ─────────────────────────────────────────────────────────────
 
+
 class TestApprove:
     def test_btn_approve_css(self) -> None:
         assert ".btn-approve" in SOURCE
@@ -458,6 +481,7 @@ class TestApprove:
 
 # ─── 14. Reject ──────────────────────────────────────────────────────────────
 
+
 class TestReject:
     def test_btn_reject_css(self) -> None:
         assert ".btn-reject" in SOURCE
@@ -473,6 +497,7 @@ class TestReject:
 
 
 # ─── 15. Test results ────────────────────────────────────────────────────────
+
 
 class TestTestResults:
     def test_result_card_css(self) -> None:
@@ -493,6 +518,7 @@ class TestTestResults:
 
 # ─── 16. Web sources ─────────────────────────────────────────────────────────
 
+
 class TestWebSources:
     def test_web_search_handled_in_tool_labels(self) -> None:
         assert "web" in SOURCE.lower() or "search" in SOURCE.lower()
@@ -504,10 +530,15 @@ class TestWebSources:
 
 # ─── 17. Error states ────────────────────────────────────────────────────────
 
+
 class TestErrors:
     def test_err_note_role_alert(self) -> None:
         # role="alert" is set via setAttribute in JS (dynamic, not static HTML)
-        assert "setAttribute('role','alert')" in SOURCE or 'setAttribute("role","alert")' in SOURCE or 'role="alert"' in SOURCE
+        assert (
+            "setAttribute('role','alert')" in SOURCE
+            or 'setAttribute("role","alert")' in SOURCE
+            or 'role="alert"' in SOURCE
+        )
 
     def test_abort_error_not_shown(self) -> None:
         assert "AbortError" in SOURCE  # must be caught and not displayed
@@ -520,6 +551,7 @@ class TestErrors:
 
 
 # ─── 18. Narrow layout (responsive) ─────────────────────────────────────────
+
 
 class TestResponsive:
     def test_media_query_768(self) -> None:
@@ -546,6 +578,7 @@ class TestResponsive:
 
 # ─── Accessibility ────────────────────────────────────────────────────────────
 
+
 class TestAccessibility:
     def test_focus_visible_style(self) -> None:
         assert ":focus-visible" in SOURCE
@@ -563,7 +596,7 @@ class TestAccessibility:
         assert 'aria-modal="true"' in SOURCE
 
     def test_aria_pressed_on_mode_buttons(self) -> None:
-        assert 'aria-pressed' in SOURCE
+        assert "aria-pressed" in SOURCE
 
     def test_reduced_motion_support(self) -> None:
         assert "prefers-reduced-motion" in SOURCE
@@ -576,6 +609,7 @@ class TestAccessibility:
 
 
 # ─── Mode toggle ─────────────────────────────────────────────────────────────
+
 
 class TestModeToggle:
     def test_agent_mode_button(self) -> None:
@@ -598,6 +632,7 @@ class TestModeToggle:
 
 
 # ─── API endpoints consumed ───────────────────────────────────────────────────
+
 
 class TestAPIEndpoints:
     def test_api_status(self) -> None:
@@ -627,6 +662,7 @@ class TestAPIEndpoints:
 
 # ─── LocalStorage ────────────────────────────────────────────────────────────
 
+
 class TestLocalStorage:
     def test_localStorage_used(self) -> None:
         assert "localStorage" in SOURCE
@@ -635,13 +671,18 @@ class TestLocalStorage:
         assert "STORE_KEY" in SOURCE or "STORAGE_KEY" in SOURCE
 
     def test_save_function(self) -> None:
-        assert "function save" in SOURCE or "saveToStorage" in SOURCE or "function save(" in SOURCE
+        assert (
+            "function save" in SOURCE
+            or "saveToStorage" in SOURCE
+            or "function save(" in SOURCE
+        )
 
     def test_load_function(self) -> None:
         assert "loadStore" in SOURCE or "loadConversations" in SOURCE
 
 
 # ─── Syntax highlighting ─────────────────────────────────────────────────────
+
 
 class TestSyntaxHighlight:
     def test_hilight_function(self) -> None:

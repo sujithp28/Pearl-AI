@@ -7,6 +7,7 @@ the ones that would silently poison a training run: a prompt that isn't
 the one Pearl actually uses, a completion the parser would reject, or a
 label that teaches the model the behaviour being fixed.
 """
+
 from __future__ import annotations
 
 import json
@@ -112,9 +113,7 @@ class TestLabelsMatchPearlsRules:
             ids = {s["id"] for s in plan["steps"] if "id" in s}
             for step in plan["steps"]:
                 for dep in step.get("depends_on", []):
-                    assert dep in ids, (
-                        f"{text!r}: depends_on {dep!r} names no step id"
-                    )
+                    assert dep in ids, f"{text!r}: depends_on {dep!r} names no step id"
 
 
 class TestPromptRendering:

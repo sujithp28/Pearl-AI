@@ -28,6 +28,7 @@ cursor cannot be injected as true FIM context. `suffix` is still used,
 for overlap trimming and stop-sequence derivation, which are real wins;
 a Coder-tuned model would additionally allow proper FIM prompting.
 """
+
 from __future__ import annotations
 
 import logging

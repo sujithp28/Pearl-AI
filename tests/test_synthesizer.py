@@ -15,6 +15,7 @@ from src.agent.synthesizer import Synthesizer, _format_results, _truncate
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _step(tool: str, result=None, error=None, succeeded=True) -> ExecutionStep:
     s = ExecutionStep(iteration=1, tool_name=tool, kwargs={})
     s.result = result
@@ -39,6 +40,7 @@ def _report(*steps: ExecutionStep, stop_reason="completed") -> ExecutionReport:
 # ---------------------------------------------------------------------------
 # 1. Synthesis receives tool results
 # ---------------------------------------------------------------------------
+
 
 class TestSynthesizerReceivesResults:
     def test_tool_results_passed_to_llm(self):
@@ -73,6 +75,7 @@ class TestSynthesizerReceivesResults:
 # 2. Conversational (no tool) path
 # ---------------------------------------------------------------------------
 
+
 class TestConversationalPath:
     def test_none_steps_excluded_from_results(self):
         """'none' tool steps must not appear in the evidence block."""
@@ -87,7 +90,11 @@ class TestConversationalPath:
         """When all steps are 'none', _format_results signals conversational."""
         report = _report(_step("none"))
         text = _format_results(report)
-        assert "No tools were used" in text or "No tools were needed" in text or "conversationally" in text
+        assert (
+            "No tools were used" in text
+            or "No tools were needed" in text
+            or "conversationally" in text
+        )
 
 
 class TestFailedStepsInEvidence:
@@ -125,6 +132,7 @@ class TestFailedStepsInEvidence:
 # 3. Synthesis failure is handled gracefully
 # ---------------------------------------------------------------------------
 
+
 class TestSynthesisFailureHandling:
     def test_llm_exception_returns_empty_string(self):
         """Synthesis failure must return '' and not raise."""
@@ -148,6 +156,7 @@ class TestSynthesisFailureHandling:
 # ---------------------------------------------------------------------------
 # 4. Raw tool output is not the final answer (synthesis LLM is called)
 # ---------------------------------------------------------------------------
+
 
 class TestSynthesisIsCalledNotBypassed:
     def test_llm_called_when_tools_succeeded(self):
@@ -173,10 +182,12 @@ class TestSynthesisIsCalledNotBypassed:
 # 5. Repository context reaches Planner (wiring check)
 # ---------------------------------------------------------------------------
 
+
 class TestRepositoryContextWiring:
     def test_executor_built_with_context_builder(self):
         """AutonomousExecutor must receive context_builder and context_service."""
         from src.agent.executor import AutonomousExecutor
+
         mock_builder = MagicMock()
         mock_service = MagicMock()
         mock_planner = MagicMock()
@@ -194,6 +205,7 @@ class TestRepositoryContextWiring:
     def test_build_workspace_context_calls_builder(self):
         """_build_workspace_context must call builder.build when both are set."""
         from src.agent.executor import AutonomousExecutor
+
         mock_builder = MagicMock()
         mock_builder.build.return_value = "## Context"
         mock_service = MagicMock()
@@ -213,18 +225,21 @@ class TestRepositoryContextWiring:
     def test_build_workspace_context_returns_empty_without_builder(self):
         """Without context_builder, _build_workspace_context returns ''."""
         from src.agent.executor import AutonomousExecutor
+
         executor = AutonomousExecutor(MagicMock(), MagicMock())
         assert executor._build_workspace_context("any prompt") == ""
 
     def test_build_workspace_context_fails_open(self):
         """A builder that raises must not block planning — return '' instead."""
         from src.agent.executor import AutonomousExecutor
+
         mock_builder = MagicMock()
         mock_builder.build.side_effect = RuntimeError("index not ready")
         mock_service = MagicMock()
 
         executor = AutonomousExecutor(
-            MagicMock(), MagicMock(),
+            MagicMock(),
+            MagicMock(),
             context_builder=mock_builder,
             context_service=mock_service,
         )
@@ -235,6 +250,7 @@ class TestRepositoryContextWiring:
 # ---------------------------------------------------------------------------
 # 6. Verification data reaches synthesis (G2)
 # ---------------------------------------------------------------------------
+
 
 class TestVerificationPassedToSynthesis:
     def test_verification_status_included_in_prompt(self):

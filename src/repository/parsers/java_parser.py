@@ -3,6 +3,7 @@ Java parser — regex-based, no native dependencies.
 
 Extracts classes, interfaces, enums, and methods.
 """
+
 from __future__ import annotations
 
 import re
@@ -24,10 +25,24 @@ _METHOD_RE = re.compile(
 )
 _IMPORT_RE = re.compile(r"^import\s+(?:static\s+)?([^;]+);", re.MULTILINE)
 
-_KEYWORD_NAMES = frozenset({
-    "if", "else", "for", "while", "do", "switch", "try", "catch", "finally",
-    "return", "throw", "new", "this", "super",
-})
+_KEYWORD_NAMES = frozenset(
+    {
+        "if",
+        "else",
+        "for",
+        "while",
+        "do",
+        "switch",
+        "try",
+        "catch",
+        "finally",
+        "return",
+        "throw",
+        "new",
+        "this",
+        "super",
+    }
+)
 
 
 class JavaParser(BaseParser):
@@ -72,13 +87,15 @@ class JavaParser(BaseParser):
             else:
                 kind = SymbolKind.CLASS
 
-            symbols.append(SymbolDef(
-                name=name,
-                qualified_name=name,
-                kind=kind,
-                line_start=line_no,
-                line_end=end_line,
-            ))
+            symbols.append(
+                SymbolDef(
+                    name=name,
+                    qualified_name=name,
+                    kind=kind,
+                    line_start=line_no,
+                    line_end=end_line,
+                )
+            )
             class_stack.append((line_no, name, indent))
 
         for m in _METHOD_RE.finditer(source):
@@ -90,23 +107,27 @@ class JavaParser(BaseParser):
 
             # Find enclosing class
             parent = None
-            for (cls_line, cls_name, cls_indent) in reversed(class_stack):
+            for cls_line, cls_name, cls_indent in reversed(class_stack):
                 if cls_line < line_no and cls_indent < indent:
                     parent = cls_name
                     break
 
             qname = f"{parent}.{name}" if parent else name
-            symbols.append(SymbolDef(
-                name=name,
-                qualified_name=qname,
-                kind=SymbolKind.METHOD if parent else SymbolKind.FUNCTION,
-                line_start=line_no,
-                line_end=_estimate_end(lines, line_no - 1),
-                parent=parent,
-            ))
+            symbols.append(
+                SymbolDef(
+                    name=name,
+                    qualified_name=qname,
+                    kind=SymbolKind.METHOD if parent else SymbolKind.FUNCTION,
+                    line_start=line_no,
+                    line_end=_estimate_end(lines, line_no - 1),
+                    parent=parent,
+                )
+            )
 
         symbols.sort(key=lambda s: s.line_start)
-        return ParseResult(file_info=file_info, symbols=symbols, imports=imports, errors=errors)
+        return ParseResult(
+            file_info=file_info, symbols=symbols, imports=imports, errors=errors
+        )
 
 
 def _estimate_end(lines: list[str], start_idx: int, max_scan: int = 300) -> int:

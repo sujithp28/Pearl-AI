@@ -6,6 +6,7 @@ Code extension use, so these tests focus on what is genuinely new:
 argument handling, exit codes, rendering, and — most importantly — that
 the approval gate is not weakened by the convenience flags.
 """
+
 from __future__ import annotations
 
 import json

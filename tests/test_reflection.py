@@ -44,7 +44,9 @@ def _step(tool_name: str, *, ok: bool = True, iteration: int = 1) -> ExecutionSt
     )
 
 
-@tool(description="Add two numbers.", parameters={"a": "int", "b": "int"}, returns="int")
+@tool(
+    description="Add two numbers.", parameters={"a": "int", "b": "int"}, returns="int"
+)
 def add(a: int, b: int) -> int:
     return a + b
 

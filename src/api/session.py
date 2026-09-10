@@ -165,14 +165,21 @@ class PearlSession:
 
         except ContextLengthError:
             # History was still too long — try one emergency condensation.
-            logger.warning("chat_stream: ContextLengthError; attempting emergency condensation.")
+            logger.warning(
+                "chat_stream: ContextLengthError; attempting emergency condensation."
+            )
             yield "chunk", "\n[Compressing session history…]\n"
             try:
-                self._condenser.condense(self.memory, reason="ContextLengthError in chat")
+                self._condenser.condense(
+                    self.memory, reason="ContextLengthError in chat"
+                )
             except CannotCondenseError as cannot:
-                yield "error", (
-                    "The conversation is too long to continue and cannot be "
-                    f"compressed further: {cannot}"
+                yield (
+                    "error",
+                    (
+                        "The conversation is too long to continue and cannot be "
+                        f"compressed further: {cannot}"
+                    ),
                 )
                 return
 
@@ -195,7 +202,11 @@ class PearlSession:
 
         except Exception as exc:
             msg = str(exc)
-            if "credentials" in msg.lower() or "api_key" in msg.lower() or "not configured" in msg.lower():
+            if (
+                "credentials" in msg.lower()
+                or "api_key" in msg.lower()
+                or "not configured" in msg.lower()
+            ):
                 err = (
                     "Pearl is not connected to a model. "
                     "Open Settings to choose a provider, or add the "
@@ -209,14 +220,13 @@ class PearlSession:
 
     def is_running(self) -> bool:
         with self._executor_lock:
-            return self._executor is not None and not self._executor.is_awaiting_approval()
+            return (
+                self._executor is not None and not self._executor.is_awaiting_approval()
+            )
 
     def is_awaiting_approval(self) -> bool:
         with self._executor_lock:
-            return (
-                self._executor is not None
-                and self._executor.is_awaiting_approval()
-            )
+            return self._executor is not None and self._executor.is_awaiting_approval()
 
     def pending_diff(self) -> str:
         with self._executor_lock:
@@ -319,6 +329,7 @@ class PearlSession:
         retries up to ``Settings.CONDENSER_MAX_RETRIES`` times.
         """
         from src.config.workspace import set_workspace_root
+
         set_workspace_root(self.workspace)
 
         bus = EventBus()
@@ -328,7 +339,9 @@ class PearlSession:
             for d in bus.drain_dicts():
                 asyncio.run_coroutine_threadsafe(event_queue.put(d), loop)
 
-        bridge_thread = threading.Thread(target=_bridge, daemon=True, name="pearl-bus-bridge")
+        bridge_thread = threading.Thread(
+            target=_bridge, daemon=True, name="pearl-bus-bridge"
+        )
         bridge_thread.start()
 
         def _emit(event) -> None:
@@ -351,25 +364,29 @@ class PearlSession:
                 condense_result.tokens_before,
                 condense_result.tokens_after,
             )
-            _emit(ContextCondensedEvent(
-                turns_before=condense_result.turns_before,
-                turns_after=condense_result.turns_after,
-                tokens_before=condense_result.tokens_before,
-                tokens_after=condense_result.tokens_after,
-                reason=condense_result.reason,
-            ))
+            _emit(
+                ContextCondensedEvent(
+                    turns_before=condense_result.turns_before,
+                    turns_after=condense_result.turns_after,
+                    tokens_before=condense_result.tokens_before,
+                    tokens_after=condense_result.tokens_after,
+                    reason=condense_result.reason,
+                )
+            )
 
         self.memory.record_turn("user", prompt)
 
         def on_progress(event: ProgressEvent) -> None:
             asyncio.run_coroutine_threadsafe(
-                event_queue.put({
-                    "type": "progress",
-                    "status": event.status,
-                    "currentStep": event.current_step,
-                    "totalSteps": event.total_steps,
-                    "currentAction": event.current_action,
-                }),
+                event_queue.put(
+                    {
+                        "type": "progress",
+                        "status": event.status,
+                        "currentStep": event.current_step,
+                        "totalSteps": event.total_steps,
+                        "currentAction": event.current_action,
+                    }
+                ),
                 loop,
             )
 
@@ -401,7 +418,9 @@ class PearlSession:
                         "Context window exhausted and condensation "
                         f"retry limit reached: {exc}"
                     )
-                    _emit(RunFailedEvent(error=error_msg, stop_reason="context_exhausted"))
+                    _emit(
+                        RunFailedEvent(error=error_msg, stop_reason="context_exhausted")
+                    )
                     _close_bus()
                     asyncio.run_coroutine_threadsafe(
                         event_queue.put({"type": "error", "message": error_msg}),
@@ -415,13 +434,17 @@ class PearlSession:
                     exc,
                 )
                 try:
-                    self._condenser.condense(self.memory, reason="ContextLengthError in autonomous run")
+                    self._condenser.condense(
+                        self.memory, reason="ContextLengthError in autonomous run"
+                    )
                 except CannotCondenseError as cannot:
                     error_msg = (
                         "Context window exhausted and history cannot be "
                         f"compressed further: {cannot}"
                     )
-                    _emit(RunFailedEvent(error=error_msg, stop_reason="cannot_condense"))
+                    _emit(
+                        RunFailedEvent(error=error_msg, stop_reason="cannot_condense")
+                    )
                     _close_bus()
                     asyncio.run_coroutine_threadsafe(
                         event_queue.put({"type": "error", "message": error_msg}),
@@ -447,7 +470,15 @@ class PearlSession:
                     self._executor = executor
             except Exception as exc:
                 msg = str(exc)
-                if any(k in msg.lower() for k in ("credentials", "api_key", "not configured", "authentication")):
+                if any(
+                    k in msg.lower()
+                    for k in (
+                        "credentials",
+                        "api_key",
+                        "not configured",
+                        "authentication",
+                    )
+                ):
                     msg = (
                         "Pearl is not connected to a model. "
                         "Open Settings to choose a provider, or add the "
@@ -465,11 +496,13 @@ class PearlSession:
         if report.stop_reason != "awaiting_approval":
             result["final_answer"] = self._synthesizer.synthesize(prompt, report)
 
-        _emit(RunCompleteEvent(
-            stop_reason=report.stop_reason,
-            steps=len(report.steps),
-            replans=report.replans_used,
-        ))
+        _emit(
+            RunCompleteEvent(
+                stop_reason=report.stop_reason,
+                steps=len(report.steps),
+                replans=report.replans_used,
+            )
+        )
         _close_bus()
 
         asyncio.run_coroutine_threadsafe(
@@ -481,7 +514,8 @@ class PearlSession:
             final_ans = result.get("final_answer", "")
             self.memory.record_turn(
                 "agent",
-                final_ans or f"Completed ({report.stop_reason}): {len(report.steps)} step(s).",
+                final_ans
+                or f"Completed ({report.stop_reason}): {len(report.steps)} step(s).",
             )
             with self._executor_lock:
                 self._executor = None
@@ -518,7 +552,8 @@ class PearlSession:
             final_ans = result.get("final_answer", "")
             self.memory.record_turn(
                 "agent",
-                final_ans or f"Approved. Completed ({report.stop_reason}): {len(report.steps)} step(s).",
+                final_ans
+                or f"Approved. Completed ({report.stop_reason}): {len(report.steps)} step(s).",
             )
 
         return result
@@ -613,6 +648,7 @@ def _safe(v: Any) -> Any:
 def _run_verification(workspace: Path, planned_files: list[str]) -> dict[str, Any]:
     try:
         from src.agent.verification import VerificationEngine
+
         vr = VerificationEngine(workspace_root=workspace).verify(planned_files)
         return {
             "status": vr.status.value,

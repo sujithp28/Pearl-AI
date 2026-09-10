@@ -398,7 +398,10 @@ class SemanticContextBuilder:
                         pr_boost = (pr / max_pr) * 1.5
                         boost(fp, pr_boost, f"pagerank={pr:.4f}")
             except Exception:
-                logger.debug("PageRank boost failed; using term-match-only ranking.", exc_info=True)
+                logger.debug(
+                    "PageRank boost failed; using term-match-only ranking.",
+                    exc_info=True,
+                )
 
         # --- Initial ranking ---
         initial = sorted(

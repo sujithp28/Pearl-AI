@@ -109,7 +109,9 @@ def web_search(query: str, max_results: int = 5) -> list[dict]:
         ]
     except WebSearchError as exc:
         logger.warning("web_search failed: %s", exc)
-        return [{"error": str(exc), "url": "", "title": "", "snippet": "", "source": ""}]
+        return [
+            {"error": str(exc), "url": "", "title": "", "snippet": "", "source": ""}
+        ]
 
 
 @tool(

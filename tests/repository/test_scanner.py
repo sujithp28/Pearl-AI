@@ -215,8 +215,8 @@ class TestCompileGitignorePattern:
         regex, _, _ = _compile_gitignore_pattern("foo?.txt")  # type: ignore[misc]
         assert regex.search("fooa.txt")
         assert regex.search("foob.txt")
-        assert not regex.search("foo.txt")      # 0 chars
-        assert not regex.search("fooab.txt")    # 2 chars
+        assert not regex.search("foo.txt")  # 0 chars
+        assert not regex.search("fooab.txt")  # 2 chars
 
     def test_malformed_pattern_returns_none(self) -> None:
         # A pattern that produces an invalid regex should be skipped
@@ -266,9 +266,7 @@ class TestGitignoreRules:
 
     def test_last_rule_wins(self, tmp_path: Path) -> None:
         # First match: ignored; second match: un-ignored; third: ignored again
-        rules = GitignoreRules(
-            tmp_path, ["*.log", "!important.log", "important.log"]
-        )
+        rules = GitignoreRules(tmp_path, ["*.log", "!important.log", "important.log"])
         # The last matching rule for important.log is the third one (ignored)
         assert rules.is_ignored(tmp_path / "important.log", is_dir=False) is True
 
@@ -370,7 +368,10 @@ class TestRepositoryScannerBasic:
         result = RepositoryScanner(tmp_path).scan()
         assert result.root == tmp_path.resolve()
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="timer resolution too coarse for single-file scans on Windows")
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="timer resolution too coarse for single-file scans on Windows",
+    )
     def test_scan_duration_is_positive(self, tmp_path: Path) -> None:
         (tmp_path / "f.py").write_text("x", encoding="utf-8")
         result = RepositoryScanner(tmp_path).scan()
@@ -520,8 +521,8 @@ class TestGitignoreIntegration:
                 "src/": {
                     ".gitignore": "*.tmp\n",
                     "app.py": "x",
-                    "debug.log": "x",   # ignored by root .gitignore
-                    "cache.tmp": "x",   # ignored by src/.gitignore
+                    "debug.log": "x",  # ignored by root .gitignore
+                    "cache.tmp": "x",  # ignored by src/.gitignore
                     "main.ts": "x",
                 },
             },
@@ -601,7 +602,9 @@ class TestGitignoreIntegration:
 
     def test_non_utf8_gitignore_does_not_crash(self, tmp_path: Path) -> None:
         # A .gitignore with Latin-1 or binary content must not crash the scan.
-        (tmp_path / ".gitignore").write_bytes("# Fichiers générés\n*.pyc\n".encode("latin-1"))
+        (tmp_path / ".gitignore").write_bytes(
+            "# Fichiers générés\n*.pyc\n".encode("latin-1")
+        )
         (tmp_path / "main.py").write_text("x = 1", encoding="utf-8")
         result = RepositoryScanner(tmp_path).scan()
         assert "main.py" in rel_paths(result)

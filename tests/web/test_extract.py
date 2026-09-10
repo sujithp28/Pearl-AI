@@ -6,8 +6,12 @@ from src.web.extract import ContentExtractor
 from src.web.models import RawPage
 
 
-def _make_raw(body: str, content_type: str = "text/html", url: str = "https://x.com") -> RawPage:
-    return RawPage(url=url, content_type=content_type, body=body.encode(), original_url=url)
+def _make_raw(
+    body: str, content_type: str = "text/html", url: str = "https://x.com"
+) -> RawPage:
+    return RawPage(
+        url=url, content_type=content_type, body=body.encode(), original_url=url
+    )
 
 
 class TestContentExtractor:
@@ -15,7 +19,9 @@ class TestContentExtractor:
         self.extractor = ContentExtractor()
 
     def test_extracts_title(self) -> None:
-        raw = _make_raw("<html><head><title>My Title</title></head><body><p>hello</p></body></html>")
+        raw = _make_raw(
+            "<html><head><title>My Title</title></head><body><p>hello</p></body></html>"
+        )
         doc = self.extractor.extract(raw)
         assert doc.title == "My Title"
 
@@ -77,12 +83,15 @@ class TestContentExtractor:
         assert "real article content" in doc.text
 
     def test_url_preserved(self) -> None:
-        raw = _make_raw("<html><body>text</body></html>", url="https://specific.com/page")
+        raw = _make_raw(
+            "<html><body>text</body></html>", url="https://specific.com/page"
+        )
         doc = self.extractor.extract(raw)
         assert doc.url == "https://specific.com/page"
 
     def test_returns_web_document(self) -> None:
         from src.web.models import WebDocument
+
         raw = _make_raw("<html><body>text</body></html>")
         doc = self.extractor.extract(raw)
         assert isinstance(doc, WebDocument)

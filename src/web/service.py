@@ -45,8 +45,14 @@ class WebIntelligenceService:
             max_bytes=Settings.WEB_MAX_RESPONSE_BYTES,
         )
         self._extractor = extractor or ContentExtractor()
-        self._max_results = max_results if max_results is not None else Settings.WEB_MAX_RESULTS
-        self._evidence_chars = evidence_chars if evidence_chars is not None else Settings.WEB_EVIDENCE_CHARS
+        self._max_results = (
+            max_results if max_results is not None else Settings.WEB_MAX_RESULTS
+        )
+        self._evidence_chars = (
+            evidence_chars
+            if evidence_chars is not None
+            else Settings.WEB_EVIDENCE_CHARS
+        )
 
     def build_context(self, query: str) -> WebContext:
         """
@@ -65,7 +71,9 @@ class WebIntelligenceService:
 
         # 2. Fetch + Extract (skip failures silently)
         docs: list[WebDocument] = []
-        for sr in search_results[: self._max_results * 2]:  # fetch extra to survive skips
+        for sr in search_results[
+            : self._max_results * 2
+        ]:  # fetch extra to survive skips
             doc = self._fetch_and_extract(sr.url)
             if doc is not None:
                 docs.append(doc)
@@ -135,7 +143,9 @@ class WebIntelligenceService:
         for sr in results[: self._max_results]:
             domain = urllib.parse.urlparse(sr.url).netloc
             sources.append(WebSource(url=sr.url, title=sr.title, domain=domain))
-            snippet = sr.snippet[: self._evidence_chars] if sr.snippet else "(no snippet)"
+            snippet = (
+                sr.snippet[: self._evidence_chars] if sr.snippet else "(no snippet)"
+            )
             evidence.append(snippet)
             total_chars += len(snippet)
 

@@ -102,9 +102,7 @@ class ParseError(ValueError):
         self.field = field
 
         detail = f" (field={field!r})" if field else ""
-        super().__init__(
-            f"ParseError[{reason}]{detail}: {raw_response[:100]!r}"
-        )
+        super().__init__(f"ParseError[{reason}]{detail}: {raw_response[:100]!r}")
 
 
 class ToolParser:

@@ -7,6 +7,7 @@ asserted here: it must never raise into the editor, must not re-run
 inference for repeated context, and must decline cheaply in contexts
 where a suggestion would be noise.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock

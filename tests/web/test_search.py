@@ -75,7 +75,9 @@ class TestDuckDuckGoSearcher:
         import httpx
 
         searcher = DuckDuckGoSearcher()
-        with patch("src.web.search.httpx.post", side_effect=httpx.TimeoutException("timed out")):
+        with patch(
+            "src.web.search.httpx.post", side_effect=httpx.TimeoutException("timed out")
+        ):
             with pytest.raises(WebSearchError, match="timed out"):
                 searcher.search("python", max_results=5)
 

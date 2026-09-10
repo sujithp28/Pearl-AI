@@ -32,10 +32,19 @@ from src.llm.router import (
 def _clear_role_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     """Blank every explicit per-role setting so profiles are what decide."""
     for name in (
-        "PLANNING_PROVIDER", "CHAT_PROVIDER", "EDIT_PROVIDER",
-        "CONDENSER_PROVIDER", "AUTOCOMPLETE_PROVIDER", "VISION_PROVIDER",
-        "REFLECTION_PROVIDER", "PLANNING_MODEL", "CHAT_MODEL", "EDIT_MODEL",
-        "CONDENSER_MODEL_NAME", "AUTOCOMPLETE_MODEL", "VISION_MODEL",
+        "PLANNING_PROVIDER",
+        "CHAT_PROVIDER",
+        "EDIT_PROVIDER",
+        "CONDENSER_PROVIDER",
+        "AUTOCOMPLETE_PROVIDER",
+        "VISION_PROVIDER",
+        "REFLECTION_PROVIDER",
+        "PLANNING_MODEL",
+        "CHAT_MODEL",
+        "EDIT_MODEL",
+        "CONDENSER_MODEL_NAME",
+        "AUTOCOMPLETE_MODEL",
+        "VISION_MODEL",
         "REFLECTION_MODEL",
     ):
         monkeypatch.setattr(f"src.llm.router.Settings.{name}", "")
@@ -43,8 +52,11 @@ def _clear_role_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _no_remote_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
-        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
-        "GEMINI_API_KEY", "PEARL_INFERENCE_API_KEY",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OPENROUTER_API_KEY",
+        "GEMINI_API_KEY",
+        "PEARL_INFERENCE_API_KEY",
     ):
         monkeypatch.setattr(f"src.llm.router.Settings.{name}", "", raising=False)
 
@@ -167,7 +179,9 @@ class TestAutocompleteRouting:
 
     def test_no_local_file_when_pearl_is_remote(self, monkeypatch):
         """With a gateway key, `pearl` is remote — no GGUF is involved."""
-        monkeypatch.setattr("src.llm.router.Settings.PEARL_INFERENCE_API_KEY", "prl-key")
+        monkeypatch.setattr(
+            "src.llm.router.Settings.PEARL_INFERENCE_API_KEY", "prl-key"
+        )
         assert _local_model_file("pearl", "autocomplete") is None
         assert _is_local_pearl("pearl") is False
 
@@ -194,10 +208,9 @@ class TestVisionRouting:
         monkeypatch.setattr("src.llm.router.Settings.VISION_PROVIDER", "openai")
         monkeypatch.setattr("src.llm.router.Settings.VISION_MODEL", "gpt-4o")
         router = ModelRouter()
-        with patch(
-            "src.llm.router.create_provider", side_effect=RuntimeError("no key")
-        ), patch(
-            "src.llm.router.LLMClient", side_effect=RuntimeError("no key")
+        with (
+            patch("src.llm.router.create_provider", side_effect=RuntimeError("no key")),
+            patch("src.llm.router.LLMClient", side_effect=RuntimeError("no key")),
         ):
             assert router.vision_client() is None
 
@@ -239,7 +252,8 @@ class TestLocalFallback:
 
         router = ModelRouter()
         monkeypatch.setattr(
-            router, "_build",
+            router,
+            "_build",
             MagicMock(side_effect=RuntimeError("network down")),
         )
         with pytest.raises(RuntimeError, match="network down"):
@@ -253,7 +267,8 @@ class TestLocalFallback:
 
         router = ModelRouter()
         monkeypatch.setattr(
-            router, "_build",
+            router,
+            "_build",
             MagicMock(side_effect=RuntimeError("gguf corrupt")),
         )
         with pytest.raises(RuntimeError, match="gguf corrupt"):
@@ -276,7 +291,9 @@ class TestDescribe:
         _clear_role_overrides(monkeypatch)
         monkeypatch.setattr("src.llm.router.Settings.MODEL_PROFILE", "local")
         monkeypatch.setattr("src.llm.router.Settings.PEARL_INFERENCE_API_KEY", "")
-        monkeypatch.setattr("src.llm.router.Settings.LOCAL_MODEL_FILE", "qwen-1.5b.gguf")
+        monkeypatch.setattr(
+            "src.llm.router.Settings.LOCAL_MODEL_FILE", "qwen-1.5b.gguf"
+        )
 
         described = ModelRouter().describe()
 
@@ -288,8 +305,13 @@ class TestDescribe:
         described = ModelRouter().describe()
         assert "profile" in described
         for role in (
-            "planning", "chat", "edit", "condenser",
-            "autocomplete", "reflection", "vision",
+            "planning",
+            "chat",
+            "edit",
+            "condenser",
+            "autocomplete",
+            "reflection",
+            "vision",
         ):
             assert role in described, f"describe() omitted {role}"
 
@@ -324,6 +346,7 @@ class TestLocalModelCache:
         class _FakeLlama:
             def __init__(self, model_path, n_ctx, n_threads, verbose):
                 loaded.append(model_path)
+
             def n_ctx(self):
                 return 512
 
@@ -348,6 +371,7 @@ class TestLocalModelCache:
         class _FakeLlama:
             def __init__(self, model_path, n_ctx, n_threads, verbose):
                 self.path = model_path
+
             def n_ctx(self):
                 return 512
 
@@ -369,12 +393,11 @@ class TestLocalModelCache:
         class _FakeLlama:
             def __init__(self, model_path, n_ctx, n_threads, verbose):
                 pass
+
             def n_ctx(self):
                 return 512
 
-        monkeypatch.setattr(
-            "src.config.settings.Settings.LOCAL_MAX_LOADED_MODELS", 2
-        )
+        monkeypatch.setattr("src.config.settings.Settings.LOCAL_MAX_LOADED_MODELS", 2)
         with patch.dict("sys.modules", {"llama_cpp": MagicMock(Llama=_FakeLlama)}):
             mod.reset_model_cache()
             try:

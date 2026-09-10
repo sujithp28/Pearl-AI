@@ -359,9 +359,7 @@ def replace_method(
     editor = _load_editor(file_path)
     updated = editor.replace_method(class_name, method_name, new_source)
 
-    logger.info(
-        "Replacing method '%s.%s' in %s", class_name, method_name, file_path
-    )
+    logger.info("Replacing method '%s.%s' in %s", class_name, method_name, file_path)
 
     return _apply_or_stage(
         file_path,

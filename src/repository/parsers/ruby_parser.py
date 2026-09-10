@@ -7,6 +7,7 @@ counting braces. Parent attribution follows the same lexical nesting,
 which is what makes `Foo::bar` come out as a method of `Foo` rather than
 a bare function.
 """
+
 from __future__ import annotations
 
 import re
@@ -35,8 +36,17 @@ _ATTR_RE = re.compile(
 # Keywords that open a block Ruby closes with `end`. Needed so a method
 # containing an `if` does not end at that `if`'s `end`.
 _BLOCK_OPENERS = (
-    "class", "module", "def", "if", "unless", "while", "until",
-    "case", "begin", "for", "do",
+    "class",
+    "module",
+    "def",
+    "if",
+    "unless",
+    "while",
+    "until",
+    "case",
+    "begin",
+    "for",
+    "do",
 )
 
 
@@ -109,9 +119,7 @@ class RubyParser(BaseParser):
         # `name` should find something on a class that declares it.
         for match in _ATTR_RE.finditer(source):
             line_no = source[: match.start()].count("\n") + 1
-            parent = next(
-                (c for s, e, c in containers if s < line_no <= e), None
-            )
+            parent = next((c for s, e, c in containers if s < line_no <= e), None)
             for raw in match.group("names").split(","):
                 attr = raw.strip().lstrip(":").strip()
                 if not attr or not attr.replace("_", "").isalnum():
@@ -131,9 +139,7 @@ class RubyParser(BaseParser):
         return ParseResult(
             file_info=file_info,
             symbols=symbols,
-            imports=[
-                f"require '{m.group(1)}'" for m in _REQUIRE_RE.finditer(source)
-            ],
+            imports=[f"require '{m.group(1)}'" for m in _REQUIRE_RE.finditer(source)],
         )
 
 

@@ -1,6 +1,7 @@
 """
 Tests for src/agent/event_bus.py
 """
+
 from __future__ import annotations
 
 import threading
@@ -128,7 +129,9 @@ class TestEventTypes:
 
     def test_approval_required_event(self) -> None:
         bus = EventBus()
-        bus.emit(ApprovalRequiredEvent(files=["a.py", "b.py"], diff_preview="--- a\n+++ b"))
+        bus.emit(
+            ApprovalRequiredEvent(files=["a.py", "b.py"], diff_preview="--- a\n+++ b")
+        )
         events = _drain(bus)
         e = events[0]
         assert isinstance(e, ApprovalRequiredEvent)
@@ -199,7 +202,9 @@ class TestEventTypes:
 
     def test_checkpoint_created_event(self) -> None:
         bus = EventBus()
-        bus.emit(CheckpointCreatedEvent(checkpoint_id="cp-001", label="before refactor"))
+        bus.emit(
+            CheckpointCreatedEvent(checkpoint_id="cp-001", label="before refactor")
+        )
         events = _drain(bus)
         e = events[0]
         assert isinstance(e, CheckpointCreatedEvent)

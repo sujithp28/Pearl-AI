@@ -27,7 +27,9 @@ from src.llm.parser import ToolCall
 # ---------------------------------------------------------------------------
 
 
-def _make_vr(tests_failed: int = 0, status: VerificationStatus = VerificationStatus.SUCCESS) -> VerificationResult:
+def _make_vr(
+    tests_failed: int = 0, status: VerificationStatus = VerificationStatus.SUCCESS
+) -> VerificationResult:
     return VerificationResult(
         status=status,
         planned_files=(),
@@ -89,6 +91,7 @@ class TestVerificationReplan:
 
         # Manually construct paused state
         from src.agent.executor import _PausedState
+
         executor._paused = _PausedState(
             prompt="fix tests",
             pending=[],
@@ -102,9 +105,11 @@ class TestVerificationReplan:
         executor.patch_manager.has_pending = MagicMock(return_value=False)
         executor.patch_manager.apply_all = MagicMock(return_value=[])
 
-        with patch("src.agent.executor.set_active_patch_manager"), \
-             patch("src.agent.executor.set_active_command_approver"), \
-             patch("src.agent.executor.refresh_indexed_file"):
+        with (
+            patch("src.agent.executor.set_active_patch_manager"),
+            patch("src.agent.executor.set_active_command_approver"),
+            patch("src.agent.executor.refresh_indexed_file"),
+        ):
             executor.approve()
 
         # Planner.replan must not have been called (no verifier)
@@ -118,6 +123,7 @@ class TestVerificationReplan:
         executor = _make_executor(verifier=verifier)
 
         from src.agent.executor import _PausedState
+
         executor._paused = _PausedState(
             prompt="task",
             pending=[],
@@ -134,9 +140,11 @@ class TestVerificationReplan:
         executor.command_approver.approve_all = MagicMock(return_value=[])
         executor.command_approver.pending = []
 
-        with patch("src.agent.executor.set_active_patch_manager"), \
-             patch("src.agent.executor.set_active_command_approver"), \
-             patch("src.agent.executor.refresh_indexed_file"):
+        with (
+            patch("src.agent.executor.set_active_patch_manager"),
+            patch("src.agent.executor.set_active_command_approver"),
+            patch("src.agent.executor.refresh_indexed_file"),
+        ):
             executor.approve()
 
         executor.planner.replan.assert_not_called()
@@ -153,6 +161,7 @@ class TestVerificationReplan:
         executor.planner.replan.return_value = [fix_step]
 
         from src.agent.executor import _PausedState
+
         executor._paused = _PausedState(
             prompt="implement feature",
             pending=[],
@@ -169,9 +178,11 @@ class TestVerificationReplan:
         executor.command_approver.approve_all = MagicMock(return_value=[])
         executor.command_approver.pending = []
 
-        with patch("src.agent.executor.set_active_patch_manager"), \
-             patch("src.agent.executor.set_active_command_approver"), \
-             patch("src.agent.executor.refresh_indexed_file"):
+        with (
+            patch("src.agent.executor.set_active_patch_manager"),
+            patch("src.agent.executor.set_active_command_approver"),
+            patch("src.agent.executor.refresh_indexed_file"),
+        ):
             executor.approve()
 
         executor.planner.replan.assert_called_once()
@@ -191,6 +202,7 @@ class TestVerificationReplan:
         executor.planner.replan.return_value = [_tc()]
 
         from src.agent.executor import _PausedState
+
         state = _PausedState(
             prompt="task",
             pending=[],
@@ -208,9 +220,11 @@ class TestVerificationReplan:
         executor.command_approver.approve_all = MagicMock(return_value=[])
         executor.command_approver.pending = []
 
-        with patch("src.agent.executor.set_active_patch_manager"), \
-             patch("src.agent.executor.set_active_command_approver"), \
-             patch("src.agent.executor.refresh_indexed_file"):
+        with (
+            patch("src.agent.executor.set_active_patch_manager"),
+            patch("src.agent.executor.set_active_command_approver"),
+            patch("src.agent.executor.refresh_indexed_file"),
+        ):
             executor.approve()
 
         # replans_used was 0, should have been incremented to 1 in state.
@@ -228,6 +242,7 @@ class TestVerificationReplan:
         executor = _make_executor(verifier=verifier, max_replans=2)
 
         from src.agent.executor import _PausedState
+
         executor._paused = _PausedState(
             prompt="task",
             pending=[],
@@ -244,9 +259,11 @@ class TestVerificationReplan:
         executor.command_approver.approve_all = MagicMock(return_value=[])
         executor.command_approver.pending = []
 
-        with patch("src.agent.executor.set_active_patch_manager"), \
-             patch("src.agent.executor.set_active_command_approver"), \
-             patch("src.agent.executor.refresh_indexed_file"):
+        with (
+            patch("src.agent.executor.set_active_patch_manager"),
+            patch("src.agent.executor.set_active_command_approver"),
+            patch("src.agent.executor.refresh_indexed_file"),
+        ):
             executor.approve()
 
         executor.planner.replan.assert_not_called()
@@ -262,6 +279,7 @@ class TestVerificationReplan:
         executor.planner.replan.side_effect = RuntimeError("LLM timeout")
 
         from src.agent.executor import _PausedState
+
         executor._paused = _PausedState(
             prompt="task",
             pending=[],
@@ -278,9 +296,11 @@ class TestVerificationReplan:
         executor.command_approver.approve_all = MagicMock(return_value=[])
         executor.command_approver.pending = []
 
-        with patch("src.agent.executor.set_active_patch_manager"), \
-             patch("src.agent.executor.set_active_command_approver"), \
-             patch("src.agent.executor.refresh_indexed_file"):
+        with (
+            patch("src.agent.executor.set_active_patch_manager"),
+            patch("src.agent.executor.set_active_command_approver"),
+            patch("src.agent.executor.refresh_indexed_file"),
+        ):
             # Must not raise — replan failure is logged and swallowed
             report = executor.approve()
 
@@ -347,8 +367,10 @@ class TestDirtyWorkspaceDetection:
 
         executor._warn_if_dirty_workspace = _capture
 
-        with patch("src.agent.executor.set_active_patch_manager"), \
-             patch("src.agent.executor.set_active_command_approver"):
+        with (
+            patch("src.agent.executor.set_active_patch_manager"),
+            patch("src.agent.executor.set_active_command_approver"),
+        ):
             try:
                 executor.run("do something")
             except Exception:

@@ -10,6 +10,7 @@ The properties worth asserting are therefore about isolation and about
 not regressing the local single-user case, which must keep working with
 no configuration at all.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -73,9 +74,7 @@ class TestResolveUser:
         with pytest.raises(AuthenticationError):
             resolve_user("Bearer not-a-real-token")
 
-    @pytest.mark.parametrize(
-        "header", ["tok-a", "Basic tok-a", "Bearer", "Bearer "]
-    )
+    @pytest.mark.parametrize("header", ["tok-a", "Basic tok-a", "Bearer", "Bearer "])
     def test_malformed_header_is_rejected(self, monkeypatch, header):
         monkeypatch.setenv("PEARL_AUTH_TOKENS", "tok-a:alice")
 

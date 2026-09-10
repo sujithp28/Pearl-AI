@@ -92,12 +92,14 @@ class DuckDuckGoSearcher:
             snippet = snippet_tag.get_text(strip=True) if snippet_tag else ""
             domain = urllib.parse.urlparse(url).netloc
 
-            results.append(SearchResult(
-                url=url,
-                title=title or domain,
-                snippet=snippet,
-                source=domain,
-            ))
+            results.append(
+                SearchResult(
+                    url=url,
+                    title=title or domain,
+                    snippet=snippet,
+                    source=domain,
+                )
+            )
 
         return results
 
@@ -136,6 +138,5 @@ def create_searcher(provider: str) -> WebSearcher:
     if normalized == "none":
         return NullSearcher()
     raise ValueError(
-        f"Unknown web search provider: {provider!r}. "
-        "Supported: 'duckduckgo', 'none'."
+        f"Unknown web search provider: {provider!r}. Supported: 'duckduckgo', 'none'."
     )

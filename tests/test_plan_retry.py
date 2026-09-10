@@ -38,9 +38,7 @@ class TestPlanWithRetrySuccess:
         tc = _tool_call()
         executor.planner.plan.return_value = [tc]
 
-        result = executor._plan_with_retry(
-            "explain code", "context", [], []
-        )
+        result = executor._plan_with_retry("explain code", "context", [], [])
         assert result == [tc]
         executor.planner.plan.assert_called_once()
         executor.planner.replan.assert_not_called()
@@ -52,9 +50,7 @@ class TestPlanWithRetrySuccess:
         executor.planner.plan.side_effect = ValueError("invalid JSON")
         executor.planner.replan.return_value = [tc]
 
-        result = executor._plan_with_retry(
-            "explain code", "context", [], []
-        )
+        result = executor._plan_with_retry("explain code", "context", [], [])
         assert result == [tc]
         executor.planner.plan.assert_called_once()
         executor.planner.replan.assert_called_once()

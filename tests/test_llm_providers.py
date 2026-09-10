@@ -180,6 +180,7 @@ def test_pearl_without_key_creates_local_inference_provider(monkeypatch, tmp_pat
     # LocalInferenceProvider (not PearlInferenceProvider) so Pearl works
     # out of the box without any user-supplied credentials.
     from src.llm.providers.local_inference import LocalInferenceProvider
+
     monkeypatch.setattr(Settings, "PEARL_INFERENCE_API_KEY", "")
     monkeypatch.setattr(Settings, "LOCAL_MODEL_DIR", str(tmp_path))
     monkeypatch.setattr(Settings, "LOCAL_MODEL_FILE", "model.gguf")
@@ -192,7 +193,9 @@ def test_pearl_without_key_creates_local_inference_provider(monkeypatch, tmp_pat
     assert provider._ready.is_set()  # no download needed
 
 
-def test_pearl_local_inference_raises_import_error_without_llama_cpp(monkeypatch, tmp_path):
+def test_pearl_local_inference_raises_import_error_without_llama_cpp(
+    monkeypatch, tmp_path
+):
     # If llama-cpp-python is not installed, the first model call must raise
     # a clear ImportError with install instructions, not a confusing AttributeError.
     monkeypatch.setattr(Settings, "PEARL_INFERENCE_API_KEY", "")
@@ -210,6 +213,7 @@ def test_pearl_local_inference_raises_import_error_without_llama_cpp(monkeypatch
             # Clear the model cache so loading is attempted again (and so
             # this test cannot evict a model a later test depends on).
             import src.llm.providers.local_inference as _m
+
             saved = dict(_m._llms)
             _m._llms.clear()
             try:
@@ -220,16 +224,18 @@ def test_pearl_local_inference_raises_import_error_without_llama_cpp(monkeypatch
 
 def test_pearl_provider_builds_pearl_inference_when_configured(monkeypatch):
     monkeypatch.setattr(Settings, "PEARL_INFERENCE_API_KEY", "test-key")
-    monkeypatch.setattr(Settings, "PEARL_INFERENCE_BASE_URL", "https://openrouter.ai/api/v1")
-    monkeypatch.setattr(Settings, "PEARL_INFERENCE_CHAT_MODEL", "anthropic/claude-haiku-4-5-20251001")
+    monkeypatch.setattr(
+        Settings, "PEARL_INFERENCE_BASE_URL", "https://openrouter.ai/api/v1"
+    )
+    monkeypatch.setattr(
+        Settings, "PEARL_INFERENCE_CHAT_MODEL", "anthropic/claude-haiku-4-5-20251001"
+    )
 
     provider = create_provider("pearl")
 
     assert isinstance(provider, PearlInferenceProvider)
     assert provider._api_key == "test-key"
     assert provider.model == "anthropic/claude-haiku-4-5-20251001"
-
-
 
 
 def test_scripted_provider_is_never_reached_without_asking_for_it(monkeypatch):
@@ -387,11 +393,7 @@ def _modules_after(code: str) -> set[str]:
     import sys as _sys
     from pathlib import Path as _Path
 
-    script = (
-        "import sys, json\n"
-        f"{code}\n"
-        "print(json.dumps(sorted(sys.modules)))"
-    )
+    script = f"import sys, json\n{code}\nprint(json.dumps(sorted(sys.modules)))"
     out = subprocess.run(
         [_sys.executable, "-c", script],
         capture_output=True,

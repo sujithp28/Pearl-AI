@@ -21,6 +21,7 @@ sandbox per user (a container, or a VM) — that is a deployment
 decision, not something this layer can fake. `PUBLIC_MODE` exists to
 make refusing that combination explicit rather than accidental.
 """
+
 from __future__ import annotations
 
 import hmac
@@ -141,8 +142,7 @@ class SessionRegistry:
                     continue
                 self._sessions.pop(uid, None)
                 logger.warning(
-                    "Session cap (%d) reached; evicted least-recently-used "
-                    "user %r",
+                    "Session cap (%d) reached; evicted least-recently-used user %r",
                     self._max,
                     uid,
                 )

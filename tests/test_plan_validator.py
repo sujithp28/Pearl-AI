@@ -73,7 +73,10 @@ class TestForbiddenPathValidation:
             validate_plan([step])
 
     def test_error_names_the_offending_step_number(self):
-        steps = [_call("read_file", path="safe.py"), _call("read_file", path="/etc/passwd")]
+        steps = [
+            _call("read_file", path="safe.py"),
+            _call("read_file", path="/etc/passwd"),
+        ]
         with pytest.raises(PlanValidationError, match="Step 2"):
             validate_plan(steps)
 
@@ -127,7 +130,9 @@ class TestForbiddenPathValidation:
 # ---------------------------------------------------------------------------
 
 
-@tool(description="Add two numbers.", parameters={"a": "int", "b": "int"}, returns="int")
+@tool(
+    description="Add two numbers.", parameters={"a": "int", "b": "int"}, returns="int"
+)
 def add(a: int, b: int) -> int:
     return a + b
 
@@ -142,7 +147,9 @@ def _build_planner() -> Planner:
 class TestPlannerIntegration:
     def test_plan_raises_on_oversized_plan(self, monkeypatch):
         planner = _build_planner()
-        oversized = [{"tool": "add", "arguments": {"a": i, "b": i}} for i in range(MAX_STEPS + 1)]
+        oversized = [
+            {"tool": "add", "arguments": {"a": i, "b": i}} for i in range(MAX_STEPS + 1)
+        ]
         monkeypatch.setattr(
             planner.client, "generate_json", lambda prompt, **kw: {"steps": oversized}
         )
@@ -175,12 +182,18 @@ class TestPlannerIntegration:
 
     def test_replan_raises_on_oversized_plan(self, monkeypatch):
         planner = _build_planner()
-        oversized = [{"tool": "add", "arguments": {"a": i, "b": i}} for i in range(MAX_STEPS + 1)]
+        oversized = [
+            {"tool": "add", "arguments": {"a": i, "b": i}} for i in range(MAX_STEPS + 1)
+        ]
         monkeypatch.setattr(
             planner.client, "generate_json", lambda prompt, **kw: {"steps": oversized}
         )
         with pytest.raises((PlanValidationError, ValueError)):
-            planner.replan("do a lot", completed=[], failed={"tool": "add", "arguments": {}, "error": "x"})
+            planner.replan(
+                "do a lot",
+                completed=[],
+                failed={"tool": "add", "arguments": {}, "error": "x"},
+            )
 
     def test_replan_raises_on_forbidden_path(self, monkeypatch):
         planner = _build_planner()
@@ -192,7 +205,11 @@ class TestPlannerIntegration:
             },
         )
         with pytest.raises((PlanValidationError, ValueError)):
-            planner.replan("do something", completed=[], failed={"tool": "x", "arguments": {}, "error": "y"})
+            planner.replan(
+                "do something",
+                completed=[],
+                failed={"tool": "x", "arguments": {}, "error": "y"},
+            )
 
 
 # ---------------------------------------------------------------------------

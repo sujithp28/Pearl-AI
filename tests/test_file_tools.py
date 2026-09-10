@@ -104,6 +104,7 @@ def test_ensure_within_workspace_fails_closed_on_null_byte(tmp_path):
     # propagate an unexpected ValueError (fail-closed, not fail-open).
     from src.config.workspace import clear_workspace_root, set_workspace_root
     from src.tools.file_tools import _ensure_within_workspace
+
     set_workspace_root(tmp_path)
     try:
         with pytest.raises(PermissionError):
@@ -121,6 +122,7 @@ def test_prefix_collision_blocked(tmp_path):
     evil.write_text("top secret")
     from src.config.workspace import clear_workspace_root, set_workspace_root
     from src.tools.file_tools import _ensure_within_workspace
+
     set_workspace_root(tmp_path)
     try:
         with pytest.raises(PermissionError):
@@ -144,7 +146,9 @@ def test_delete_file_rejects_path_outside_workspace(tmp_path):
         outside.unlink()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="symlinks require elevated privileges on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="symlinks require elevated privileges on Windows"
+)
 def test_write_file_rejects_symlink_escape(tmp_path):
     outside_dir = tmp_path.parent / f"{tmp_path.name}_outside"
     outside_dir.mkdir()

@@ -2,6 +2,7 @@
 Tests for JS/TS, Go, Rust, and Java regex-based parsers.
 Verifies graceful degradation: parsers never raise, always return ParseResult.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,6 +14,7 @@ from src.repository.parsers import ParseResult, ParserRegistry, SymbolKind
 def _make_file_info(tmp_path: Path, name: str, content: str):
     """Write content to a temp file and return a FileInfo for it."""
     from src.repository.models import EXTENSION_TO_LANGUAGE, FileInfo
+
     p = tmp_path / name
     p.write_text(content, encoding="utf-8")
     ext = Path(name).suffix.lower()
@@ -33,11 +35,18 @@ def _make_file_info(tmp_path: Path, name: str, content: str):
 # Registry registration
 # ---------------------------------------------------------------------------
 
+
 class TestParserRegistryDefault:
     def test_all_languages_registered(self):
         reg = ParserRegistry.default()
-        for lang in (Language.PYTHON, Language.JAVASCRIPT, Language.TYPESCRIPT,
-                     Language.GO, Language.RUST, Language.JAVA):
+        for lang in (
+            Language.PYTHON,
+            Language.JAVASCRIPT,
+            Language.TYPESCRIPT,
+            Language.GO,
+            Language.RUST,
+            Language.JAVA,
+        ):
             assert reg.supports(lang), f"Missing parser for {lang}"
 
     def test_registry_has_no_duplicate_registrations(self):
@@ -57,6 +66,7 @@ class TestParserRegistryDefault:
 # ---------------------------------------------------------------------------
 # JavaScript
 # ---------------------------------------------------------------------------
+
 
 class TestJavaScriptParser:
     JS_SOURCE = """\
@@ -119,6 +129,7 @@ export const arrowFn = async () => {};
 # TypeScript
 # ---------------------------------------------------------------------------
 
+
 class TestTypeScriptParser:
     TS_SOURCE = """\
 import { Component } from '@angular/core';
@@ -161,6 +172,7 @@ export const factory = (): IService => ({ getData: () => [] });
 # ---------------------------------------------------------------------------
 # Go
 # ---------------------------------------------------------------------------
+
 
 class TestGoParser:
     GO_SOURCE = """\
@@ -235,6 +247,7 @@ func main() {
 # ---------------------------------------------------------------------------
 # Rust
 # ---------------------------------------------------------------------------
+
 
 class TestRustParser:
     RUST_SOURCE = """\
@@ -311,6 +324,7 @@ pub fn run(cfg: Config) -> Status {
 # ---------------------------------------------------------------------------
 # Java
 # ---------------------------------------------------------------------------
+
 
 class TestJavaParser:
     JAVA_SOURCE = """\
@@ -473,9 +487,10 @@ export class Repo {
   }
 }
 """
-        qnames = {s.name: s.qualified_name for s in self._symbols(
-            tmp_path, name="repo.ts", source=source
-        )}
+        qnames = {
+            s.name: s.qualified_name
+            for s in self._symbols(tmp_path, name="repo.ts", source=source)
+        }
 
         assert qnames.get("load") == "Repo.load"
 
@@ -526,9 +541,10 @@ class Client {
   }
 }
 """
-        qnames = {s.name: s.qualified_name for s in self._symbols(
-            tmp_path, name="c.ts", source=source
-        )}
+        qnames = {
+            s.name: s.qualified_name
+            for s in self._symbols(tmp_path, name="c.ts", source=source)
+        }
 
         assert qnames.get("sendRequest") == "Client.sendRequest"
 

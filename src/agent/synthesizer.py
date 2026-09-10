@@ -65,8 +65,7 @@ def _format_results(report: "ExecutionReport") -> str:
         else:
             error_text = step.error or step.summary or "unknown error"
             parts.append(
-                f"Tool: {step.tool_name} [FAILED]\n"
-                f"Error: {_truncate(error_text, 400)}"
+                f"Tool: {step.tool_name} [FAILED]\nError: {_truncate(error_text, 400)}"
             )
 
     return "\n\n---\n\n".join(parts)
@@ -114,9 +113,8 @@ class Synthesizer:
         if verification:
             status = verification.get("status", "unknown")
             detail = verification.get("detail") or verification.get("summary") or ""
-            verification_section = (
-                f"\nVerification result: {status}"
-                + (f"\n{_truncate(str(detail), 600)}" if detail else "")
+            verification_section = f"\nVerification result: {status}" + (
+                f"\n{_truncate(str(detail), 600)}" if detail else ""
             )
 
         prompt = self._prompt_template.format(

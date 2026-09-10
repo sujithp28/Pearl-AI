@@ -223,9 +223,7 @@ class ChangeManager:
                     else:
                         p.write_text(prior, encoding="utf-8")
                 except Exception as roll_exc:
-                    logger.error(
-                        "Rollback failed for %s: %s", path_str, roll_exc
-                    )
+                    logger.error("Rollback failed for %s: %s", path_str, roll_exc)
             raise
 
         self._pending.clear()

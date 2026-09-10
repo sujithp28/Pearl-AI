@@ -114,23 +114,31 @@ class TestSymbolEntry:
     def test_fields_accessible(self) -> None:
         sym = _sym("foo")
         fi = _fi("a.py")
-        e = SymbolEntry(symbol=sym, file_info=fi, relative_path="a.py",
-                        language=Language.PYTHON)
+        e = SymbolEntry(
+            symbol=sym, file_info=fi, relative_path="a.py", language=Language.PYTHON
+        )
         assert e.symbol is sym
         assert e.file_info is fi
         assert e.relative_path == "a.py"
         assert e.language is Language.PYTHON
 
     def test_is_frozen(self) -> None:
-        e = SymbolEntry(symbol=_sym("x"), file_info=_fi("a.py"),
-                        relative_path="a.py", language=Language.PYTHON)
+        e = SymbolEntry(
+            symbol=_sym("x"),
+            file_info=_fi("a.py"),
+            relative_path="a.py",
+            language=Language.PYTHON,
+        )
         with pytest.raises((AttributeError, TypeError)):
             e.relative_path = "other.py"  # type: ignore[misc]
 
     def test_repr_contains_kind_and_name(self) -> None:
-        e = SymbolEntry(symbol=_sym("foo", kind=SymbolKind.CLASS),
-                        file_info=_fi("a.py"), relative_path="a.py",
-                        language=Language.PYTHON)
+        e = SymbolEntry(
+            symbol=_sym("foo", kind=SymbolKind.CLASS),
+            file_info=_fi("a.py"),
+            relative_path="a.py",
+            language=Language.PYTHON,
+        )
         assert "class" in repr(e)
         assert "foo" in repr(e)
         assert "a.py" in repr(e)
@@ -143,8 +151,13 @@ class TestSymbolEntry:
 
 class TestIndexStats:
     def test_fields_accessible(self) -> None:
-        s = IndexStats(file_count=3, symbol_count=10, import_count=5,
-                       build_duration_ms=1.2, languages=frozenset({Language.PYTHON}))
+        s = IndexStats(
+            file_count=3,
+            symbol_count=10,
+            import_count=5,
+            build_duration_ms=1.2,
+            languages=frozenset({Language.PYTHON}),
+        )
         assert s.file_count == 3
         assert s.symbol_count == 10
         assert s.import_count == 5
@@ -153,28 +166,48 @@ class TestIndexStats:
         assert s.error_file_count == 0  # default
 
     def test_is_frozen(self) -> None:
-        s = IndexStats(file_count=1, symbol_count=0, import_count=0,
-                       build_duration_ms=0.0, languages=frozenset())
+        s = IndexStats(
+            file_count=1,
+            symbol_count=0,
+            import_count=0,
+            build_duration_ms=0.0,
+            languages=frozenset(),
+        )
         with pytest.raises((AttributeError, TypeError)):
             s.file_count = 99  # type: ignore[misc]
 
     def test_repr(self) -> None:
-        s = IndexStats(file_count=2, symbol_count=5, import_count=3,
-                       build_duration_ms=0.5, languages=frozenset({Language.PYTHON}))
+        s = IndexStats(
+            file_count=2,
+            symbol_count=5,
+            import_count=3,
+            build_duration_ms=0.5,
+            languages=frozenset({Language.PYTHON}),
+        )
         r = repr(s)
         assert "files=2" in r
         assert "symbols=5" in r
         assert "python" in r
 
     def test_error_file_count_default(self) -> None:
-        s = IndexStats(file_count=1, symbol_count=0, import_count=0,
-                       build_duration_ms=0.0, languages=frozenset())
+        s = IndexStats(
+            file_count=1,
+            symbol_count=0,
+            import_count=0,
+            build_duration_ms=0.0,
+            languages=frozenset(),
+        )
         assert s.error_file_count == 0
 
     def test_error_file_count_explicit(self) -> None:
-        s = IndexStats(file_count=5, symbol_count=0, import_count=0,
-                       build_duration_ms=0.0, languages=frozenset(),
-                       error_file_count=2)
+        s = IndexStats(
+            file_count=5,
+            symbol_count=0,
+            import_count=0,
+            build_duration_ms=0.0,
+            languages=frozenset(),
+            error_file_count=2,
+        )
         assert s.error_file_count == 2
 
 
@@ -241,6 +274,7 @@ class TestBuild:
         def gen():
             yield _pr("x.py")
             yield _pr("y.py")
+
         index = RepositoryIndex.build(gen())
         assert index.stats().file_count == 2
 
@@ -379,10 +413,15 @@ class TestSymbolsInFile:
 
 class TestSymbolsByKind:
     def test_single_kind(self) -> None:
-        index = _build(_pr("a.py", symbols=[
-            _sym("Foo", kind=SymbolKind.CLASS),
-            _sym("bar", kind=SymbolKind.FUNCTION),
-        ]))
+        index = _build(
+            _pr(
+                "a.py",
+                symbols=[
+                    _sym("Foo", kind=SymbolKind.CLASS),
+                    _sym("bar", kind=SymbolKind.FUNCTION),
+                ],
+            )
+        )
         classes = index.symbols_by_kind(SymbolKind.CLASS)
         assert len(classes) == 1
         assert classes[0].symbol.kind is SymbolKind.CLASS
@@ -399,18 +438,28 @@ class TestSymbolsByKind:
         assert len(index.symbols_by_kind(SymbolKind.CLASS)) == 2
 
     def test_method_vs_function_distinct(self) -> None:
-        index = _build(_pr("a.py", symbols=[
-            _sym("m", kind=SymbolKind.METHOD),
-            _sym("f", kind=SymbolKind.FUNCTION),
-        ]))
+        index = _build(
+            _pr(
+                "a.py",
+                symbols=[
+                    _sym("m", kind=SymbolKind.METHOD),
+                    _sym("f", kind=SymbolKind.FUNCTION),
+                ],
+            )
+        )
         assert len(index.symbols_by_kind(SymbolKind.METHOD)) == 1
         assert len(index.symbols_by_kind(SymbolKind.FUNCTION)) == 1
 
     def test_constant_and_variable_distinct(self) -> None:
-        index = _build(_pr("a.py", symbols=[
-            _sym("MAX", kind=SymbolKind.CONSTANT),
-            _sym("count", kind=SymbolKind.VARIABLE),
-        ]))
+        index = _build(
+            _pr(
+                "a.py",
+                symbols=[
+                    _sym("MAX", kind=SymbolKind.CONSTANT),
+                    _sym("count", kind=SymbolKind.VARIABLE),
+                ],
+            )
+        )
         assert len(index.symbols_by_kind(SymbolKind.CONSTANT)) == 1
         assert len(index.symbols_by_kind(SymbolKind.VARIABLE)) == 1
 
@@ -428,21 +477,31 @@ class TestSymbolsByKind:
 
 class TestSearch:
     def test_suffix_glob(self) -> None:
-        index = _build(_pr("a.py", symbols=[
-            _sym("FooManager", qn="FooManager", kind=SymbolKind.CLASS),
-            _sym("BarManager", qn="BarManager", kind=SymbolKind.CLASS),
-            _sym("helper", qn="helper"),
-        ]))
+        index = _build(
+            _pr(
+                "a.py",
+                symbols=[
+                    _sym("FooManager", qn="FooManager", kind=SymbolKind.CLASS),
+                    _sym("BarManager", qn="BarManager", kind=SymbolKind.CLASS),
+                    _sym("helper", qn="helper"),
+                ],
+            )
+        )
         result = index.search("*Manager")
         names = {e.symbol.name for e in result}
         assert names == {"FooManager", "BarManager"}
 
     def test_prefix_glob(self) -> None:
-        index = _build(_pr("a.py", symbols=[
-            _sym("test_foo", qn="test_foo"),
-            _sym("test_bar", qn="test_bar"),
-            _sym("other", qn="other"),
-        ]))
+        index = _build(
+            _pr(
+                "a.py",
+                symbols=[
+                    _sym("test_foo", qn="test_foo"),
+                    _sym("test_bar", qn="test_bar"),
+                    _sym("other", qn="other"),
+                ],
+            )
+        )
         result = index.search("test_*")
         assert len(result) == 2
 
@@ -457,10 +516,15 @@ class TestSearch:
         assert len(result) == 2
 
     def test_question_mark_wildcard(self) -> None:
-        index = _build(_pr("a.py", symbols=[
-            _sym("foo", qn="foo"),
-            _sym("f", qn="f"),
-        ]))
+        index = _build(
+            _pr(
+                "a.py",
+                symbols=[
+                    _sym("foo", qn="foo"),
+                    _sym("f", qn="f"),
+                ],
+            )
+        )
         result = index.search("fo?")
         assert len(result) == 1
         assert result[0].symbol.name == "foo"
@@ -475,10 +539,15 @@ class TestSearch:
         assert len(result) == 1
 
     def test_case_sensitive(self) -> None:
-        index = _build(_pr("a.py", symbols=[
-            _sym("Foo", qn="Foo"),
-            _sym("foo", qn="foo"),
-        ]))
+        index = _build(
+            _pr(
+                "a.py",
+                symbols=[
+                    _sym("Foo", qn="Foo"),
+                    _sym("foo", qn="foo"),
+                ],
+            )
+        )
         result = index.search("Foo")
         assert len(result) == 1
         assert result[0].symbol.name == "Foo"
@@ -639,7 +708,10 @@ class TestStats:
         )
         assert index.stats().error_file_count == 1
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="timer resolution too coarse for fast in-memory builds on Windows")
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="timer resolution too coarse for fast in-memory builds on Windows",
+    )
     def test_build_duration_positive(self) -> None:
         index = _build(_pr("a.py", symbols=[_sym("x")] * 100))
         assert index.stats().build_duration_ms > 0
@@ -715,12 +787,19 @@ class TestSymbolDefExtendedFields:
 class TestPythonParserExtendedFields:
     def _parse_src(self, src: str):
         from src.repository.parsers.python_parser import PythonParser
+
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "m.py"
             p.write_text(src, encoding="utf-8")
-            fi = FileInfo(path=p, relative_path="m.py", extension=".py",
-                          language=Language.PYTHON, size=p.stat().st_size,
-                          modified_at=p.stat().st_mtime, content_hash="")
+            fi = FileInfo(
+                path=p,
+                relative_path="m.py",
+                extension=".py",
+                language=Language.PYTHON,
+                size=p.stat().st_size,
+                modified_at=p.stat().st_mtime,
+                content_hash="",
+            )
             return PythonParser().parse(fi)
 
     def test_function_signature_extracted(self) -> None:
@@ -742,7 +821,9 @@ class TestPythonParserExtendedFields:
         assert sym.return_type is None
 
     def test_method_signature_extracted(self) -> None:
-        r = self._parse_src("class Foo:\n    def bar(self, x: int) -> None:\n        pass\n")
+        r = self._parse_src(
+            "class Foo:\n    def bar(self, x: int) -> None:\n        pass\n"
+        )
         sym = next(s for s in r.symbols if s.name == "bar")
         assert sym.signature is not None
 
@@ -754,7 +835,9 @@ class TestPythonParserExtendedFields:
         assert "OSError" in sym.raises
 
     def test_raises_excludes_bare_raise(self) -> None:
-        src = "def foo():\n    try:\n        pass\n    except Exception:\n        raise\n"
+        src = (
+            "def foo():\n    try:\n        pass\n    except Exception:\n        raise\n"
+        )
         r = self._parse_src(src)
         sym = next(s for s in r.symbols if s.name == "foo")
         # bare `raise` has no exc node
@@ -817,15 +900,17 @@ class TestIntegrationPythonParser:
 
             registry = ParserRegistry.default()
             results = [
-                registry.parse(FileInfo(
-                    path=root / name,
-                    relative_path=name,
-                    extension=".py",
-                    language=Language.PYTHON,
-                    size=(root / name).stat().st_size,
-                    modified_at=0.0,
-                    content_hash="",
-                ))
+                registry.parse(
+                    FileInfo(
+                        path=root / name,
+                        relative_path=name,
+                        extension=".py",
+                        language=Language.PYTHON,
+                        size=(root / name).stat().st_size,
+                        modified_at=0.0,
+                        content_hash="",
+                    )
+                )
                 for name in ["a.py", "b.py"]
             ]
             results = [r for r in results if r is not None]
@@ -882,8 +967,10 @@ class TestIntegrationPythonParser:
         assert index.stats().import_count > 20
         assert index.stats().error_file_count == 0
         # Spot-check known symbols
-        assert index.lookup_qualified("PearlAgent") is not None or \
-               len(index.lookup("PearlAgent")) > 0
+        assert (
+            index.lookup_qualified("PearlAgent") is not None
+            or len(index.lookup("PearlAgent")) > 0
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -898,13 +985,19 @@ class TestIndexBenchmarks:
             name = f"file_{i}.py"
             fi = _fi(name)
             symbols = [
-                _sym(f"sym_{i}_{j}", qn=f"Module{i}.sym_{j}",
-                     kind=[SymbolKind.FUNCTION, SymbolKind.METHOD, SymbolKind.CLASS][j % 3])
+                _sym(
+                    f"sym_{i}_{j}",
+                    qn=f"Module{i}.sym_{j}",
+                    kind=[SymbolKind.FUNCTION, SymbolKind.METHOD, SymbolKind.CLASS][
+                        j % 3
+                    ],
+                )
                 for j in range(syms_per_file)
             ]
             imports = [f"import module_{k}" for k in range(5)]
-            results.append(ParseResult(file_info=fi, symbols=symbols,
-                                       imports=imports, errors=[]))
+            results.append(
+                ParseResult(file_info=fi, symbols=symbols, imports=imports, errors=[])
+            )
         return results
 
     def test_build_5000_symbols_under_500ms(self) -> None:

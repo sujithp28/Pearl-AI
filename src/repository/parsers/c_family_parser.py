@@ -10,6 +10,7 @@ The hard case for all three is telling a function definition from a call
 or a control-flow statement, since `if (x) {` and `foo(x) {` are the same
 shape. Keyword exclusion handles it: a "function" named `if` is not one.
 """
+
 from __future__ import annotations
 
 import re
@@ -23,13 +24,51 @@ from src.repository.parsers._block import estimate_brace_block_end
 # Without this every `if (…) {` is indexed as a function.
 _KEYWORDS = frozenset(
     {
-        "if", "else", "for", "while", "do", "switch", "case", "default",
-        "try", "catch", "finally", "return", "throw", "new", "delete",
-        "sizeof", "typedef", "using", "namespace", "template", "typename",
-        "public", "private", "protected", "static", "const", "inline",
-        "virtual", "explicit", "friend", "operator", "struct", "class",
-        "enum", "union", "extern", "register", "volatile", "goto",
-        "lock", "unsafe", "fixed", "checked", "unchecked", "foreach",
+        "if",
+        "else",
+        "for",
+        "while",
+        "do",
+        "switch",
+        "case",
+        "default",
+        "try",
+        "catch",
+        "finally",
+        "return",
+        "throw",
+        "new",
+        "delete",
+        "sizeof",
+        "typedef",
+        "using",
+        "namespace",
+        "template",
+        "typename",
+        "public",
+        "private",
+        "protected",
+        "static",
+        "const",
+        "inline",
+        "virtual",
+        "explicit",
+        "friend",
+        "operator",
+        "struct",
+        "class",
+        "enum",
+        "union",
+        "extern",
+        "register",
+        "volatile",
+        "goto",
+        "lock",
+        "unsafe",
+        "fixed",
+        "checked",
+        "unchecked",
+        "foreach",
     }
 )
 
@@ -47,11 +86,11 @@ _FUNC_RE = re.compile(
     r"(?:(?:public|private|protected|internal|static|virtual|override|"
     r"abstract|async|extern|inline|explicit|constexpr|friend|sealed|"
     r"unsafe|new|partial)\s+)*"
-    r"(?:[\w:<>,\s\*&\[\]]+?[\s\*&]+)"          # return type
-    r"(?P<name>~?\w+)\s*"                        # name (or C++ destructor)
+    r"(?:[\w:<>,\s\*&\[\]]+?[\s\*&]+)"  # return type
+    r"(?P<name>~?\w+)\s*"  # name (or C++ destructor)
     r"\((?P<params>[^;{)]*)\)\s*"
     r"(?:const\s*)?(?:noexcept\s*)?(?:override\s*)?(?:final\s*)?"
-    r"(?::[^{;]+)?"                              # C++ member-init list
+    r"(?::[^{;]+)?"  # C++ member-init list
     r"\{",
     re.MULTILINE,
 )
@@ -98,9 +137,7 @@ class _CFamilyParser(BaseParser):
                     name=match.group("name"),
                     qualified_name=match.group("name"),
                     kind=(
-                        SymbolKind.CONSTANT
-                        if raw_kind == "enum"
-                        else SymbolKind.CLASS
+                        SymbolKind.CONSTANT if raw_kind == "enum" else SymbolKind.CLASS
                     ),
                     line_start=line_no,
                     line_end=estimate_brace_block_end(lines, line_no - 1),
@@ -154,9 +191,7 @@ class _CFamilyParser(BaseParser):
         return []
 
 
-def _enclosing(
-    ranges: list[tuple[int, int, str]], line_no: int
-) -> str | None:
+def _enclosing(ranges: list[tuple[int, int, str]], line_no: int) -> str | None:
     """Return the innermost type whose range contains `line_no`."""
     best: tuple[int, str] | None = None
     for start, end, name in ranges:

@@ -25,6 +25,7 @@ def client(tmp_path, monkeypatch):
     # Use scripted provider so the session constructs without any real API key.
     monkeypatch.setenv("PEARL_LLM_PROVIDER", "scripted")
     from src.config.settings import Settings
+
     monkeypatch.setattr(Settings, "LLM_PROVIDER", "scripted")
     init_session(tmp_path)
     return TestClient(app, raise_server_exceptions=True)

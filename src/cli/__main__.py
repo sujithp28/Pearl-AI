@@ -19,6 +19,7 @@ through ``ExecutionPolicy``, which still refuses to auto-approve
 dangerous operations.  There is deliberately no flag that skips the
 gate entirely.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -133,7 +134,9 @@ def _decide(executor: Any, auto_yes: bool) -> bool:
         return allowed
 
     try:
-        answer = input(f"\n{render.bold('Apply these changes?')} [y/N] ").strip().lower()
+        answer = (
+            input(f"\n{render.bold('Apply these changes?')} [y/N] ").strip().lower()
+        )
     except EOFError:
         # Piped stdin with no answer available: refuse rather than assume
         # consent for a filesystem write.

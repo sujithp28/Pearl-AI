@@ -1177,9 +1177,7 @@ def test_cancel_while_awaiting_command_approval_discards_it(monkeypatch, workspa
     assert not executor.command_approver.has_pending()
 
 
-def test_approve_backfills_step_result_with_real_command_output(
-    monkeypatch, workspace
-):
+def test_approve_backfills_step_result_with_real_command_output(monkeypatch, workspace):
     executor, planner = build_executor()
 
     monkeypatch.setattr(
@@ -1898,8 +1896,14 @@ def test_checkpoint_undo_restores_workspace_after_multi_step_approved_plan(
         planner.client,
         "generate_json",
         _plan_of(
-            {"tool": "create_file", "arguments": {"path": target_a, "content": "a=1\n"}},
-            {"tool": "create_file", "arguments": {"path": target_b, "content": "b=2\n"}},
+            {
+                "tool": "create_file",
+                "arguments": {"path": target_a, "content": "a=1\n"},
+            },
+            {
+                "tool": "create_file",
+                "arguments": {"path": target_b, "content": "b=2\n"},
+            },
         ),
     )
 
@@ -2041,9 +2045,7 @@ class TestExecutionStepErrorType:
         registry.register(always_timeout)
         dispatcher = ToolDispatcher(registry)
         planner = Planner(registry, dispatcher)
-        executor = AutonomousExecutor(
-            planner, dispatcher, max_replans=0, max_retries=0
-        )
+        executor = AutonomousExecutor(planner, dispatcher, max_replans=0, max_retries=0)
 
         monkeypatch.setattr(
             planner.client,
@@ -2086,7 +2088,6 @@ class TestExecutionStepErrorType:
 # ---------------------------------------------------------------------
 # Structured JSON logging (Task 40)
 # ---------------------------------------------------------------------
-
 
 
 def _structured_events(caplog, event_name: str | None = None) -> list[dict]:
@@ -2207,4 +2208,6 @@ class TestStructuredLogging:
         with caplog.at_level(_logging.DEBUG, logger="src.agent.executor"):
             executor.run("add")
         all_structured = _structured_events(caplog)
-        assert len(all_structured) >= 3  # run_start, step_start, step_success, run_complete
+        assert (
+            len(all_structured) >= 3
+        )  # run_start, step_start, step_success, run_complete

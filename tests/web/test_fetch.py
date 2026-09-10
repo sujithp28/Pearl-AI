@@ -74,6 +74,7 @@ class TestResolveAndCheckIp:
     @patch("src.web.fetch.socket.getaddrinfo")
     def test_dns_failure_raises_fetch_error(self, mock_gai) -> None:
         import socket as _socket
+
         mock_gai.side_effect = _socket.gaierror("Name or service not known")
         with pytest.raises(FetchError, match="Cannot resolve"):
             _resolve_and_check_ip("no-such-host.invalid")
@@ -169,9 +170,7 @@ class TestPageFetcher:
     def test_content_length_header_triggers_size_check(self, mock_gai) -> None:
         mock_gai.return_value = [(None, None, None, None, ("93.184.216.34", 0))]
         fetcher = PageFetcher(max_bytes=100)
-        resp = self._make_response(
-            body=b"small", headers={"content-length": "999999"}
-        )
+        resp = self._make_response(body=b"small", headers={"content-length": "999999"})
 
         with patch("src.web.fetch.httpx.Client") as mock_cls:
             mock_client = MagicMock()

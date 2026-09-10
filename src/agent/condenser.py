@@ -97,8 +97,12 @@ class Condenser:
         keep_tail: int | None = None,
     ) -> None:
         self._client = llm_client
-        self._keep_head = keep_head if keep_head is not None else Settings.CONDENSER_KEEP_HEAD
-        self._keep_tail = keep_tail if keep_tail is not None else Settings.CONDENSER_KEEP_TAIL
+        self._keep_head = (
+            keep_head if keep_head is not None else Settings.CONDENSER_KEEP_HEAD
+        )
+        self._keep_tail = (
+            keep_tail if keep_tail is not None else Settings.CONDENSER_KEEP_TAIL
+        )
 
     # ------------------------------------------------------------------ public
 
@@ -129,8 +133,7 @@ class Condenser:
             )
 
         return False, (
-            f"no condensation needed "
-            f"(pressure={pressure:.2%}, turns={n_turns})"
+            f"no condensation needed (pressure={pressure:.2%}, turns={n_turns})"
         )
 
     def can_condense(self, memory: Memory) -> bool:
@@ -240,9 +243,7 @@ class Condenser:
             TASK / DECISIONS / FILES / CHANGES / TESTS / ERRORS /
             PENDING / IMPORTANT CONTEXT
         """
-        formatted = _TURN_SEP.join(
-            f"[{t.role.upper()}]: {t.content}" for t in middle
-        )
+        formatted = _TURN_SEP.join(f"[{t.role.upper()}]: {t.content}" for t in middle)
 
         prompt = (
             "You are summarizing a conversation between a user and Pearl, "
@@ -304,5 +305,7 @@ class Condenser:
         lines = [f"[Context Summary — {len(middle)} turns condensed (fallback)]\n"]
         for t in middle:
             preview = t.content[:200].replace("\n", " ")
-            lines.append(f"- [{t.role}]: {preview}{'…' if len(t.content) > 200 else ''}")
+            lines.append(
+                f"- [{t.role}]: {preview}{'…' if len(t.content) > 200 else ''}"
+            )
         return "\n".join(lines)

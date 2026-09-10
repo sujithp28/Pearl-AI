@@ -63,13 +63,9 @@ def _make_index(*entries: SymbolEntry) -> RepositoryIndex:
     for e in entries:
         files_by_path.setdefault(e.relative_path, []).append(e)
 
-    idx.indexed_files.return_value = [
-        _make_file_info(p) for p in files_by_path
-    ]
+    idx.indexed_files.return_value = [_make_file_info(p) for p in files_by_path]
     idx.symbols_in_file.side_effect = lambda p: files_by_path.get(p, [])
-    idx.lookup.side_effect = lambda name: [
-        e for e in entries if e.symbol.name == name
-    ]
+    idx.lookup.side_effect = lambda name: [e for e in entries if e.symbol.name == name]
     return idx
 
 
@@ -121,8 +117,10 @@ class TestPageRankBoost:
         service.graph = graph
         service.root = __import__("pathlib").Path(".")
 
-        with patch.object(builder, "_render_candidates", return_value=[]), \
-             patch.object(builder, "_relevant_cycles", return_value=[]):
+        with (
+            patch.object(builder, "_render_candidates", return_value=[]),
+            patch.object(builder, "_relevant_cycles", return_value=[]),
+        ):
             # Call _rank() directly
             candidates = builder._rank(
                 "patch_manager",

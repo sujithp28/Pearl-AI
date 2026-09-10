@@ -158,9 +158,7 @@ class TestExecutionReportProperties:
 
         steps = [
             ExecutionStep(iteration=1, tool_name="read_file", kwargs={}, error=None),
-            ExecutionStep(
-                iteration=2, tool_name="write_file", kwargs={}, error="boom"
-            ),
+            ExecutionStep(iteration=2, tool_name="write_file", kwargs={}, error="boom"),
             ExecutionStep(iteration=3, tool_name="git_status", kwargs={}, error=None),
         ]
         return ExecutionReport(steps=steps, stop_reason="completed")

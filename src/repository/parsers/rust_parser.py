@@ -3,6 +3,7 @@ Rust parser — regex-based, no native dependencies.
 
 Extracts functions, structs, enums, traits, and impl blocks.
 """
+
 from __future__ import annotations
 
 import re
@@ -60,13 +61,15 @@ class RustParser(BaseParser):
                 kind = SymbolKind.CONSTANT
             else:
                 kind = SymbolKind.UNKNOWN
-            symbols.append(SymbolDef(
-                name=name,
-                qualified_name=name,
-                kind=kind,
-                line_start=line_no,
-                line_end=_estimate_end(lines, line_no - 1),
-            ))
+            symbols.append(
+                SymbolDef(
+                    name=name,
+                    qualified_name=name,
+                    kind=kind,
+                    line_start=line_no,
+                    line_end=_estimate_end(lines, line_no - 1),
+                )
+            )
 
         # Track current impl context for method qualification
         impl_ranges: list[tuple[int, int, str]] = []
@@ -84,7 +87,7 @@ class RustParser(BaseParser):
 
             # Determine parent from impl context
             parent = None
-            for (impl_start, impl_end, impl_type) in impl_ranges:
+            for impl_start, impl_end, impl_type in impl_ranges:
                 if impl_start <= line_no <= impl_end and indent > 0:
                     parent = impl_type
                     break
@@ -92,18 +95,22 @@ class RustParser(BaseParser):
             kind = SymbolKind.METHOD if parent else SymbolKind.FUNCTION
             qname = f"{parent}.{name}" if parent else name
 
-            symbols.append(SymbolDef(
-                name=name,
-                qualified_name=qname,
-                kind=kind,
-                line_start=line_no,
-                line_end=_estimate_end(lines, line_no - 1),
-                is_async=is_async,
-                parent=parent,
-            ))
+            symbols.append(
+                SymbolDef(
+                    name=name,
+                    qualified_name=qname,
+                    kind=kind,
+                    line_start=line_no,
+                    line_end=_estimate_end(lines, line_no - 1),
+                    is_async=is_async,
+                    parent=parent,
+                )
+            )
 
         symbols.sort(key=lambda s: s.line_start)
-        return ParseResult(file_info=file_info, symbols=symbols, imports=imports, errors=errors)
+        return ParseResult(
+            file_info=file_info, symbols=symbols, imports=imports, errors=errors
+        )
 
 
 def _estimate_end(lines: list[str], start_idx: int, max_scan: int = 200) -> int:

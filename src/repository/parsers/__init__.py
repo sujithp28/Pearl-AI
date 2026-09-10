@@ -527,9 +527,7 @@ class ParserRegistry:
         return len(self._parsers)
 
     def __repr__(self) -> str:
-        langs = ", ".join(
-            sorted(lang.value for lang in self._parsers)
-        )
+        langs = ", ".join(sorted(lang.value for lang in self._parsers))
         return f"ParserRegistry([{langs}])"
 
 

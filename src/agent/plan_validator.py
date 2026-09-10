@@ -104,6 +104,7 @@ def _extensions_in_workspace() -> frozenset[str]:
     workspace cannot be scanned, so a broken scan never blocks planning.
     """
     from src.config.workspace import get_workspace_root
+
     root = get_workspace_root()
     exts: set[str] = set()
     try:
@@ -145,9 +146,7 @@ def validate_plan(steps: list[ToolCall]) -> None:
     errors: list[str] = []
 
     if len(steps) > MAX_STEPS:
-        errors.append(
-            f"Plan has {len(steps)} step(s); maximum is {MAX_STEPS}."
-        )
+        errors.append(f"Plan has {len(steps)} step(s); maximum is {MAX_STEPS}.")
 
     workspace_exts = _extensions_in_workspace()
 
@@ -171,7 +170,12 @@ def validate_plan(steps: list[ToolCall]) -> None:
         # Only applied when workspace_exts is non-empty (scan succeeded)
         # and only for read_file / write_file — create_file legitimately
         # introduces new extensions so it is excluded.
-        if step.tool_name in ("read_file", "write_file", "replace_in_file", "edit_lines"):
+        if step.tool_name in (
+            "read_file",
+            "write_file",
+            "replace_in_file",
+            "edit_lines",
+        ):
             raw_path = step.kwargs.get("path", "")
             if isinstance(raw_path, str) and raw_path:
                 ext = Path(raw_path).suffix.lower()
@@ -270,13 +274,9 @@ def validate_dependencies(steps: list[ToolCall]) -> None:
     for i, step in enumerate(steps, 1):
         for dep in step.depends_on:
             if dep == step.step_id:
-                errors.append(
-                    f"Step {i} ({step.step_id!r}) depends on itself."
-                )
+                errors.append(f"Step {i} ({step.step_id!r}) depends on itself.")
             elif dep not in seen_ids:
-                errors.append(
-                    f"Step {i} depends on unknown step_id {dep!r}."
-                )
+                errors.append(f"Step {i} depends on unknown step_id {dep!r}.")
 
     if errors:
         raise PlanValidationError("; ".join(errors))

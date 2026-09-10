@@ -5,6 +5,7 @@ Kept separate from the command logic so the output format can be tested
 without running an agent, and so a non-TTY (pipe, CI log) degrades to
 plain text rather than emitting escape codes into a file.
 """
+
 from __future__ import annotations
 
 import os

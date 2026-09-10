@@ -4,6 +4,7 @@ Go parser — regex-based, no native dependencies.
 Extracts functions, methods, and struct/interface types.
 Import blocks are parsed as a single grouped import statement.
 """
+
 from __future__ import annotations
 
 import re
@@ -65,13 +66,15 @@ class GoParser(BaseParser):
             raw_kind = m.group("kind")
             kind = SymbolKind.CLASS if raw_kind == "struct" else SymbolKind.UNKNOWN
             line_no = source[: m.start()].count("\n") + 1
-            symbols.append(SymbolDef(
-                name=name,
-                qualified_name=name,
-                kind=kind,
-                line_start=line_no,
-                line_end=_estimate_end(lines, line_no - 1),
-            ))
+            symbols.append(
+                SymbolDef(
+                    name=name,
+                    qualified_name=name,
+                    kind=kind,
+                    line_start=line_no,
+                    line_end=_estimate_end(lines, line_no - 1),
+                )
+            )
 
         # Functions and methods
         for m in _FUNC_RE.finditer(source):
@@ -88,17 +91,21 @@ class GoParser(BaseParser):
                 qname = name
                 kind = SymbolKind.FUNCTION
                 parent = None
-            symbols.append(SymbolDef(
-                name=name,
-                qualified_name=qname,
-                kind=kind,
-                line_start=line_no,
-                line_end=_estimate_end(lines, line_no - 1),
-                parent=parent,
-            ))
+            symbols.append(
+                SymbolDef(
+                    name=name,
+                    qualified_name=qname,
+                    kind=kind,
+                    line_start=line_no,
+                    line_end=_estimate_end(lines, line_no - 1),
+                    parent=parent,
+                )
+            )
 
         symbols.sort(key=lambda s: s.line_start)
-        return ParseResult(file_info=file_info, symbols=symbols, imports=imports, errors=errors)
+        return ParseResult(
+            file_info=file_info, symbols=symbols, imports=imports, errors=errors
+        )
 
 
 def _estimate_end(lines: list[str], start_idx: int, max_scan: int = 200) -> int:

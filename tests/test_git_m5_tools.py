@@ -39,13 +39,17 @@ from src.tools.git_tools import (
 
 
 class TestGitStage:
-    def test_raises_outside_git_repo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_outside_git_repo(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         # tmp_path is not a git repo
         with pytest.raises(GitError, match="Not a git repository"):
             git_stage()
 
-    def test_stages_all_when_files_is_none(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_stages_all_when_files_is_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         run_results = [
             # _ensure_git_repo: rev-parse
@@ -61,29 +65,39 @@ class TestGitStage:
             result = git_stage()
         assert "Staged" in result
 
-    def test_stages_specific_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_stages_specific_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         run_results = [
             MagicMock(returncode=0, stdout="true\n", stderr=""),  # _ensure_git_repo
-            MagicMock(returncode=0, stdout="", stderr=""),         # git add -- a.py
-            MagicMock(returncode=0, stdout="true\n", stderr=""),  # _ensure_git_repo in git_status
+            MagicMock(returncode=0, stdout="", stderr=""),  # git add -- a.py
+            MagicMock(
+                returncode=0, stdout="true\n", stderr=""
+            ),  # _ensure_git_repo in git_status
             MagicMock(returncode=0, stdout="## main\nA  a.py\n", stderr=""),
         ]
         with patch("src.tools.git_tools.subprocess.run", side_effect=run_results):
             result = git_stage(["a.py"])
         assert "Staged" in result
 
-    def test_raises_on_git_add_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_on_git_add_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         run_results = [
             MagicMock(returncode=0, stdout="true\n", stderr=""),  # _ensure_git_repo
-            MagicMock(returncode=128, stdout="", stderr="error: pathspec 'x.py' did not match"),
+            MagicMock(
+                returncode=128, stdout="", stderr="error: pathspec 'x.py' did not match"
+            ),
         ]
         with patch("src.tools.git_tools.subprocess.run", side_effect=run_results):
             with pytest.raises(GitError, match="git add failed"):
                 git_stage(["x.py"])
 
-    def test_raises_on_empty_string_in_files_list(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_on_empty_string_in_files_list(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         run_results = [
             MagicMock(returncode=0, stdout="true\n", stderr=""),  # _ensure_git_repo
@@ -99,12 +113,16 @@ class TestGitStage:
 
 
 class TestGitBlame:
-    def test_raises_outside_git_repo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_outside_git_repo(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         with pytest.raises(GitError, match="Not a git repository"):
             git_blame("a.py")
 
-    def test_raises_on_empty_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_on_empty_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         with patch(
             "src.tools.git_tools.subprocess.run",
@@ -113,7 +131,9 @@ class TestGitBlame:
             with pytest.raises(ValueError, match="'path' must not be empty"):
                 git_blame("")
 
-    def test_raises_on_start_line_less_than_1(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_on_start_line_less_than_1(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         with patch(
             "src.tools.git_tools.subprocess.run",
@@ -122,7 +142,9 @@ class TestGitBlame:
             with pytest.raises(ValueError, match="start_line"):
                 git_blame("a.py", start_line=0)
 
-    def test_raises_when_end_line_lt_start_line(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_when_end_line_lt_start_line(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         run_results = [
             MagicMock(returncode=0, stdout="true\n", stderr=""),  # _ensure_git_repo
@@ -131,7 +153,9 @@ class TestGitBlame:
             with pytest.raises(ValueError, match="end_line"):
                 git_blame("a.py", start_line=5, end_line=2)
 
-    def test_raises_on_git_blame_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_on_git_blame_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         run_results = [
             MagicMock(returncode=0, stdout="true\n", stderr=""),  # _ensure_git_repo

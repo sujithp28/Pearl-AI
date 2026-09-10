@@ -32,6 +32,7 @@ Usage::
     )
     # ctx.system_prompt, ctx.history, ctx.context_block
 """
+
 from __future__ import annotations
 
 import logging
@@ -58,8 +59,8 @@ class EngineContext:
     """Assembled context ready for a model call."""
 
     system_prompt: str
-    history: list[dict[str, str]]       # [{role, content}, ...]
-    context_block: str                  # workspace/repo context injected into user message
+    history: list[dict[str, str]]  # [{role, content}, ...]
+    context_block: str  # workspace/repo context injected into user message
     tokens_used: int
     tokens_budget: int
     was_condensed: bool

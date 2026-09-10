@@ -1,6 +1,7 @@
 """
 Tests for src/agent/session_manager.py
 """
+
 from __future__ import annotations
 
 import threading
@@ -47,7 +48,9 @@ class TestCreateSession:
         rec = manager.get_session(sid)
         assert rec.metadata["branch"] == "main"
 
-    def test_session_file_created(self, manager: SessionManager, tmp_path: Path) -> None:
+    def test_session_file_created(
+        self, manager: SessionManager, tmp_path: Path
+    ) -> None:
         sid = manager.create_session(workspace="/tmp/proj")
         assert (tmp_path / f"{sid}.json").exists()
 
@@ -67,7 +70,9 @@ class TestGetSession:
         with pytest.raises(KeyError):
             manager.get_session("00000000-0000-0000-0000-000000000000")
 
-    def test_raises_value_error_on_path_traversal(self, manager: SessionManager) -> None:
+    def test_raises_value_error_on_path_traversal(
+        self, manager: SessionManager
+    ) -> None:
         with pytest.raises(ValueError):
             manager.get_session("../evil")
 
@@ -131,7 +136,14 @@ class TestListSessions:
         manager.create_session(workspace="/tmp")
         sessions = manager.list_sessions()
         s = sessions[0]
-        for key in ("id", "title", "workspace", "created_at", "updated_at", "message_count"):
+        for key in (
+            "id",
+            "title",
+            "workspace",
+            "created_at",
+            "updated_at",
+            "message_count",
+        ):
             assert key in s
 
     def test_message_count_correct(self, manager: SessionManager) -> None:

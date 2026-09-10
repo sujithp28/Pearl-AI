@@ -141,8 +141,14 @@ class TestSymbolKind:
 
     def test_expected_kinds_exist(self) -> None:
         expected = {
-            "class", "function", "method", "variable",
-            "constant", "module", "decorator", "unknown",
+            "class",
+            "function",
+            "method",
+            "variable",
+            "constant",
+            "module",
+            "decorator",
+            "unknown",
         }
         assert {k.value for k in SymbolKind} == expected
 
@@ -212,8 +218,11 @@ class TestSymbolDef:
 
     def test_repr_sync(self) -> None:
         sym = SymbolDef(
-            name="foo", qualified_name="mod.foo",
-            kind=SymbolKind.CLASS, line_start=1, line_end=5,
+            name="foo",
+            qualified_name="mod.foo",
+            kind=SymbolKind.CLASS,
+            line_start=1,
+            line_end=5,
         )
         r = repr(sym)
         assert "class" in r
@@ -223,18 +232,31 @@ class TestSymbolDef:
 
     def test_repr_async(self) -> None:
         sym = SymbolDef(
-            name="bar", qualified_name="mod.bar",
-            kind=SymbolKind.FUNCTION, line_start=7, line_end=12,
+            name="bar",
+            qualified_name="mod.bar",
+            kind=SymbolKind.FUNCTION,
+            line_start=7,
+            line_end=12,
             is_async=True,
         )
         assert "async" in repr(sym)
 
     def test_decorators_default_is_independent(self) -> None:
         # Each SymbolDef should get its own list, not share a reference.
-        sym_a = SymbolDef(name="a", qualified_name="a", kind=SymbolKind.FUNCTION,
-                          line_start=1, line_end=1)
-        sym_b = SymbolDef(name="b", qualified_name="b", kind=SymbolKind.FUNCTION,
-                          line_start=2, line_end=2)
+        sym_a = SymbolDef(
+            name="a",
+            qualified_name="a",
+            kind=SymbolKind.FUNCTION,
+            line_start=1,
+            line_end=1,
+        )
+        sym_b = SymbolDef(
+            name="b",
+            qualified_name="b",
+            kind=SymbolKind.FUNCTION,
+            line_start=2,
+            line_end=2,
+        )
         sym_a.decorators.append("x")
         assert sym_b.decorators == []
 
@@ -265,8 +287,13 @@ class TestParseResult:
 
     def test_full_construction(self, tmp_path: Path) -> None:
         fi = _make_file_info(tmp_path)
-        sym = SymbolDef(name="f", qualified_name="mod.f",
-                        kind=SymbolKind.FUNCTION, line_start=1, line_end=2)
+        sym = SymbolDef(
+            name="f",
+            qualified_name="mod.f",
+            kind=SymbolKind.FUNCTION,
+            line_start=1,
+            line_end=2,
+        )
         pr = ParseResult(
             file_info=fi,
             symbols=[sym],
@@ -291,9 +318,15 @@ class TestParseResult:
         fi_b = _make_file_info(tmp_path, "b.py")
         pr_a = ParseResult(file_info=fi_a)
         pr_b = ParseResult(file_info=fi_b)
-        pr_a.symbols.append(SymbolDef(name="x", qualified_name="x",
-                                       kind=SymbolKind.VARIABLE,
-                                       line_start=1, line_end=1))
+        pr_a.symbols.append(
+            SymbolDef(
+                name="x",
+                qualified_name="x",
+                kind=SymbolKind.VARIABLE,
+                line_start=1,
+                line_end=1,
+            )
+        )
         assert pr_b.symbols == []
 
 
@@ -531,9 +564,9 @@ class TestParserRegistryParseMany:
         registry = ParserRegistry()
         registry.register(FakePythonParser())
         fis = [
-            _make_file_info(tmp_path, "a.py"),    # supported
-            _make_file_info(tmp_path, "b.ts"),    # not registered
-            _make_file_info(tmp_path, "c.go"),    # not registered
+            _make_file_info(tmp_path, "a.py"),  # supported
+            _make_file_info(tmp_path, "b.ts"),  # not registered
+            _make_file_info(tmp_path, "c.go"),  # not registered
         ]
         results = registry.parse_many(fis)
         assert len(results) == 1
@@ -742,7 +775,14 @@ class TestParserFrameworkIntegration:
 class TestLayerRule:
     def test_parsers_package_does_not_import_agent(self) -> None:
         import ast
-        src = Path(__file__).parent.parent.parent / "src" / "repository" / "parsers" / "__init__.py"
+
+        src = (
+            Path(__file__).parent.parent.parent
+            / "src"
+            / "repository"
+            / "parsers"
+            / "__init__.py"
+        )
         tree = ast.parse(src.read_text(encoding="utf-8"))
         imports = []
         for node in ast.walk(tree):
@@ -761,7 +801,14 @@ class TestLayerRule:
 
     def test_parsers_only_imports_from_models(self) -> None:
         import ast
-        src = Path(__file__).parent.parent.parent / "src" / "repository" / "parsers" / "__init__.py"
+
+        src = (
+            Path(__file__).parent.parent.parent
+            / "src"
+            / "repository"
+            / "parsers"
+            / "__init__.py"
+        )
         tree = ast.parse(src.read_text(encoding="utf-8"))
         src_imports = set()
         for node in ast.walk(tree):
@@ -771,7 +818,8 @@ class TestLayerRule:
         # Intra-package deferred imports (e.g. inside default()) are allowed.
         allowed_prefixes = ("src.repository.models", "src.repository.parsers.")
         unexpected = {
-            imp for imp in src_imports
+            imp
+            for imp in src_imports
             if not any(imp == a or imp.startswith(a) for a in allowed_prefixes)
         }
         assert not unexpected, (
@@ -812,9 +860,7 @@ class TestParserFrameworkBenchmarks:
             )
         return files
 
-    def test_registry_dispatch_100_files_under_100ms(
-        self, tmp_path: Path
-    ) -> None:
+    def test_registry_dispatch_100_files_under_100ms(self, tmp_path: Path) -> None:
         """Registry overhead for 100 files must be under 100 ms."""
         import time
 
@@ -827,11 +873,11 @@ class TestParserFrameworkBenchmarks:
         elapsed_ms = (time.monotonic() - start) * 1000
 
         assert len(results) == 100
-        assert elapsed_ms < 100, f"Framework dispatch took {elapsed_ms:.1f} ms (limit: 100 ms)"
+        assert elapsed_ms < 100, (
+            f"Framework dispatch took {elapsed_ms:.1f} ms (limit: 100 ms)"
+        )
 
-    def test_registry_skip_overhead_500_files_under_200ms(
-        self, tmp_path: Path
-    ) -> None:
+    def test_registry_skip_overhead_500_files_under_200ms(self, tmp_path: Path) -> None:
         """Skipping 500 unsupported files must cost under 200 ms."""
         import time
 
@@ -849,9 +895,7 @@ class TestParserFrameworkBenchmarks:
             f"Skip overhead for 500 files: {elapsed_ms:.1f} ms (limit: 200 ms)"
         )
 
-    def test_error_containment_overhead_is_negligible(
-        self, tmp_path: Path
-    ) -> None:
+    def test_error_containment_overhead_is_negligible(self, tmp_path: Path) -> None:
         """Containing parser exceptions must add less than 5 ms per file."""
         import time
 

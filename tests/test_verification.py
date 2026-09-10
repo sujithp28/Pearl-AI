@@ -116,7 +116,7 @@ class TestScenario1TestsFail:
 
         with patch.object(engine, "_git") as mock_git:
             mock_git.side_effect = [
-                _make_git_mock(" M foo.py\n"),   # status
+                _make_git_mock(" M foo.py\n"),  # status
                 _make_git_mock("foo.py | 2 ++"),  # diff --stat
             ]
             with patch.object(engine, "_run_tests") as mock_run:
@@ -508,9 +508,7 @@ class TestEvidenceFormat:
 
 
 class TestPathNormalisation:
-    def test_absolute_planned_path_normalised_to_relative(
-        self, tmp_path: Path
-    ) -> None:
+    def test_absolute_planned_path_normalised_to_relative(self, tmp_path: Path) -> None:
         engine = _engine(tmp_path)
         absolute = str(tmp_path / "foo.py")
 
@@ -574,7 +572,10 @@ class TestDetermineStatus:
         )
 
     def test_success_when_planned_in_changed(self) -> None:
-        assert _determine_status(("a.py",), ("a.py", "b.py"), 0) == VerificationStatus.SUCCESS
+        assert (
+            _determine_status(("a.py",), ("a.py", "b.py"), 0)
+            == VerificationStatus.SUCCESS
+        )
 
     def test_success_when_no_planned_but_files_changed(self) -> None:
         # Nothing was explicitly planned (e.g., shell-only run) but files changed
@@ -597,14 +598,20 @@ class TestComputeRisk:
 
     def test_high_when_more_than_two_unexpected(self) -> None:
         unexpected = ("a.py", "b.py", "c.py")
-        assert _compute_risk(("x.py",), ("x.py",) + unexpected, unexpected, 0) == RiskLevel.HIGH
+        assert (
+            _compute_risk(("x.py",), ("x.py",) + unexpected, unexpected, 0)
+            == RiskLevel.HIGH
+        )
 
     def test_medium_when_three_changed(self) -> None:
         changed = ("a.py", "b.py", "c.py")
         assert _compute_risk(changed, changed, (), 0) == RiskLevel.MEDIUM
 
     def test_medium_when_one_unexpected_non_src(self) -> None:
-        assert _compute_risk(("a.py",), ("a.py", "docs/note.md"), ("docs/note.md",), 0) == RiskLevel.MEDIUM
+        assert (
+            _compute_risk(("a.py",), ("a.py", "docs/note.md"), ("docs/note.md",), 0)
+            == RiskLevel.MEDIUM
+        )
 
     def test_low_when_one_file_no_unexpected_no_failure(self) -> None:
         assert _compute_risk(("a.py",), ("a.py",), (), 0) == RiskLevel.LOW
@@ -636,7 +643,8 @@ class TestComputeConfidence:
         score = _compute_confidence(
             ("a.py", "b.py", "c.py"),
             (),
-            0, 0,
+            0,
+            0,
             ("x.py", "y.py", "z.py", "w.py"),
         )
         assert 0.0 <= score <= 1.0

@@ -24,6 +24,7 @@ Structured output::
         "recommended_action": "Task complete — no further action needed."
     }
 """
+
 from __future__ import annotations
 
 import json
@@ -157,7 +158,7 @@ class ReflectionEngine:
     def reflect(
         self,
         request: str,
-        steps: list[Any],          # list[ExecutionStep] — avoid import cycle
+        steps: list[Any],  # list[ExecutionStep] — avoid import cycle
         verification: dict[str, Any] | None = None,
     ) -> ReflectionResult:
         """
@@ -230,9 +231,13 @@ class ReflectionEngine:
                 f"failed: {verification.get('tests_failed', 0)}",
             ]
             if verification.get("unexpected_files"):
-                ver_lines.append(f"Unexpected files: {verification['unexpected_files']}")
+                ver_lines.append(
+                    f"Unexpected files: {verification['unexpected_files']}"
+                )
             if verification.get("evidence"):
-                ver_lines.append(f"Evidence: {'; '.join(list(verification['evidence'])[:3])}")
+                ver_lines.append(
+                    f"Evidence: {'; '.join(list(verification['evidence'])[:3])}"
+                )
             ver_text = "\n".join(ver_lines)
         else:
             ver_text = "(verification not run)"
@@ -252,7 +257,7 @@ class ReflectionEngine:
         text = raw.strip()
         for fence in ("```json", "```"):
             if text.startswith(fence):
-                text = text[len(fence):]
+                text = text[len(fence) :]
         if text.endswith("```"):
             text = text[:-3]
         text = text.strip()

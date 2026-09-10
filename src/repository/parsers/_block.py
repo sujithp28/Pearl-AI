@@ -15,6 +15,7 @@ line — never an exception. Being approximately right on every file
 matters more here than being exactly right on some and failing on the
 rest, because the result feeds context selection, not codegen.
 """
+
 from __future__ import annotations
 
 # Cap the scan so one unbalanced brace cannot walk the rest of a large
@@ -97,9 +98,7 @@ def estimate_keyword_block_end(
                 return i + 1
             continue
 
-        if any(
-            stripped == kw or stripped.startswith(f"{kw} ") for kw in openers
-        ):
+        if any(stripped == kw or stripped.startswith(f"{kw} ") for kw in openers):
             depth += 1
 
     return limit

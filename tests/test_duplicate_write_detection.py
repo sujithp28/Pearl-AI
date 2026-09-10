@@ -27,7 +27,9 @@ def _step(tool: str, path: str | None = None) -> ToolCall:
 # Suppress workspace scan so extension checks don't fire.
 @pytest.fixture(autouse=True)
 def _no_scan():
-    with patch("src.agent.plan_validator._extensions_in_workspace", return_value=frozenset()):
+    with patch(
+        "src.agent.plan_validator._extensions_in_workspace", return_value=frozenset()
+    ):
         yield
 
 

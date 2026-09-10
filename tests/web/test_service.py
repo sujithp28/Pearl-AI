@@ -78,7 +78,10 @@ class TestWebIntelligenceServiceBuildContext:
 
     def test_successful_pipeline_returns_context_with_sources(self) -> None:
         mock_searcher = MagicMock()
-        mock_searcher.search.return_value = [_make_search_result(1), _make_search_result(2)]
+        mock_searcher.search.return_value = [
+            _make_search_result(1),
+            _make_search_result(2),
+        ]
 
         mock_fetcher = MagicMock()
         mock_fetcher.fetch.return_value = _make_raw_page(1)

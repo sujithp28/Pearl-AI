@@ -24,8 +24,7 @@ def _required_params(func) -> frozenset[str]:
     return frozenset(
         name
         for name, param in sig.parameters.items()
-        if param.kind in _POSITIONAL_KINDS
-        and param.default is inspect.Parameter.empty
+        if param.kind in _POSITIONAL_KINDS and param.default is inspect.Parameter.empty
     )
 
 

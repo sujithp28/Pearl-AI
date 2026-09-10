@@ -201,9 +201,7 @@ class TestRealPlanning:
         from src.main import build_registry
 
         registry = build_registry()
-        planner = Planner(
-            registry, ToolDispatcher(registry), router.planning_client()
-        )
+        planner = Planner(registry, ToolDispatcher(registry), router.planning_client())
 
         try:
             plan = list(planner.plan("List the files in the current directory."))
@@ -340,9 +338,7 @@ class TestRealFullLoop:
 
         # Reflection ran on real evidence.
         assert final.llm_reflection is not None, "reflection must run"
-        assert final.llm_reflection.status in (
-            "complete", "retry", "replan", "blocked"
-        )
+        assert final.llm_reflection.status in ("complete", "retry", "replan", "blocked")
 
     def test_rejection_never_reaches_disk(self, router, workspace):
         executor, _ = _build_executor(router, workspace)

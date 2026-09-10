@@ -16,6 +16,7 @@ The failure mode is what makes these worth testing: a test that
 corrupts the repo and still reports success is invisible until someone
 reads a diff.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

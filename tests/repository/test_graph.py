@@ -322,10 +322,13 @@ class TestBuildEmpty:
 
 class TestBuildFileNodes:
     def test_one_file_node_per_indexed_file(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "x = 1\n",
-            "src/b.py": "y = 2\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "x = 1\n",
+                "src/b.py": "y = 2\n",
+            },
+        )
         file_nodes = g.nodes(kind=NodeKind.FILE)
         ids = {n.id for n in file_nodes}
         assert "src/a.py" in ids
@@ -364,9 +367,12 @@ class TestBuildFileNodes:
 
 class TestBuildSymbolNodes:
     def test_symbol_node_created_per_symbol(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "class Foo:\n    def bar(self): pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "class Foo:\n    def bar(self): pass\n",
+            },
+        )
         sym_nodes = g.nodes(kind=NodeKind.SYMBOL)
         labels = {n.label for n in sym_nodes}
         assert "Foo" in labels
@@ -414,18 +420,24 @@ class TestDefinesEdges:
         assert any("bar" in e.target for e in out)
 
     def test_defines_edges_for_all_symbols(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "class A: pass\nclass B: pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "class A: pass\nclass B: pass\n",
+            },
+        )
         out = g.edges_out("src/a.py", kind=EdgeKind.DEFINES)
         targets = {e.target for e in out}
         assert "src/a.py#A" in targets
         assert "src/a.py#B" in targets
 
     def test_nested_symbols_also_have_defines_edge(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "class Foo:\n    def method(self): pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "class Foo:\n    def method(self): pass\n",
+            },
+        )
         out = g.edges_out("src/a.py", kind=EdgeKind.DEFINES)
         targets = {e.target for e in out}
         assert "src/a.py#Foo.method" in targets
@@ -438,32 +450,44 @@ class TestDefinesEdges:
 
 class TestContainsEdges:
     def test_contains_edge_class_to_method(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "class Foo:\n    def bar(self): pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "class Foo:\n    def bar(self): pass\n",
+            },
+        )
         out = g.edges_out("src/a.py#Foo", kind=EdgeKind.CONTAINS)
         targets = {e.target for e in out}
         assert "src/a.py#Foo.bar" in targets
 
     def test_no_contains_for_top_level(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "def top(): pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "def top(): pass\n",
+            },
+        )
         out = g.edges_out("src/a.py", kind=EdgeKind.CONTAINS)
         assert out == []  # file nodes don't have CONTAINS edges
 
     def test_contains_edge_nested_class(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "class Outer:\n    class Inner: pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "class Outer:\n    class Inner: pass\n",
+            },
+        )
         out = g.edges_out("src/a.py#Outer", kind=EdgeKind.CONTAINS)
         targets = {e.target for e in out}
         assert "src/a.py#Outer.Inner" in targets
 
     def test_contains_edge_class_to_constant(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "class Cfg:\n    MAX = 10\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "class Cfg:\n    MAX = 10\n",
+            },
+        )
         out = g.edges_out("src/a.py#Cfg", kind=EdgeKind.CONTAINS)
         targets = {e.target for e in out}
         assert "src/a.py#Cfg.MAX" in targets
@@ -476,52 +500,70 @@ class TestContainsEdges:
 
 class TestImportsEdges:
     def test_absolute_import_creates_edge(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import Foo\n",
-            "src/b.py": "class Foo: pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import Foo\n",
+                "src/b.py": "class Foo: pass\n",
+            },
+        )
         out = g.edges_out("src/a.py", kind=EdgeKind.IMPORTS)
         targets = {e.target for e in out}
         assert "src/b.py" in targets
 
     def test_relative_import_creates_edge(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from . import b\n",
-            "src/b.py": "x = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from . import b\n",
+                "src/b.py": "x = 1\n",
+            },
+        )
         out = g.edges_out("src/a.py", kind=EdgeKind.IMPORTS)
         targets = {e.target for e in out}
         assert "src/b.py" in targets
 
     def test_stdlib_import_no_edge(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "import os\nimport sys\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "import os\nimport sys\n",
+            },
+        )
         out = g.edges_out("src/a.py", kind=EdgeKind.IMPORTS)
         assert out == []
 
     def test_unresolvable_import_no_edge(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "import unknown_third_party\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "import unknown_third_party\n",
+            },
+        )
         out = g.edges_out("src/a.py", kind=EdgeKind.IMPORTS)
         assert out == []
 
     def test_import_edge_deduplicated(self, tmp_path: Path) -> None:
         # Two import statements to the same module → only one IMPORTS edge
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import Foo\nfrom src.b import Bar\n",
-            "src/b.py": "class Foo: pass\nclass Bar: pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import Foo\nfrom src.b import Bar\n",
+                "src/b.py": "class Foo: pass\nclass Bar: pass\n",
+            },
+        )
         out = g.edges_out("src/a.py", kind=EdgeKind.IMPORTS)
         # All edges should point to src/b.py — deduplicated to one
         assert len([e for e in out if e.target == "src/b.py"]) == 1
 
     def test_import_edge_imported_names(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import Foo\n",
-            "src/b.py": "class Foo: pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import Foo\n",
+                "src/b.py": "class Foo: pass\n",
+            },
+        )
         out = g.edges_out("src/a.py", kind=EdgeKind.IMPORTS)
         edge = next((e for e in out if e.target == "src/b.py"), None)
         assert edge is not None
@@ -529,12 +571,16 @@ class TestImportsEdges:
 
     def test_no_self_import_edge(self, tmp_path: Path) -> None:
         # __init__.py importing from the same package should not self-loop
-        g = _build_graph(tmp_path, {
-            "src/__init__.py": "from src import utils\n",
-            "src/utils.py": "x = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/__init__.py": "from src import utils\n",
+                "src/utils.py": "x = 1\n",
+            },
+        )
         self_edges = [
-            e for e in g.edges_out("src/__init__.py", kind=EdgeKind.IMPORTS)
+            e
+            for e in g.edges_out("src/__init__.py", kind=EdgeKind.IMPORTS)
             if e.target == "src/__init__.py"
         ]
         assert self_edges == []
@@ -547,58 +593,71 @@ class TestImportsEdges:
 
 class TestInheritsEdges:
     def test_inherits_edge_simple_base(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "class Base: pass\nclass Child(Base): pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "class Base: pass\nclass Child(Base): pass\n",
+            },
+        )
         out = g.edges_out("src/a.py#Child", kind=EdgeKind.INHERITS)
         targets = {e.target for e in out}
         assert "src/a.py#Base" in targets
 
     def test_inherits_edge_base_name_stored(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "class Base: pass\nclass Child(Base): pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "class Base: pass\nclass Child(Base): pass\n",
+            },
+        )
         out = g.edges_out("src/a.py#Child", kind=EdgeKind.INHERITS)
         edge = next((e for e in out if e.target == "src/a.py#Base"), None)
         assert edge is not None
         assert edge.base_name == "Base"
 
     def test_inherits_edge_multiple_bases(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": (
-                "class A: pass\n"
-                "class B: pass\n"
-                "class C(A, B): pass\n"
-            ),
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": ("class A: pass\nclass B: pass\nclass C(A, B): pass\n"),
+            },
+        )
         out = g.edges_out("src/a.py#C", kind=EdgeKind.INHERITS)
         targets = {e.target for e in out}
         assert "src/a.py#A" in targets
         assert "src/a.py#B" in targets
 
     def test_no_inherits_for_non_class(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "def foo(): pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "def foo(): pass\n",
+            },
+        )
         assert g.edges_out("src/a.py#foo", kind=EdgeKind.INHERITS) == []
 
     def test_inherits_cross_file(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/base.py": "class Base: pass\n",
-            "src/child.py": (
-                "from src.base import Base\n"
-                "class Child(Base): pass\n"
-            ),
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/base.py": "class Base: pass\n",
+                "src/child.py": (
+                    "from src.base import Base\nclass Child(Base): pass\n"
+                ),
+            },
+        )
         out = g.edges_out("src/child.py#Child", kind=EdgeKind.INHERITS)
         targets = {e.target for e in out}
         assert "src/base.py#Base" in targets
 
     def test_no_self_inherits_edge(self, tmp_path: Path) -> None:
         # A class cannot inherit from itself in a well-formed graph
-        g = _build_graph(tmp_path, {
-            "src/a.py": "class Foo(Foo): pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "class Foo(Foo): pass\n",
+            },
+        )
         out = g.edges_out("src/a.py#Foo", kind=EdgeKind.INHERITS)
         self_edges = [e for e in out if e.target == "src/a.py#Foo"]
         assert self_edges == []
@@ -669,18 +728,24 @@ class TestEdgeQuery:
         assert len(keys) == len(set(keys))
 
     def test_edges_out_from_file(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import X\n",
-            "src/b.py": "X = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import X\n",
+                "src/b.py": "X = 1\n",
+            },
+        )
         out = g.edges_out("src/a.py")
         assert any(e.kind is EdgeKind.IMPORTS for e in out)
 
     def test_edges_in_to_file(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import X\n",
-            "src/b.py": "X = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import X\n",
+                "src/b.py": "X = 1\n",
+            },
+        )
         incoming = g.edges_in("src/b.py", kind=EdgeKind.IMPORTS)
         assert any(e.source == "src/a.py" for e in incoming)
 
@@ -700,19 +765,25 @@ class TestEdgeQuery:
 
 class TestNeighbors:
     def test_neighbors_out_imports(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import X\n",
-            "src/b.py": "X = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import X\n",
+                "src/b.py": "X = 1\n",
+            },
+        )
         out = g.neighbors_out("src/a.py", kind=EdgeKind.IMPORTS)
         ids = {n.id for n in out}
         assert "src/b.py" in ids
 
     def test_neighbors_in_imports(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import X\n",
-            "src/b.py": "X = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import X\n",
+                "src/b.py": "X = 1\n",
+            },
+        )
         incoming = g.neighbors_in("src/b.py", kind=EdgeKind.IMPORTS)
         ids = {n.id for n in incoming}
         assert "src/a.py" in ids
@@ -742,18 +813,24 @@ class TestDetectCycles:
         assert g.detect_cycles() == []
 
     def test_acyclic_imports_no_cycle(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import X\n",
-            "src/b.py": "X = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import X\n",
+                "src/b.py": "X = 1\n",
+            },
+        )
         assert g.detect_cycles() == []
 
     def test_direct_cycle_detected(self, tmp_path: Path) -> None:
         # a imports b and b imports a
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import Y\nX = 1\n",
-            "src/b.py": "from src.a import X\nY = 2\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import Y\nX = 1\n",
+                "src/b.py": "from src.a import X\nY = 2\n",
+            },
+        )
         cycles = g.detect_cycles()
         assert len(cycles) == 1
         cycle = cycles[0]
@@ -762,41 +839,53 @@ class TestDetectCycles:
 
     def test_transitive_cycle_detected(self, tmp_path: Path) -> None:
         # a → b → c → a
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import Y\nX = 1\n",
-            "src/b.py": "from src.c import Z\nY = 2\n",
-            "src/c.py": "from src.a import X\nZ = 3\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import Y\nX = 1\n",
+                "src/b.py": "from src.c import Z\nY = 2\n",
+                "src/c.py": "from src.a import X\nZ = 3\n",
+            },
+        )
         cycles = g.detect_cycles()
         assert len(cycles) == 1
         assert sorted(cycles[0]) == ["src/a.py", "src/b.py", "src/c.py"]
 
     def test_isolated_node_not_in_cycle(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import Y\nX = 1\n",
-            "src/b.py": "from src.a import X\nY = 2\n",
-            "src/c.py": "z = 3\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import Y\nX = 1\n",
+                "src/b.py": "from src.a import X\nY = 2\n",
+                "src/c.py": "z = 3\n",
+            },
+        )
         cycles = g.detect_cycles()
         # c.py must not appear in any cycle
         for cycle in cycles:
             assert "src/c.py" not in cycle
 
     def test_multiple_independent_cycles(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import B\nA = 1\n",
-            "src/b.py": "from src.a import A\nB = 2\n",
-            "src/x.py": "from src.y import Y\nX = 1\n",
-            "src/y.py": "from src.x import X\nY = 2\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import B\nA = 1\n",
+                "src/b.py": "from src.a import A\nB = 2\n",
+                "src/x.py": "from src.y import Y\nX = 1\n",
+                "src/y.py": "from src.x import X\nY = 2\n",
+            },
+        )
         cycles = g.detect_cycles()
         assert len(cycles) == 2
 
     def test_cycle_results_are_sorted(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import B\nA = 1\n",
-            "src/b.py": "from src.a import A\nB = 2\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import B\nA = 1\n",
+                "src/b.py": "from src.a import A\nB = 2\n",
+            },
+        )
         for cycle in g.detect_cycles():
             assert cycle == sorted(cycle)
 
@@ -821,19 +910,25 @@ class TestShortestPath:
         assert path == ["src/a.py"]
 
     def test_direct_edge(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import X\n",
-            "src/b.py": "X = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import X\n",
+                "src/b.py": "X = 1\n",
+            },
+        )
         path = g.shortest_path("src/a.py", "src/b.py", kind=EdgeKind.IMPORTS)
         assert path == ["src/a.py", "src/b.py"]
 
     def test_multi_hop_path(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import B\n",
-            "src/b.py": "from src.c import C\nB = 1\n",
-            "src/c.py": "C = 2\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import B\n",
+                "src/b.py": "from src.c import C\nB = 1\n",
+                "src/c.py": "C = 2\n",
+            },
+        )
         path = g.shortest_path("src/a.py", "src/c.py", kind=EdgeKind.IMPORTS)
         assert path is not None
         assert path[0] == "src/a.py"
@@ -841,19 +936,25 @@ class TestShortestPath:
         assert len(path) == 3
 
     def test_no_path_returns_none(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import X\n",
-            "src/b.py": "X = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import X\n",
+                "src/b.py": "X = 1\n",
+            },
+        )
         # b does not import a
         assert g.shortest_path("src/b.py", "src/a.py", kind=EdgeKind.IMPORTS) is None
 
     def test_shortest_path_prefers_fewer_hops(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import B\nfrom src.c import C\n",
-            "src/b.py": "from src.c import C\nB = 1\n",
-            "src/c.py": "C = 2\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import B\nfrom src.c import C\n",
+                "src/b.py": "from src.c import C\nB = 1\n",
+                "src/c.py": "C = 2\n",
+            },
+        )
         path = g.shortest_path("src/a.py", "src/c.py", kind=EdgeKind.IMPORTS)
         # Direct edge a→c exists; shortest path should be length 2
         assert path is not None
@@ -875,31 +976,40 @@ class TestTransitiveDependencies:
         assert g.transitive_dependencies("src/a.py") == []
 
     def test_direct_dependency(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import X\n",
-            "src/b.py": "X = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import X\n",
+                "src/b.py": "X = 1\n",
+            },
+        )
         deps = g.transitive_dependencies("src/a.py")
         assert "src/b.py" in deps
         assert "src/a.py" not in deps
 
     def test_transitive_chain(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import B\n",
-            "src/b.py": "from src.c import C\nB = 1\n",
-            "src/c.py": "C = 2\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import B\n",
+                "src/b.py": "from src.c import C\nB = 1\n",
+                "src/c.py": "C = 2\n",
+            },
+        )
         deps = g.transitive_dependencies("src/a.py")
         assert "src/b.py" in deps
         assert "src/c.py" in deps
         assert "src/a.py" not in deps
 
     def test_result_is_sorted(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import B\nfrom src.c import C\n",
-            "src/b.py": "B = 1\n",
-            "src/c.py": "C = 2\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import B\nfrom src.c import C\n",
+                "src/b.py": "B = 1\n",
+                "src/c.py": "C = 2\n",
+            },
+        )
         deps = g.transitive_dependencies("src/a.py")
         assert deps == sorted(deps)
 
@@ -915,39 +1025,51 @@ class TestTransitiveDependents:
         assert g.transitive_dependents("nonexistent.py") == []
 
     def test_no_dependents_returns_empty(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import X\n",
-            "src/b.py": "X = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import X\n",
+                "src/b.py": "X = 1\n",
+            },
+        )
         # b is imported by a; a has no dependents
         assert g.transitive_dependents("src/a.py") == []
 
     def test_direct_dependent(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import X\n",
-            "src/b.py": "X = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import X\n",
+                "src/b.py": "X = 1\n",
+            },
+        )
         deps = g.transitive_dependents("src/b.py")
         assert "src/a.py" in deps
         assert "src/b.py" not in deps
 
     def test_transitive_chain(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import B\n",
-            "src/b.py": "from src.c import C\nB = 1\n",
-            "src/c.py": "C = 2\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import B\n",
+                "src/b.py": "from src.c import C\nB = 1\n",
+                "src/c.py": "C = 2\n",
+            },
+        )
         deps = g.transitive_dependents("src/c.py")
         assert "src/b.py" in deps
         assert "src/a.py" in deps
         assert "src/c.py" not in deps
 
     def test_result_is_sorted(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/b.py": "X = 1\n",
-            "src/a.py": "from src.b import X\n",
-            "src/c.py": "from src.b import X\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/b.py": "X = 1\n",
+                "src/a.py": "from src.b import X\n",
+                "src/c.py": "from src.b import X\n",
+            },
+        )
         deps = g.transitive_dependents("src/b.py")
         assert deps == sorted(deps)
 
@@ -966,20 +1088,26 @@ class TestImpact:
         assert result.transitive_dependents == []
 
     def test_one_dependent_low_risk(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import X\n",
-            "src/b.py": "X = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import X\n",
+                "src/b.py": "X = 1\n",
+            },
+        )
         result = g.impact("src/b.py")
         assert result.risk_level == "LOW"
         assert "src/a.py" in result.direct_dependents
 
     def test_two_transitive_dependents_low_risk(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/b.py": "X = 1\n",
-            "src/a.py": "from src.b import X\n",
-            "src/c.py": "from src.b import X\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/b.py": "X = 1\n",
+                "src/a.py": "from src.b import X\n",
+                "src/c.py": "from src.b import X\n",
+            },
+        )
         result = g.impact("src/b.py")
         assert result.risk_level == "LOW"
 
@@ -1002,20 +1130,26 @@ class TestImpact:
         assert result.risk_level == "HIGH"
 
     def test_affected_symbol_count(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/base.py": "X = 1\n",
-            "src/user.py": "from src.base import X\nclass Foo: pass\ndef bar(): pass\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/base.py": "X = 1\n",
+                "src/user.py": "from src.base import X\nclass Foo: pass\ndef bar(): pass\n",
+            },
+        )
         result = g.impact("src/base.py")
         # user.py has at least 2 symbols (Foo and bar)
         assert result.affected_symbol_count >= 2
 
     def test_direct_vs_transitive_dependents(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import B\n",
-            "src/b.py": "from src.c import C\nB = 1\n",
-            "src/c.py": "C = 2\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import B\n",
+                "src/b.py": "from src.c import C\nB = 1\n",
+                "src/c.py": "C = 2\n",
+            },
+        )
         result = g.impact("src/c.py")
         assert "src/b.py" in result.direct_dependents
         assert "src/a.py" in result.transitive_dependents
@@ -1038,10 +1172,13 @@ class TestStats:
             g.stats()
 
     def test_node_counts(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "class Foo: pass\n",
-            "src/b.py": "x = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "class Foo: pass\n",
+                "src/b.py": "x = 1\n",
+            },
+        )
         s = g.stats()
         assert s.file_node_count == 2
         assert s.symbol_node_count >= 2  # Foo + x
@@ -1052,18 +1189,24 @@ class TestStats:
         assert s.defines_edge_count >= 1
 
     def test_imports_edge_count(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import X\n",
-            "src/b.py": "X = 1\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import X\n",
+                "src/b.py": "X = 1\n",
+            },
+        )
         s = g.stats()
         assert s.imports_edge_count == 1
 
     def test_cycle_count_in_stats(self, tmp_path: Path) -> None:
-        g = _build_graph(tmp_path, {
-            "src/a.py": "from src.b import B\nA = 1\n",
-            "src/b.py": "from src.a import A\nB = 2\n",
-        })
+        g = _build_graph(
+            tmp_path,
+            {
+                "src/a.py": "from src.b import B\nA = 1\n",
+                "src/b.py": "from src.a import A\nB = 2\n",
+            },
+        )
         s = g.stats()
         assert s.cycle_count == 1
 
@@ -1137,10 +1280,13 @@ class TestBuildModuleMap:
         assert m.get("src.repository.index") == "src/repository/index.py"
 
     def test_multiple_files(self, tmp_path: Path) -> None:
-        index = _build_index(tmp_path, {
-            "src/a.py": "x = 1\n",
-            "src/b.py": "y = 2\n",
-        })
+        index = _build_index(
+            tmp_path,
+            {
+                "src/a.py": "x = 1\n",
+                "src/b.py": "y = 2\n",
+            },
+        )
         m = _build_module_map(index)
         assert "src.a" in m
         assert "src.b" in m
@@ -1238,7 +1384,9 @@ class TestResolveToFile:
     def test_relative_dot_dot_with_module(self) -> None:
         # "from ..repository import index" in src/subpkg/a.py
         # ..  = parent of src.subpkg = src; then repository.index = src.repository.index
-        result = _resolve_to_file(2, "repository.index", "src/subpkg/a.py", self._mmap())
+        result = _resolve_to_file(
+            2, "repository.index", "src/subpkg/a.py", self._mmap()
+        )
         assert result == "src/repository/index.py"
 
     def test_too_many_dots_returns_none(self) -> None:
@@ -1291,8 +1439,12 @@ class TestFindSymbolNode:
     def _nodes(self) -> dict[str, Node]:
         return {
             "a.py#Base": Node(id="a.py#Base", kind=NodeKind.SYMBOL, label="Base"),
-            "a.py#pkg.Sub": Node(id="a.py#pkg.Sub", kind=NodeKind.SYMBOL, label="pkg.Sub"),
-            "b.py#Foo": Node(id="b.py#Foo", kind=NodeKind.FILE, label="Foo"),  # FILE, not SYMBOL
+            "a.py#pkg.Sub": Node(
+                id="a.py#pkg.Sub", kind=NodeKind.SYMBOL, label="pkg.Sub"
+            ),
+            "b.py#Foo": Node(
+                id="b.py#Foo", kind=NodeKind.FILE, label="Foo"
+            ),  # FILE, not SYMBOL
         }
 
     def test_exact_label_match(self) -> None:
@@ -1477,7 +1629,9 @@ class TestBenchmarks:
             g.detect_cycles()
         elapsed_ms = (time.monotonic() - t0) * 1000
 
-        assert elapsed_ms / 20 < 100, f"detect_cycles avg {elapsed_ms/20:.1f}ms (limit 100ms)"
+        assert elapsed_ms / 20 < 100, (
+            f"detect_cycles avg {elapsed_ms / 20:.1f}ms (limit 100ms)"
+        )
 
     def test_impact_under_50ms(self, tmp_path: Path) -> None:
         files: dict[str, str] = {"src/base.py": "X = 1\n"}
@@ -1491,7 +1645,9 @@ class TestBenchmarks:
             g.impact("src/base.py")
         elapsed_ms = (time.monotonic() - t0) * 1000
 
-        assert elapsed_ms / 50 < 50, f"impact() avg {elapsed_ms/50:.1f}ms (limit 50ms)"
+        assert elapsed_ms / 50 < 50, (
+            f"impact() avg {elapsed_ms / 50:.1f}ms (limit 50ms)"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1536,9 +1692,7 @@ class TestSiblingImportDoesNotAlsoDependOnInit:
 
         assert "pkg/__init__.py" not in out
 
-    def test_init_is_not_rated_risky_by_sibling_imports(
-        self, tmp_path: Path
-    ) -> None:
+    def test_init_is_not_rated_risky_by_sibling_imports(self, tmp_path: Path) -> None:
         graph = _build_graph(tmp_path, self.PACKAGE)
 
         init = graph.impact("pkg/__init__.py")

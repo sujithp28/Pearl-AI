@@ -101,7 +101,9 @@ class MCPProcess:
         # to consume. Accumulated here so failure messages can still
         # show the log without a blocking read at teardown.
         self._err_lines: list[str] = []
-        self._err_reader = threading.Thread(target=self._drain_stderr_thread, daemon=True)
+        self._err_reader = threading.Thread(
+            target=self._drain_stderr_thread, daemon=True
+        )
         self._err_reader.start()
 
     def _drain_stdout(self) -> None:

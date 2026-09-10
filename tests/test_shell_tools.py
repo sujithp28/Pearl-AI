@@ -44,12 +44,16 @@ def test_execute_shell():
     assert result.stdout.strip() == "hello"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="python3 binary not present on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="python3 binary not present on Windows"
+)
 def test_which():
     assert which("python3") is not None
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="python3 binary not present on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="python3 binary not present on Windows"
+)
 def test_command_exists():
     assert is_command_available("python3")
 
@@ -283,7 +287,9 @@ def test_execute_shell_refuses_command_substitution():
         execute_shell("echo `whoami`")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="VAR=val prefix syntax is POSIX-only")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="VAR=val prefix syntax is POSIX-only"
+)
 def test_execute_shell_allowlist_skips_env_var_assignment_prefix():
     # "FOO=bar git status" — the base command is "git", not "FOO=bar".
     result = execute_shell("FOO=bar echo hi")
@@ -549,7 +555,14 @@ class TestRunTests:
         result = run_tests(str(tmp_path))
 
         assert isinstance(result, dict)
-        assert {"passed", "failed", "errors", "total", "exit_code", "output"} <= result.keys()
+        assert {
+            "passed",
+            "failed",
+            "errors",
+            "total",
+            "exit_code",
+            "output",
+        } <= result.keys()
 
     def test_all_passing_gives_exit_0(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)

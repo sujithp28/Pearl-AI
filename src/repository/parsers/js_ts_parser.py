@@ -6,6 +6,7 @@ import statements.  tree-sitter would give better accuracy, but regex
 gracefully handles minified or syntactically unusual files that would
 crash an AST parser.
 """
+
 from __future__ import annotations
 
 import re
@@ -40,20 +41,28 @@ _IMPORT_RE = re.compile(
     r"^(?:import\s.*?from\s+['\"][^'\"]+['\"]|import\s+['\"][^'\"]+['\"]|require\(['\"][^'\"]+['\"]\))",
     re.MULTILINE,
 )
-_EXPORT_RE = re.compile(r"^export\s+(?:default\s+)?(?:const|let|var|function|class)\s+(\w+)", re.MULTILINE)
+_EXPORT_RE = re.compile(
+    r"^export\s+(?:default\s+)?(?:const|let|var|function|class)\s+(\w+)", re.MULTILINE
+)
 
 #: How far a parameter list may wrap before the match is treated as
 #: an unbalanced paren rather than a signature.
 _MAX_SIGNATURE_LINES = 12
 
-_BUILTIN_NAMES = frozenset({"if", "else", "for", "while", "switch", "try", "catch", "return", "constructor"})
+_BUILTIN_NAMES = frozenset(
+    {"if", "else", "for", "while", "switch", "try", "catch", "return", "constructor"}
+)
 
 
 class JsTsParser(BaseParser):
     """Regex-based parser for JavaScript and TypeScript."""
 
-    _JS_EXTENSIONS: ClassVar[frozenset[str]] = frozenset({".js", ".mjs", ".cjs", ".jsx"})
-    _TS_EXTENSIONS: ClassVar[frozenset[str]] = frozenset({".ts", ".tsx", ".mts", ".cts"})
+    _JS_EXTENSIONS: ClassVar[frozenset[str]] = frozenset(
+        {".js", ".mjs", ".cjs", ".jsx"}
+    )
+    _TS_EXTENSIONS: ClassVar[frozenset[str]] = frozenset(
+        {".ts", ".tsx", ".mts", ".cts"}
+    )
 
     def __init__(self, for_typescript: bool = False) -> None:
         self._for_typescript = for_typescript
@@ -95,16 +104,16 @@ class JsTsParser(BaseParser):
             # default cap still applies to method bodies, where it only
             # affects a reported end line.
             line_end = _estimate_end(lines, line_no - 1, max_scan=len(lines) or 1)
-            symbols.append(SymbolDef(
-                name=name,
-                qualified_name=name,
-                kind=SymbolKind.CLASS,
-                line_start=line_no,
-                line_end=line_end,
-            ))
-            class_spans.append(
-                (name, len(match.group("indent")), line_no, line_end)
+            symbols.append(
+                SymbolDef(
+                    name=name,
+                    qualified_name=name,
+                    kind=SymbolKind.CLASS,
+                    line_start=line_no,
+                    line_end=line_end,
+                )
             )
+            class_spans.append((name, len(match.group("indent")), line_no, line_end))
 
         for match in _METHOD_RE.finditer(source):
             name = match.group("name")
@@ -126,14 +135,16 @@ class JsTsParser(BaseParser):
             if not _opens_a_body(source, match.end()):
                 continue
 
-            symbols.append(SymbolDef(
-                name=name,
-                qualified_name=f"{owner}.{name}",
-                kind=SymbolKind.METHOD,
-                line_start=line_no,
-                line_end=_estimate_end(lines, line_no - 1),
-                is_async="async" in match.group(0),
-            ))
+            symbols.append(
+                SymbolDef(
+                    name=name,
+                    qualified_name=f"{owner}.{name}",
+                    kind=SymbolKind.METHOD,
+                    line_start=line_no,
+                    line_end=_estimate_end(lines, line_no - 1),
+                    is_async="async" in match.group(0),
+                )
+            )
 
         for match in _FUNC_DECL_RE.finditer(source):
             name = match.group("name")
@@ -141,14 +152,16 @@ class JsTsParser(BaseParser):
                 continue
             line_no = source[: match.start()].count("\n") + 1
             is_async = "async" in match.group(0)
-            symbols.append(SymbolDef(
-                name=name,
-                qualified_name=name,
-                kind=SymbolKind.FUNCTION,
-                line_start=line_no,
-                line_end=_estimate_end(lines, line_no - 1),
-                is_async=is_async,
-            ))
+            symbols.append(
+                SymbolDef(
+                    name=name,
+                    qualified_name=name,
+                    kind=SymbolKind.FUNCTION,
+                    line_start=line_no,
+                    line_end=_estimate_end(lines, line_no - 1),
+                    is_async=is_async,
+                )
+            )
 
         for match in _ARROW_RE.finditer(source):
             name = match.group("name")
@@ -156,17 +169,21 @@ class JsTsParser(BaseParser):
                 continue
             line_no = source[: match.start()].count("\n") + 1
             is_async = "async" in match.group(0)
-            symbols.append(SymbolDef(
-                name=name,
-                qualified_name=name,
-                kind=SymbolKind.FUNCTION,
-                line_start=line_no,
-                line_end=line_no,
-                is_async=is_async,
-            ))
+            symbols.append(
+                SymbolDef(
+                    name=name,
+                    qualified_name=name,
+                    kind=SymbolKind.FUNCTION,
+                    line_start=line_no,
+                    line_end=line_no,
+                    is_async=is_async,
+                )
+            )
 
         symbols.sort(key=lambda s: s.line_start)
-        return ParseResult(file_info=file_info, symbols=symbols, imports=imports, errors=errors)
+        return ParseResult(
+            file_info=file_info, symbols=symbols, imports=imports, errors=errors
+        )
 
 
 def _opens_a_body(source: str, after_open_paren: int) -> bool:

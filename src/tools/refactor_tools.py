@@ -91,9 +91,7 @@ def batch_write_files(files: dict[str, str]) -> str:
             )
             manager.propose(str(file_path), original, content)
 
-        logger.info(
-            "batch_write_files: staged %d file(s) for preview.", len(resolved)
-        )
+        logger.info("batch_write_files: staged %d file(s) for preview.", len(resolved))
         return f"Preview staged: {len(resolved)} file(s) queued for review."
 
     # Direct-write mode (human-in-the-loop CLI call).
@@ -142,10 +140,14 @@ def rename_symbol(old_name: str, new_name: str) -> str:
     """
 
     if not old_name or not old_name.isidentifier():
-        raise ValueError(f"'old_name' must be a valid Python identifier; got {old_name!r}.")
+        raise ValueError(
+            f"'old_name' must be a valid Python identifier; got {old_name!r}."
+        )
 
     if not new_name or not new_name.isidentifier():
-        raise ValueError(f"'new_name' must be a valid Python identifier; got {new_name!r}.")
+        raise ValueError(
+            f"'new_name' must be a valid Python identifier; got {new_name!r}."
+        )
 
     if old_name == new_name:
         return "old_name and new_name are the same; nothing to do."

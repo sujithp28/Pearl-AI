@@ -17,6 +17,7 @@ Covers all 14 specified cases:
 13.  Existing approval invariant still passes.
 14.  Existing ContextBudget tests still pass.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,7 +32,10 @@ from src.memory.memory import ConversationTurn, Memory
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
-def _make_llm(summary: str = "TASK:\ntest task\n\nDECISIONS:\nnone\n\nFILES:\nnone\n\nCHANGES:\nnone\n\nTESTS:\nnone\n\nERRORS:\nnone\n\nPENDING:\nnone\n\nIMPORTANT CONTEXT:\nnone") -> MagicMock:
+
+def _make_llm(
+    summary: str = "TASK:\ntest task\n\nDECISIONS:\nnone\n\nFILES:\nnone\n\nCHANGES:\nnone\n\nTESTS:\nnone\n\nERRORS:\nnone\n\nPENDING:\nnone\n\nIMPORTANT CONTEXT:\nnone",
+) -> MagicMock:
     """Return a mock LLM client whose generate() returns *summary*."""
     mock = MagicMock()
     mock.generate.return_value = summary
@@ -53,6 +57,7 @@ def _big_turn(kb: int = 8) -> str:
 
 
 # ── Test 1: no condensation below threshold ──────────────────────────────────
+
 
 class TestNoCondensation:
     def test_below_both_thresholds(self) -> None:
@@ -79,6 +84,7 @@ class TestNoCondensation:
 
 # ── Test 2: turn-count threshold trigger ────────────────────────────────────
 
+
 class TestTurnCountThreshold:
     def test_triggers_at_max_turns(self) -> None:
         condenser = Condenser(_make_llm(), keep_head=2, keep_tail=2)
@@ -104,12 +110,15 @@ class TestTurnCountThreshold:
 
 # ── Test 3: token-pressure threshold trigger ─────────────────────────────────
 
+
 class TestTokenPressureThreshold:
     def test_large_turns_trigger_below_max_turns(self) -> None:
         condenser = Condenser(_make_llm(), keep_head=2, keep_tail=2)
         # 10 turns each with ~8 KB → ~20 000 tokens >> 0.5 * 8192
         memory = _make_memory(n_turns=10, content_per_turn=_big_turn(kb=8))
-        assert len(memory.conversation) <= Settings.CONDENSER_MAX_TURNS  # turns check passes
+        assert (
+            len(memory.conversation) <= Settings.CONDENSER_MAX_TURNS
+        )  # turns check passes
         result = condenser.maybe_condense(memory, n_ctx=8192)
         assert result.condensed, "Token pressure should have triggered condensation"
 
@@ -136,18 +145,15 @@ class TestTokenPressureThreshold:
 
 # ── Test 4: head turns preserved ────────────────────────────────────────────
 
+
 class TestHeadPreservation:
     def test_first_n_turns_unchanged(self) -> None:
         keep_head = 3
         condenser = Condenser(_make_llm(), keep_head=keep_head, keep_tail=2)
         memory = _make_memory(n_turns=Settings.CONDENSER_MAX_TURNS + 1)
-        original_head = [
-            (t.role, t.content) for t in memory.conversation[:keep_head]
-        ]
+        original_head = [(t.role, t.content) for t in memory.conversation[:keep_head]]
         condenser.maybe_condense(memory, n_ctx=8192)
-        actual_head = [
-            (t.role, t.content) for t in memory.conversation[:keep_head]
-        ]
+        actual_head = [(t.role, t.content) for t in memory.conversation[:keep_head]]
         assert actual_head == original_head
 
     def test_original_task_turn_preserved(self) -> None:
@@ -160,22 +166,20 @@ class TestHeadPreservation:
 
 # ── Test 5: tail turns preserved ────────────────────────────────────────────
 
+
 class TestTailPreservation:
     def test_last_n_turns_unchanged(self) -> None:
         keep_tail = 5
         condenser = Condenser(_make_llm(), keep_head=2, keep_tail=keep_tail)
         memory = _make_memory(n_turns=Settings.CONDENSER_MAX_TURNS + 1)
-        original_tail = [
-            (t.role, t.content) for t in memory.conversation[-keep_tail:]
-        ]
+        original_tail = [(t.role, t.content) for t in memory.conversation[-keep_tail:]]
         condenser.maybe_condense(memory, n_ctx=8192)
-        actual_tail = [
-            (t.role, t.content) for t in memory.conversation[-keep_tail:]
-        ]
+        actual_tail = [(t.role, t.content) for t in memory.conversation[-keep_tail:]]
         assert actual_tail == original_tail
 
 
 # ── Test 6: middle turns replaced with one summary turn ──────────────────────
+
 
 class TestMiddleReplacement:
     def test_middle_becomes_one_summary_turn(self) -> None:
@@ -196,6 +200,7 @@ class TestMiddleReplacement:
 
 # ── Test 7: summary contains structured sections ────────────────────────────
 
+
 class TestSummaryStructure:
     STRUCTURED_SUMMARY = (
         "TASK:\nImplement token condenser\n\n"
@@ -209,15 +214,21 @@ class TestSummaryStructure:
     )
 
     def test_summary_content_from_llm(self) -> None:
-        condenser = Condenser(_make_llm(self.STRUCTURED_SUMMARY), keep_head=3, keep_tail=5)
+        condenser = Condenser(
+            _make_llm(self.STRUCTURED_SUMMARY), keep_head=3, keep_tail=5
+        )
         memory = _make_memory(n_turns=Settings.CONDENSER_MAX_TURNS + 1)
         condenser.maybe_condense(memory, n_ctx=8192)
         summary_content = memory.conversation[3].content
         for section in ("TASK:", "DECISIONS:", "FILES:", "CHANGES:", "PENDING:"):
-            assert section in summary_content, f"Expected section '{section}' in summary"
+            assert section in summary_content, (
+                f"Expected section '{section}' in summary"
+            )
 
     def test_summary_mentions_condensed_count(self) -> None:
-        condenser = Condenser(_make_llm(self.STRUCTURED_SUMMARY), keep_head=3, keep_tail=5)
+        condenser = Condenser(
+            _make_llm(self.STRUCTURED_SUMMARY), keep_head=3, keep_tail=5
+        )
         memory = _make_memory(n_turns=Settings.CONDENSER_MAX_TURNS + 1)
         condenser.maybe_condense(memory, n_ctx=8192)
         summary_content = memory.conversation[3].content
@@ -227,11 +238,13 @@ class TestSummaryStructure:
 
 # ── Test 8: large tool output compressed ────────────────────────────────────
 
+
 class TestLargeToolOutputCompression:
     def test_tokens_decrease_after_condensation(self) -> None:
         condenser = Condenser(_make_llm(), keep_head=2, keep_tail=2)
         memory = _make_memory(n_turns=10, content_per_turn=_big_turn(kb=8))
         from src.llm.token_budget import estimate_tokens
+
         tokens_before = sum(estimate_tokens(t.content) for t in memory.conversation)
         condenser.maybe_condense(memory, n_ctx=8192)
         tokens_after = sum(estimate_tokens(t.content) for t in memory.conversation)
@@ -246,6 +259,7 @@ class TestLargeToolOutputCompression:
 
 
 # ── Test 9: ContextLengthError triggers condensation ─────────────────────────
+
 
 class TestContextLengthErrorTrigger:
     def test_context_length_error_causes_emergency_condense(self) -> None:
@@ -265,6 +279,7 @@ class TestContextLengthErrorTrigger:
 
 
 # ── Test 10: same operation retries after condensation ──────────────────────
+
 
 class TestRetryAfterCondensation:
     def test_callable_retried_after_condense(self) -> None:
@@ -292,6 +307,7 @@ class TestRetryAfterCondensation:
 
 # ── Test 11: retry is bounded ────────────────────────────────────────────────
 
+
 class TestRetryBound:
     def test_max_retries_setting_exists(self) -> None:
         assert hasattr(Settings, "CONDENSER_MAX_RETRIES")
@@ -303,6 +319,7 @@ class TestRetryBound:
 
 
 # ── Test 12: cannot condense further → CannotCondenseError ──────────────────
+
 
 class TestCannotCondenseFurther:
     def test_too_few_turns_raises_cannot_condense(self) -> None:
@@ -331,8 +348,11 @@ class TestCannotCondenseFurther:
 
 # ── Test 13: existing approval invariant still passes ───────────────────────
 
+
 class TestApprovalInvariantPreserved:
-    def test_create_file_stages_not_writes_when_patch_manager_active(self, tmp_path) -> None:
+    def test_create_file_stages_not_writes_when_patch_manager_active(
+        self, tmp_path
+    ) -> None:
         """
         The condenser must not touch ChangeManager or any write path.
         This is the canonical approval invariant from CLAUDE.md §3.
@@ -360,14 +380,17 @@ class TestApprovalInvariantPreserved:
 
 # ── Test 14: existing ContextBudget tests still pass ─────────────────────────
 
+
 class TestContextBudgetUnchanged:
     def test_context_budget_usable(self) -> None:
         from src.llm.context_budget import ContextBudget
+
         budget = ContextBudget(n_ctx=8192, response_tokens=1024)
         assert budget.usable == 7168
 
     def test_context_budget_allowance_typical(self) -> None:
         from src.llm.context_budget import ContextBudget
+
         budget = ContextBudget(n_ctx=8192, response_tokens=1024)
         base = "x" * 17259  # ~4314 tokens (Pearl baseline with all tools)
         allowance = budget.context_token_allowance(base)
@@ -375,11 +398,13 @@ class TestContextBudgetUnchanged:
 
     def test_context_budget_never_negative(self) -> None:
         from src.llm.context_budget import ContextBudget
+
         budget = ContextBudget(n_ctx=8192, response_tokens=1024)
         assert budget.context_token_allowance("x" * 200_000) == 0
 
 
 # ── Supplementary: summary role translation in Memory ───────────────────────
+
 
 class TestSummaryRoleTranslation:
     def test_summary_role_becomes_assistant_in_recent_messages(self) -> None:

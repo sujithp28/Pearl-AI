@@ -46,7 +46,9 @@ class TestRankAndDeduplicate:
         assert rank_and_deduplicate([], "query") == []
 
     def test_max_results_honoured(self) -> None:
-        docs = [_doc(f"https://a{i}.com/", f"Title {i}", f"content {i}") for i in range(10)]
+        docs = [
+            _doc(f"https://a{i}.com/", f"Title {i}", f"content {i}") for i in range(10)
+        ]
         result = rank_and_deduplicate(docs, "content", max_results=3)
         assert len(result) <= 3
 
@@ -65,9 +67,15 @@ class TestRankAndDeduplicate:
         assert len(result) == 1
 
     def test_relevant_doc_ranked_higher(self) -> None:
-        relevant = _doc("https://r.com/", "Relevant", "python 3.12 release notes features changelog")
-        irrelevant = _doc("https://i.com/", "Irrelevant", "cooking recipes pasta carbonara")
-        result = rank_and_deduplicate([irrelevant, relevant], "python release", max_results=5)
+        relevant = _doc(
+            "https://r.com/", "Relevant", "python 3.12 release notes features changelog"
+        )
+        irrelevant = _doc(
+            "https://i.com/", "Irrelevant", "cooking recipes pasta carbonara"
+        )
+        result = rank_and_deduplicate(
+            [irrelevant, relevant], "python release", max_results=5
+        )
         assert result[0].url == "https://r.com/"
 
     def test_relevance_scores_set(self) -> None:
@@ -76,6 +84,9 @@ class TestRankAndDeduplicate:
         assert result[0].relevance_score >= 0.0
 
     def test_distinct_docs_all_preserved_under_limit(self) -> None:
-        docs = [_doc(f"https://site{i}.com/", f"Site {i}", f"unique content site {i} xyz") for i in range(3)]
+        docs = [
+            _doc(f"https://site{i}.com/", f"Site {i}", f"unique content site {i} xyz")
+            for i in range(3)
+        ]
         result = rank_and_deduplicate(docs, "content", max_results=5)
         assert len(result) == 3

@@ -22,10 +22,26 @@ logger = logging.getLogger(__name__)
 
 # Tags whose entire subtree is stripped during extraction.
 _STRIP_TAGS = {
-    "script", "style", "noscript", "nav", "header", "footer",
-    "aside", "form", "button", "input", "select", "textarea",
-    "iframe", "figure", "figcaption", "video", "audio", "canvas",
-    "advertisement", "aside",
+    "script",
+    "style",
+    "noscript",
+    "nav",
+    "header",
+    "footer",
+    "aside",
+    "form",
+    "button",
+    "input",
+    "select",
+    "textarea",
+    "iframe",
+    "figure",
+    "figcaption",
+    "video",
+    "audio",
+    "canvas",
+    "advertisement",
+    "aside",
 }
 
 # Heading tags used to populate WebDocument.headings.
@@ -67,10 +83,7 @@ def _extract_with_bs4(raw: RawPage) -> WebDocument:
     # Extract body text from the content area.
     # Try <article>, <main>, then <body>, then the whole document.
     content_root = (
-        soup.find("article")
-        or soup.find("main")
-        or soup.find("body")
-        or soup
+        soup.find("article") or soup.find("main") or soup.find("body") or soup
     )
 
     raw_text = content_root.get_text(separator=" ", strip=True) if content_root else ""

@@ -169,7 +169,9 @@ class TestComplexShellFactor:
     def test_complex_execute_shell_gets_extra_deduction(self, command: str):
         result = _score_step(_call("execute_shell", command=command), 0)
         assert any(f.name == "complex_shell" for f in result.factors)
-        assert result.score == pytest.approx(1.0 - SHELL_PENALTY - SHELL_COMPLEX_PENALTY)
+        assert result.score == pytest.approx(
+            1.0 - SHELL_PENALTY - SHELL_COMPLEX_PENALTY
+        )
 
     def test_simple_execute_shell_no_complex_factor(self):
         result = _score_step(_call("execute_shell", command="echo hello"), 0)
@@ -207,7 +209,9 @@ class TestStepScoreBounds:
         assert result.score <= 1.0
 
     def test_returns_step_confidence_instance(self):
-        assert isinstance(_score_step(_call("read_file", path="f.py"), 0), StepConfidence)
+        assert isinstance(
+            _score_step(_call("read_file", path="f.py"), 0), StepConfidence
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +247,10 @@ class TestScorePlan:
     def test_write_step_lowers_plan_score(self):
         read_only = score_plan([_call("read_file", path="f.py")])
         with_write = score_plan(
-            [_call("read_file", path="f.py"), _call("create_file", path="f.py", content="")]
+            [
+                _call("read_file", path="f.py"),
+                _call("create_file", path="f.py", content=""),
+            ]
         )
         assert with_write.score < read_only.score
 
@@ -348,9 +355,14 @@ class TestPlanScoreBounds:
 
 class TestScoringConsistency:
     def test_overall_score_equals_mean_of_step_scores_when_no_plan_factors(self):
-        steps = [_call("read_file", path="f.py"), _call("create_file", path="g.py", content="")]
+        steps = [
+            _call("read_file", path="f.py"),
+            _call("create_file", path="g.py", content=""),
+        ]
         result = score_plan(steps, replans_used=0)
-        expected_mean = sum(sc.score for sc in result.step_scores) / len(result.step_scores)
+        expected_mean = sum(sc.score for sc in result.step_scores) / len(
+            result.step_scores
+        )
         assert result.score == pytest.approx(expected_mean)
 
     def test_overall_score_equals_mean_minus_replan_deduction(self):
@@ -363,7 +375,9 @@ class TestScoringConsistency:
         assert result.score == pytest.approx(_clamp(mean - replan_deduction))
 
     def test_confidence_factor_is_dataclass(self):
-        result = score_plan([_call("create_file", path="f.py", content="")], replans_used=1)
+        result = score_plan(
+            [_call("create_file", path="f.py", content="")], replans_used=1
+        )
         step_factor = result.step_scores[0].factors[0]
         assert isinstance(step_factor, ConfidenceFactor)
         plan_factor = result.plan_factors[0]
@@ -424,7 +438,9 @@ class TestConfidenceRegressionValues:
         # Step 0 (read):  1.0
         # Step 1 (write): 1.0 - 0.02 (position) - 0.10 (write) = 0.88
         # mean = (1.0 + 0.88) / 2 = 0.94
-        result = score_plan([_call("read_file"), _call("create_file", path="f.py", content="")])
+        result = score_plan(
+            [_call("read_file"), _call("create_file", path="f.py", content="")]
+        )
         assert result.score == 0.94
 
     # ---- Replan penalties ----

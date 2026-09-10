@@ -18,6 +18,7 @@ Public API::
     manager.rename_session(sid, "Auth bugfix")
     manager.delete_session(sid)
 """
+
 from __future__ import annotations
 
 import json
@@ -72,7 +73,7 @@ def _now() -> str:
 
 @dataclass
 class SessionMessage:
-    role: str      # "user" | "assistant" | "summary"
+    role: str  # "user" | "assistant" | "summary"
     content: str
     ts: str = field(default_factory=_now)
 
@@ -122,7 +123,9 @@ class SessionManager:
     def __init__(self, sessions_dir: Path | None = None) -> None:
         self._dir = (sessions_dir or _SESSIONS_DIR).resolve()
         self._dir.mkdir(parents=True, exist_ok=True)
-        self._lock = RLock()  # reentrant: read-modify-write callers can hold across _save()
+        self._lock = (
+            RLock()
+        )  # reentrant: read-modify-write callers can hold across _save()
 
     # ── CRUD ─────────────────────────────────────────────────────────────────
 

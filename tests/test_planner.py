@@ -329,8 +329,8 @@ def test_planning_prompt_contains_example_none_for_hello():
     planner = build_planner()
     prompt = planner.build_prompt("hello")
 
-    assert 'hello' in prompt.lower()
-    assert 'none' in prompt
+    assert "hello" in prompt.lower()
+    assert "none" in prompt
 
 
 def test_planner_routes_none_step_for_scripted_conversational_response(monkeypatch):

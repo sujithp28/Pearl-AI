@@ -128,17 +128,24 @@ class TestParserOptionalFields:
         assert steps[0].depends_on == []
 
     def test_id_field_is_extracted(self) -> None:
-        plan = self._plan([
-            {"tool": "read_file", "id": "r1", "arguments": {"path": "a.txt"}}
-        ])
+        plan = self._plan(
+            [{"tool": "read_file", "id": "r1", "arguments": {"path": "a.txt"}}]
+        )
         steps = self.parser.parse_plan(plan)
         assert steps[0].step_id == "r1"
 
     def test_depends_on_field_is_extracted(self) -> None:
-        plan = self._plan([
-            {"tool": "read_file",  "id": "r1", "arguments": {}},
-            {"tool": "write_file", "id": "w1", "depends_on": ["r1"], "arguments": {}},
-        ])
+        plan = self._plan(
+            [
+                {"tool": "read_file", "id": "r1", "arguments": {}},
+                {
+                    "tool": "write_file",
+                    "id": "w1",
+                    "depends_on": ["r1"],
+                    "arguments": {},
+                },
+            ]
+        )
         steps = self.parser.parse_plan(plan)
         assert steps[0].depends_on == []
         assert steps[1].depends_on == ["r1"]
@@ -151,18 +158,18 @@ class TestParserOptionalFields:
         assert exc_info.value.field == "id"
 
     def test_non_list_depends_on_raises_parse_error(self) -> None:
-        plan = self._plan([
-            {"tool": "read_file", "id": "r1", "depends_on": "r0", "arguments": {}}
-        ])
+        plan = self._plan(
+            [{"tool": "read_file", "id": "r1", "depends_on": "r0", "arguments": {}}]
+        )
         with pytest.raises(ParseError) as exc_info:
             self.parser.parse_plan(plan)
         assert exc_info.value.reason == "invalid_type"
         assert exc_info.value.field == "depends_on"
 
     def test_non_string_entry_in_depends_on_raises_parse_error(self) -> None:
-        plan = self._plan([
-            {"tool": "read_file", "id": "r1", "depends_on": [99], "arguments": {}}
-        ])
+        plan = self._plan(
+            [{"tool": "read_file", "id": "r1", "depends_on": [99], "arguments": {}}]
+        )
         with pytest.raises(ParseError) as exc_info:
             self.parser.parse_plan(plan)
         assert exc_info.value.reason == "invalid_type"
@@ -332,7 +339,7 @@ class TestTopologicalSortPartialAnnotation:
         # Step "named" depends on nothing; step "after_named" depends on "named".
         steps = [
             _tc("anon1"),  # no id, no deps
-            _tc("named",       step_id="named"),
+            _tc("named", step_id="named"),
             _tc("after_named", step_id="after_named", depends_on=["named"]),
             _tc("anon2"),  # no id, no deps
         ]
@@ -521,12 +528,17 @@ class TestValidatePlanWithDependencies:
 # Stub tools registered once at module level for the planner integration tests.
 # The tool names must match exactly what the scripted LLM returns.
 
+
 @tool(description="Read a file.", parameters={"path": "str"}, returns="str")
 def read_file(path: str) -> str:
     return ""
 
 
-@tool(description="Write a file.", parameters={"path": "str", "content": "str"}, returns="str")
+@tool(
+    description="Write a file.",
+    parameters={"path": "str", "content": "str"},
+    returns="str",
+)
 def write_file(path: str = "", content: str = "") -> str:
     return ""
 
@@ -576,7 +588,7 @@ class TestPlannerAppliesTopologicalSort:
     def test_plan_preserves_order_when_no_deps(self) -> None:
         plan_json = {
             "steps": [
-                {"tool": "read_file",  "arguments": {"path": "a.txt"}},
+                {"tool": "read_file", "arguments": {"path": "a.txt"}},
                 {"tool": "search_files", "arguments": {"pattern": "*.py"}},
             ]
         }
@@ -587,7 +599,7 @@ class TestPlannerAppliesTopologicalSort:
     def test_plan_raises_on_cycle(self) -> None:
         plan_json = {
             "steps": [
-                {"tool": "read_file",  "id": "a", "depends_on": ["b"], "arguments": {}},
+                {"tool": "read_file", "id": "a", "depends_on": ["b"], "arguments": {}},
                 {"tool": "write_file", "id": "b", "depends_on": ["a"], "arguments": {}},
             ]
         }

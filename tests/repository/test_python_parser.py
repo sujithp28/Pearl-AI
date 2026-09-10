@@ -107,9 +107,15 @@ class TestPythonParserContract:
 
     def test_cannot_parse_ts(self, tmp_path: Path) -> None:
         fi = _fi(tmp_path, "app.ts", "")
-        fi2 = FileInfo(path=fi.path, relative_path="app.ts", extension=".ts",
-                       language=Language.TYPESCRIPT, size=fi.size,
-                       modified_at=fi.modified_at, content_hash="")
+        fi2 = FileInfo(
+            path=fi.path,
+            relative_path="app.ts",
+            extension=".ts",
+            language=Language.TYPESCRIPT,
+            size=fi.size,
+            modified_at=fi.modified_at,
+            content_hash="",
+        )
         assert not PythonParser().can_parse(fi2)
 
     def test_parse_returns_parse_result(self, tmp_path: Path) -> None:
@@ -351,7 +357,9 @@ class TestMethodExtraction:
     def test_nested_function_inside_method_is_function_not_method(
         self, tmp_path: Path
     ) -> None:
-        src = "class Foo:\n    def bar(self):\n        def helper():\n            pass\n"
+        src = (
+            "class Foo:\n    def bar(self):\n        def helper():\n            pass\n"
+        )
         r = _parse(tmp_path, "m.py", src)
         assert _syms(r)["Foo.bar.helper"].kind is SymbolKind.FUNCTION
 
@@ -478,21 +486,24 @@ class TestVariableConstantExtraction:
 
 
 class TestClassifyName:
-    @pytest.mark.parametrize("name,expected", [
-        ("MAX_RETRIES", SymbolKind.CONSTANT),
-        ("HTTP_404", SymbolKind.CONSTANT),
-        ("_PRIVATE", SymbolKind.CONSTANT),
-        ("A", SymbolKind.CONSTANT),
-        ("UPPER", SymbolKind.CONSTANT),
-        ("HTTP2", SymbolKind.CONSTANT),
-        ("variable", SymbolKind.VARIABLE),
-        ("camelCase", SymbolKind.VARIABLE),
-        ("MyClass", SymbolKind.VARIABLE),
-        ("__version__", SymbolKind.VARIABLE),
-        ("__all__", SymbolKind.VARIABLE),
-        ("_private_var", SymbolKind.VARIABLE),
-        ("mixedUPPER", SymbolKind.VARIABLE),
-    ])
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("MAX_RETRIES", SymbolKind.CONSTANT),
+            ("HTTP_404", SymbolKind.CONSTANT),
+            ("_PRIVATE", SymbolKind.CONSTANT),
+            ("A", SymbolKind.CONSTANT),
+            ("UPPER", SymbolKind.CONSTANT),
+            ("HTTP2", SymbolKind.CONSTANT),
+            ("variable", SymbolKind.VARIABLE),
+            ("camelCase", SymbolKind.VARIABLE),
+            ("MyClass", SymbolKind.VARIABLE),
+            ("__version__", SymbolKind.VARIABLE),
+            ("__all__", SymbolKind.VARIABLE),
+            ("_private_var", SymbolKind.VARIABLE),
+            ("mixedUPPER", SymbolKind.VARIABLE),
+        ],
+    )
     def test_classify(self, name: str, expected: SymbolKind) -> None:
         assert _classify_name(name) is expected
 
@@ -658,9 +669,15 @@ class TestErrorHandling:
         path.write_text("X = 1\n", encoding="utf-8")
         os.chmod(path, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
         try:
-            fi = FileInfo(path=path, relative_path="readonly.py", extension=".py",
-                          language=Language.PYTHON, size=path.stat().st_size,
-                          modified_at=path.stat().st_mtime, content_hash="")
+            fi = FileInfo(
+                path=path,
+                relative_path="readonly.py",
+                extension=".py",
+                language=Language.PYTHON,
+                size=path.stat().st_size,
+                modified_at=path.stat().st_mtime,
+                content_hash="",
+            )
             r = PythonParser().parse(fi)
             assert r.errors == []
             assert r.symbols[0].name == "X"
@@ -916,7 +933,9 @@ class TestIntegration:
             if result.errors:
                 failures.append(f"{py_file.name}: {result.errors}")
 
-        assert not failures, "Parse errors in Pearl's own source:\n" + "\n".join(failures)
+        assert not failures, "Parse errors in Pearl's own source:\n" + "\n".join(
+            failures
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -926,7 +945,13 @@ class TestIntegration:
 
 class TestLayerRule:
     def test_python_parser_imports_only_allowed_modules(self) -> None:
-        src = Path(__file__).parent.parent.parent / "src" / "repository" / "parsers" / "python_parser.py"
+        src = (
+            Path(__file__).parent.parent.parent
+            / "src"
+            / "repository"
+            / "parsers"
+            / "python_parser.py"
+        )
         tree = ast.parse(src.read_text(encoding="utf-8"))
         src_imports: set[str] = set()
         for node in ast.walk(tree):
@@ -934,11 +959,19 @@ class TestLayerRule:
                 if node.module.startswith("src."):
                     src_imports.add(node.module)
         forbidden = {"src.agent", "src.tools", "src.mcp", "src.llm", "src.prompts"}
-        unexpected = {imp for imp in src_imports if any(imp.startswith(f) for f in forbidden)}
+        unexpected = {
+            imp for imp in src_imports if any(imp.startswith(f) for f in forbidden)
+        }
         assert not unexpected, f"python_parser.py has forbidden imports: {unexpected}"
 
     def test_only_stdlib_and_repository_imports(self) -> None:
-        src = Path(__file__).parent.parent.parent / "src" / "repository" / "parsers" / "python_parser.py"
+        src = (
+            Path(__file__).parent.parent.parent
+            / "src"
+            / "repository"
+            / "parsers"
+            / "python_parser.py"
+        )
         tree = ast.parse(src.read_text(encoding="utf-8"))
         allowed_src = {"src.repository.models", "src.repository.parsers"}
         for node in ast.walk(tree):
@@ -958,7 +991,7 @@ class TestPythonParserBenchmarks:
     def _large_source(self, num_classes: int = 20, methods_per_class: int = 10) -> str:
         """Generate a realistic large Python file."""
         lines = [
-            "\"\"\"Auto-generated large Python file for benchmark.\"\"\"",
+            '"""Auto-generated large Python file for benchmark."""',
             "import os",
             "import sys",
             "from pathlib import Path",
@@ -1007,8 +1040,12 @@ class TestPythonParserBenchmarks:
         elapsed_ms = (time.monotonic() - start) * 1000
 
         assert result.errors == []
-        assert elapsed_ms < 500, f"Single file parse: {elapsed_ms:.1f} ms (limit: 500 ms)"
-        print(f"\n    Large file benchmark: {len(result.symbols)} symbols in {elapsed_ms:.1f} ms")
+        assert elapsed_ms < 500, (
+            f"Single file parse: {elapsed_ms:.1f} ms (limit: 500 ms)"
+        )
+        print(
+            f"\n    Large file benchmark: {len(result.symbols)} symbols in {elapsed_ms:.1f} ms"
+        )
 
     def test_parse_50_files_under_5000ms(self, tmp_path: Path) -> None:
         """Parsing 50 Python files must complete in < 5 000 ms."""
@@ -1021,8 +1058,12 @@ class TestPythonParserBenchmarks:
         elapsed_ms = (time.monotonic() - start) * 1000
 
         assert all(r.errors == [] for r in results)
-        assert elapsed_ms < 5000, f"50-file parse: {elapsed_ms:.1f} ms (limit: 5 000 ms)"
-        print(f"\n    50-file benchmark: {elapsed_ms:.1f} ms ({elapsed_ms/50:.1f} ms/file)")
+        assert elapsed_ms < 5000, (
+            f"50-file parse: {elapsed_ms:.1f} ms (limit: 5 000 ms)"
+        )
+        print(
+            f"\n    50-file benchmark: {elapsed_ms:.1f} ms ({elapsed_ms / 50:.1f} ms/file)"
+        )
 
     def test_symbol_count_reasonable(self, tmp_path: Path) -> None:
         """Symbol extraction must be complete — no silent truncation."""

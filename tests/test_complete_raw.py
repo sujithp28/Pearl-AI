@@ -14,6 +14,7 @@ Confirmed against the real local model before writing these tests:
     complete_raw():  " a + b"                                    (0.16s)
 for the prefix "def add(a, b):\n    return".
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -114,9 +115,7 @@ class TestLocalInferenceCompleteRaw:
         import src.llm.providers.local_inference as mod
 
         fake_llm = MagicMock()
-        fake_llm.create_completion.return_value = {
-            "choices": [{"text": " a + b"}]
-        }
+        fake_llm.create_completion.return_value = {"choices": [{"text": " a + b"}]}
         monkeypatch.setattr(mod, "_get_shared_llm", lambda *a, **k: fake_llm)
 
         provider = self._provider()

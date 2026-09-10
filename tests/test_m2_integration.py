@@ -49,7 +49,9 @@ def workspace(tmp_path, monkeypatch):
     return tmp_path
 
 
-@tool(description="Add two numbers.", parameters={"a": "int", "b": "int"}, returns="int")
+@tool(
+    description="Add two numbers.", parameters={"a": "int", "b": "int"}, returns="int"
+)
 def _add(a: int, b: int) -> int:
     return a + b
 
@@ -59,7 +61,9 @@ def _boom() -> None:
     raise ValueError("kaboom")
 
 
-def _build_executor(monkeypatch=None, *, max_replans: int = 3) -> tuple[AutonomousExecutor, Planner]:
+def _build_executor(
+    monkeypatch=None, *, max_replans: int = 3
+) -> tuple[AutonomousExecutor, Planner]:
     registry = ToolRegistry()
     registry.register(_add)
     registry.register(_boom)
@@ -67,7 +71,9 @@ def _build_executor(monkeypatch=None, *, max_replans: int = 3) -> tuple[Autonomo
     registry.register(replace_in_file)
     dispatcher = ToolDispatcher(registry)
     planner = Planner(registry, dispatcher)
-    executor = AutonomousExecutor(planner, dispatcher, max_replans=max_replans, checkpoints=None)
+    executor = AutonomousExecutor(
+        planner, dispatcher, max_replans=max_replans, checkpoints=None
+    )
     return executor, planner
 
 
@@ -126,7 +132,10 @@ class TestIT1CancelMidFlight:
             planner.client,
             "generate_json",
             _plan_of(
-                {"tool": "create_file", "arguments": {"path": target, "content": "x\n"}},
+                {
+                    "tool": "create_file",
+                    "arguments": {"path": target, "content": "x\n"},
+                },
                 {"tool": "_add", "arguments": {"a": 1, "b": 1}},
             ),
         )
@@ -178,7 +187,10 @@ class TestIT1CancelMidFlight:
             planner.client,
             "generate_json",
             _plan_of(
-                {"tool": "create_file", "arguments": {"path": target_a, "content": "1\n"}},
+                {
+                    "tool": "create_file",
+                    "arguments": {"path": target_a, "content": "1\n"},
+                },
                 {"tool": "_add", "arguments": {"a": 1, "b": 1}},
             ),
         )
@@ -189,13 +201,17 @@ class TestIT1CancelMidFlight:
         # Second run: must see only its own patches — no a.py leftover.
         # Reset cancel event so the second run can proceed.
         import threading
+
         executor._cancel_event = threading.Event()
 
         monkeypatch.setattr(
             planner.client,
             "generate_json",
             _plan_of(
-                {"tool": "create_file", "arguments": {"path": target_b, "content": "2\n"}},
+                {
+                    "tool": "create_file",
+                    "arguments": {"path": target_b, "content": "2\n"},
+                },
             ),
         )
         second = executor.run("create b")
@@ -288,9 +304,24 @@ class TestIT2DependencyExecution:
             planner.client,
             "generate_json",
             _plan_of(
-                {"tool": "record", "id": "c", "arguments": {"name": "c"}, "depends_on": ["b"]},
-                {"tool": "record", "id": "b", "arguments": {"name": "b"}, "depends_on": ["a"]},
-                {"tool": "record", "id": "a", "arguments": {"name": "a"}, "depends_on": []},
+                {
+                    "tool": "record",
+                    "id": "c",
+                    "arguments": {"name": "c"},
+                    "depends_on": ["b"],
+                },
+                {
+                    "tool": "record",
+                    "id": "b",
+                    "arguments": {"name": "b"},
+                    "depends_on": ["a"],
+                },
+                {
+                    "tool": "record",
+                    "id": "a",
+                    "arguments": {"name": "a"},
+                    "depends_on": [],
+                },
             ),
         )
 
@@ -426,7 +457,11 @@ class TestIT4RequiredArgValidation:
     def test_missing_required_arg_raises_before_dispatch(self):
         registry = ToolRegistry()
 
-        @tool(description="Needs both a and b.", parameters={"a": "int", "b": "int"}, returns="int")
+        @tool(
+            description="Needs both a and b.",
+            parameters={"a": "int", "b": "int"},
+            returns="int",
+        )
         def needs_two(a: int, b: int) -> int:
             return a + b
 
@@ -441,7 +476,11 @@ class TestIT4RequiredArgValidation:
     def test_all_required_args_present_passes(self):
         registry = ToolRegistry()
 
-        @tool(description="Needs both.", parameters={"x": "str", "y": "str"}, returns="str")
+        @tool(
+            description="Needs both.",
+            parameters={"x": "str", "y": "str"},
+            returns="str",
+        )
         def concat(x: str, y: str) -> str:
             return x + y
 
@@ -453,7 +492,11 @@ class TestIT4RequiredArgValidation:
     def test_optional_arg_may_be_omitted(self):
         registry = ToolRegistry()
 
-        @tool(description="Optional second arg.", parameters={"path": "str", "encoding": "str"}, returns="str")
+        @tool(
+            description="Optional second arg.",
+            parameters={"path": "str", "encoding": "str"},
+            returns="str",
+        )
         def read(path: str, encoding: str = "utf-8") -> str:
             return path
 
@@ -575,7 +618,10 @@ class TestIT6ApprovalWorkflow:
             planner.client,
             "generate_json",
             _plan_of(
-                {"tool": "create_file", "arguments": {"path": target, "content": "x = 1\n"}}
+                {
+                    "tool": "create_file",
+                    "arguments": {"path": target, "content": "x = 1\n"},
+                }
             ),
         )
 
@@ -592,7 +638,10 @@ class TestIT6ApprovalWorkflow:
             planner.client,
             "generate_json",
             _plan_of(
-                {"tool": "create_file", "arguments": {"path": target, "content": "x = 1\n"}}
+                {
+                    "tool": "create_file",
+                    "arguments": {"path": target, "content": "x = 1\n"},
+                }
             ),
         )
 
@@ -613,7 +662,10 @@ class TestIT6ApprovalWorkflow:
             planner.client,
             "generate_json",
             _plan_of(
-                {"tool": "create_file", "arguments": {"path": target, "content": "x = 1\n"}}
+                {
+                    "tool": "create_file",
+                    "arguments": {"path": target, "content": "x = 1\n"},
+                }
             ),
         )
 

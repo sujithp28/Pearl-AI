@@ -1,4 +1,5 @@
 """Tests for src/agent/tool_filter.py."""
+
 from __future__ import annotations
 
 from src.agent.tool_filter import relevant_tools
@@ -8,22 +9,58 @@ def _make_tools(names: list[str]) -> list[dict]:
     return [{"name": n, "description": f"Tool {n}"} for n in names]
 
 
-ALL_TOOLS = _make_tools([
-    "read_file", "create_file", "write_file", "append_file",
-    "replace_in_file", "edit_lines", "patch_file",
-    "delete_file", "file_exists", "file_size",
-    "list_directory", "ls", "make_directory",
-    "search_text", "find_symbol", "find_references",
-    "find_function", "find_class", "find_method",
-    "rename_symbol", "replace_function", "replace_class", "replace_method",
-    "insert_after_symbol", "insert_before_symbol", "batch_write_files",
-    "execute_shell", "run_python", "pwd", "which", "is_command_available",
-    "operating_system", "current_user",
-    "git_status", "git_diff", "git_log", "git_commit", "git_stage",
-    "git_create_branch", "git_restore", "git_blame", "summarize_changes",
-    "index_repository", "summarize_project", "explain_file",
-    "web_search", "web_fetch", "web_context",
-])
+ALL_TOOLS = _make_tools(
+    [
+        "read_file",
+        "create_file",
+        "write_file",
+        "append_file",
+        "replace_in_file",
+        "edit_lines",
+        "patch_file",
+        "delete_file",
+        "file_exists",
+        "file_size",
+        "list_directory",
+        "ls",
+        "make_directory",
+        "search_text",
+        "find_symbol",
+        "find_references",
+        "find_function",
+        "find_class",
+        "find_method",
+        "rename_symbol",
+        "replace_function",
+        "replace_class",
+        "replace_method",
+        "insert_after_symbol",
+        "insert_before_symbol",
+        "batch_write_files",
+        "execute_shell",
+        "run_python",
+        "pwd",
+        "which",
+        "is_command_available",
+        "operating_system",
+        "current_user",
+        "git_status",
+        "git_diff",
+        "git_log",
+        "git_commit",
+        "git_stage",
+        "git_create_branch",
+        "git_restore",
+        "git_blame",
+        "summarize_changes",
+        "index_repository",
+        "summarize_project",
+        "explain_file",
+        "web_search",
+        "web_fetch",
+        "web_context",
+    ]
+)
 
 
 class TestRelevantTools:

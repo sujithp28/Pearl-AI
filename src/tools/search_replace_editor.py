@@ -27,6 +27,7 @@ Usage::
     if not result.succeeded:
         raise PatchError(result.error)
 """
+
 from __future__ import annotations
 
 import difflib
@@ -124,7 +125,7 @@ def _find_fuzzy(
     # Slide at 1/4-length steps to avoid quadratic cost on very long content.
     step = max(1, search_len // 4)
     for start in range(0, len(content) - window // 2, step):
-        candidate = content[start: start + window]
+        candidate = content[start : start + window]
         ratio = _similarity(candidate, search)
         if ratio > best_ratio:
             best_ratio = ratio
@@ -283,13 +284,17 @@ class SearchReplaceEditor:
         p = Path(path)
         workspace = get_workspace_root()
         try:
-            resolved = (workspace / path).resolve() if not p.is_absolute() else p.resolve()
+            resolved = (
+                (workspace / path).resolve() if not p.is_absolute() else p.resolve()
+            )
         except Exception as exc:
             raise PermissionError(f"Cannot resolve path {path!r}: {exc}") from exc
         # is_relative_to() uses path segments, blocking the prefix-collision
         # attack that str.startswith() is vulnerable to (/ws_evil vs /ws).
         if not resolved.is_relative_to(workspace):
-            raise PermissionError(f"Path {resolved!r} is outside workspace {workspace!r}")
+            raise PermissionError(
+                f"Path {resolved!r} is outside workspace {workspace!r}"
+            )
         return resolved
 
     def _apply_replacement(
@@ -323,7 +328,7 @@ class SearchReplaceEditor:
                     idx = updated.find(search, pos)
                     if idx == -1:
                         break
-                    updated = updated[:idx] + replace + updated[idx + len(search):]
+                    updated = updated[:idx] + replace + updated[idx + len(search) :]
                     pos = idx + len(replace)
                     replaced += 1
                     remaining -= 1

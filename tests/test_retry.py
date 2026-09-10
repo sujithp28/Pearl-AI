@@ -44,7 +44,9 @@ def _clean_approval_state():
     set_active_command_approver(None)
 
 
-@tool(description="Add two numbers.", parameters={"a": "int", "b": "int"}, returns="int")
+@tool(
+    description="Add two numbers.", parameters={"a": "int", "b": "int"}, returns="int"
+)
 def add(a: int, b: int) -> int:
     return a + b
 
@@ -126,7 +128,9 @@ class TestKnownTransientTypes:
         assert is_transient_error(TimeoutError("request timed out")) is True
 
     def test_connection_reset_is_transient(self):
-        assert is_transient_error(ConnectionResetError("connection reset by peer")) is True
+        assert (
+            is_transient_error(ConnectionResetError("connection reset by peer")) is True
+        )
 
     def test_connection_aborted_is_transient(self):
         assert is_transient_error(ConnectionAbortedError("aborted")) is True
@@ -203,7 +207,9 @@ class TestTransientRetryBeforeReplan:
             "generate_json",
             _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
         )
-        monkeypatch.setattr(executor.dispatcher._registry.get_tool("add"), "function", flaky_add)
+        monkeypatch.setattr(
+            executor.dispatcher._registry.get_tool("add"), "function", flaky_add
+        )
 
         report = executor.run("add 1+2")
 
@@ -225,7 +231,9 @@ class TestTransientRetryBeforeReplan:
             "generate_json",
             _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
         )
-        monkeypatch.setattr(executor.dispatcher._registry.get_tool("add"), "function", flaky_add)
+        monkeypatch.setattr(
+            executor.dispatcher._registry.get_tool("add"), "function", flaky_add
+        )
 
         events: list[ProgressEvent] = []
         executor.on_progress = events.append
@@ -250,7 +258,9 @@ class TestTransientRetryBeforeReplan:
             "generate_json",
             _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
         )
-        monkeypatch.setattr(executor.dispatcher._registry.get_tool("add"), "function", flaky_add)
+        monkeypatch.setattr(
+            executor.dispatcher._registry.get_tool("add"), "function", flaky_add
+        )
 
         report = executor.run("add 1+2")
 
@@ -278,7 +288,9 @@ class TestTransientRetryBeforeReplan:
             "generate_json",
             _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
         )
-        monkeypatch.setattr(executor.dispatcher._registry.get_tool("add"), "function", flaky_add)
+        monkeypatch.setattr(
+            executor.dispatcher._registry.get_tool("add"), "function", flaky_add
+        )
 
         report = executor.run("add 1+2")
         assert report.stop_reason == "completed"
@@ -298,7 +310,9 @@ class TestTransientRetryBeforeReplan:
             "generate_json",
             _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
         )
-        monkeypatch.setattr(executor.dispatcher._registry.get_tool("add"), "function", bad_add)
+        monkeypatch.setattr(
+            executor.dispatcher._registry.get_tool("add"), "function", bad_add
+        )
 
         report = executor.run("add 1+2")
 
@@ -318,7 +332,9 @@ class TestTransientRetryBeforeReplan:
             "generate_json",
             _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
         )
-        monkeypatch.setattr(executor.dispatcher._registry.get_tool("add"), "function", bad_add)
+        monkeypatch.setattr(
+            executor.dispatcher._registry.get_tool("add"), "function", bad_add
+        )
 
         events: list[ProgressEvent] = []
         executor.on_progress = events.append
@@ -419,10 +435,12 @@ class TestRetryLimits:
             return a + b
 
         # First plan: the flaky add. Replan: a fresh add that will succeed.
-        plans = iter([
-            [{"tool": "add", "arguments": {"a": 1, "b": 2}}],
-            [{"tool": "add", "arguments": {"a": 1, "b": 2}}],
-        ])
+        plans = iter(
+            [
+                [{"tool": "add", "arguments": {"a": 1, "b": 2}}],
+                [{"tool": "add", "arguments": {"a": 1, "b": 2}}],
+            ]
+        )
 
         def plan_fn(prompt, cancel_check=None):
             try:
@@ -479,7 +497,9 @@ class TestRetryLimits:
             "generate_json",
             _plan_of({"tool": "add", "arguments": {"a": 1, "b": 2}}),
         )
-        monkeypatch.setattr(executor.dispatcher._registry.get_tool("add"), "function", flaky_add)
+        monkeypatch.setattr(
+            executor.dispatcher._registry.get_tool("add"), "function", flaky_add
+        )
 
         report = executor.run("add 1+2")
 

@@ -9,6 +9,7 @@ Tests for the three defects behind "hello" producing a fatal_error:
 3. Every terminal path emitted `task_completed`, so a failed run
    rendered a green "Done" beside its own error card.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -26,14 +27,35 @@ class TestNeedsNoTools:
     @pytest.mark.parametrize(
         "prompt",
         [
-            "hello", "hi", "hiii", "hiiiii", "hey", "yo", "sup", "howdy",
-            "Hello!", "  hey  ", "hi.",
-            "good morning", "good evening",
-            "thanks", "thank you", "thx", "cheers",
-            "ok", "okay", "sure", "got it", "sounds good",
-            "bye", "goodbye", "see you",
+            "hello",
+            "hi",
+            "hiii",
+            "hiiiii",
+            "hey",
+            "yo",
+            "sup",
+            "howdy",
+            "Hello!",
+            "  hey  ",
+            "hi.",
+            "good morning",
+            "good evening",
+            "thanks",
+            "thank you",
+            "thx",
+            "cheers",
+            "ok",
+            "okay",
+            "sure",
+            "got it",
+            "sounds good",
+            "bye",
+            "goodbye",
+            "see you",
             "ping",
-            "how are you", "who are you", "what can you do",
+            "how are you",
+            "who are you",
+            "what can you do",
         ],
     )
     def test_conversational_input_needs_no_tools(self, prompt):
@@ -108,9 +130,14 @@ class TestUnactionableInput:
         "prompt",
         [
             # A verb is intent, even with few words.
-            "run tests", "fix login", "add docstring", "explain executor",
+            "run tests",
+            "fix login",
+            "add docstring",
+            "explain executor",
             # A path or extension is intent.
-            "src/main.py", "README.md", "read config.yaml",
+            "src/main.py",
+            "README.md",
+            "read config.yaml",
             # Code is intent.
             "def add(a, b):",
             # Enough words carry intent without a recognised verb.
@@ -401,7 +428,7 @@ class TestFailureStatus:
 
         # Every FAILURE-flavoured emit must now carry task_failed.
         failure_blocks = source.count(
-            'current_action=self._personality.format(EventKind.FAILURE)'
+            "current_action=self._personality.format(EventKind.FAILURE)"
         )
         assert failure_blocks > 0, "no failure emits found — test is stale"
 
@@ -409,8 +436,7 @@ class TestFailureStatus:
             head = block[:400]
             if "EventKind.FAILURE" in head:
                 assert '"task_failed"' in head, (
-                    "a failure emit still reports task_completed:\n"
-                    f"{head[:200]}"
+                    f"a failure emit still reports task_completed:\n{head[:200]}"
                 )
 
     def test_missing_llama_cpp_names_the_interpreter(self):
@@ -521,7 +547,9 @@ class TestFailureStatus:
                 lambda *a, **k: (_ for _ in ()).throw(ValueError("bad json")),
             )
 
-            executor = AutonomousExecutor(planner, ToolDispatcher(registry), checkpoints=None)
+            executor = AutonomousExecutor(
+                planner, ToolDispatcher(registry), checkpoints=None
+            )
             report = executor.run("do something that cannot be planned")
 
             assert report.stop_reason == "fatal_error"

@@ -15,6 +15,7 @@ Coverage:
 - count=-1 replaces all occurrences
 - Workspace boundary enforcement
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -111,7 +112,9 @@ class TestApplyExactMatch:
         assert result.occurrences == 3
         assert "foo" not in f.read_text()
 
-    def test_no_change_returns_succeeded_zero_occurrences(self, workspace: Path) -> None:
+    def test_no_change_returns_succeeded_zero_occurrences(
+        self, workspace: Path
+    ) -> None:
         f = workspace / "d.py"
         original = "def foo(): pass\n"
         f.write_text(original)
@@ -147,7 +150,9 @@ class TestApplyFuzzyMatch:
         f.write_text(original)
         # 1 char difference
         editor = SearchReplaceEditor(similarity_threshold=0.8)
-        result = editor.apply("g.py", "def calculate_total(items):", "def calculate_total(items: list):")
+        result = editor.apply(
+            "g.py", "def calculate_total(items):", "def calculate_total(items: list):"
+        )
         # Fuzzy or exact should succeed
         assert result.succeeded
 
@@ -155,7 +160,9 @@ class TestApplyFuzzyMatch:
         f = workspace / "h.py"
         f.write_text("def foo(): pass\n")
         editor = SearchReplaceEditor(similarity_threshold=0.99)
-        result = editor.apply("h.py", "completely different string that won't match", "new")
+        result = editor.apply(
+            "h.py", "completely different string that won't match", "new"
+        )
         assert not result.succeeded
         assert result.error
 
@@ -179,7 +186,9 @@ class TestApplyErrors:
         with pytest.raises(PermissionError):
             editor.apply("../outside.py", "foo", "bar")
 
-    def test_prefix_collision_attack_blocked(self, workspace: Path, tmp_path: Path) -> None:
+    def test_prefix_collision_attack_blocked(
+        self, workspace: Path, tmp_path: Path
+    ) -> None:
         # A sibling dir whose name starts with the workspace name would fool a
         # startswith() check but must NOT fool is_relative_to().
         sibling = workspace.parent / (workspace.name + "_evil")

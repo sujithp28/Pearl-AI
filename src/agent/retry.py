@@ -32,25 +32,25 @@ from __future__ import annotations
 # matters if a subclass is present. We never list OSError here at all;
 # generic OSErrors fall through to the message scan.
 _FATAL_TYPES: tuple[type[BaseException], ...] = (
-    ValueError,             # invalid arguments, validation failures
-    TypeError,              # wrong argument type
-    FileNotFoundError,      # path does not exist
-    PermissionError,        # access denied
-    IsADirectoryError,      # wrong path type
-    NotADirectoryError,     # wrong path type
-    NotImplementedError,    # unimplemented feature
-    RecursionError,         # stack overflow — not a transient condition
-    MemoryError,            # out of memory — retrying uses more memory
+    ValueError,  # invalid arguments, validation failures
+    TypeError,  # wrong argument type
+    FileNotFoundError,  # path does not exist
+    PermissionError,  # access denied
+    IsADirectoryError,  # wrong path type
+    NotADirectoryError,  # wrong path type
+    NotImplementedError,  # unimplemented feature
+    RecursionError,  # stack overflow — not a transient condition
+    MemoryError,  # out of memory — retrying uses more memory
 )
 
 # Exceptions that are always transient: the same call may succeed on retry.
 _TRANSIENT_TYPES: tuple[type[BaseException], ...] = (
-    TimeoutError,           # covers socket.timeout via OSError.errno ETIMEDOUT
-    ConnectionResetError,   # remote closed the connection unexpectedly
-    ConnectionAbortedError, # connection aborted by the network
-    BrokenPipeError,        # write end of a pipe closed
-    BlockingIOError,        # EAGAIN / EWOULDBLOCK — resource temporarily unavailable
-    InterruptedError,       # EINTR — system call interrupted; safe to retry
+    TimeoutError,  # covers socket.timeout via OSError.errno ETIMEDOUT
+    ConnectionResetError,  # remote closed the connection unexpectedly
+    ConnectionAbortedError,  # connection aborted by the network
+    BrokenPipeError,  # write end of a pipe closed
+    BlockingIOError,  # EAGAIN / EWOULDBLOCK — resource temporarily unavailable
+    InterruptedError,  # EINTR — system call interrupted; safe to retry
 )
 
 # ---------------------------------------------------------------------------
@@ -62,17 +62,17 @@ _TRANSIENT_TYPES: tuple[type[BaseException], ...] = (
 # sets above have been consulted.
 _TRANSIENT_PATTERNS: tuple[str, ...] = (
     # HTTP error codes that indicate temporary server-side conditions
-    "429",                      # Too Many Requests
-    "502",                      # Bad Gateway
-    "503",                      # Service Unavailable
-    "504",                      # Gateway Timeout
+    "429",  # Too Many Requests
+    "502",  # Bad Gateway
+    "503",  # Service Unavailable
+    "504",  # Gateway Timeout
     # Timeout language
     "timeout",
     "timed out",
     "timed_out",
     # Connection language
     "connection reset",
-    "connection refused",       # may be transient for retry-able services
+    "connection refused",  # may be transient for retry-able services
     "connection aborted",
     "connection error",
     # Rate limiting

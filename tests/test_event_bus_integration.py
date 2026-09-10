@@ -7,6 +7,7 @@ Verifies that:
 - run_complete events arrive before the result dict
 - progress events still arrive (backward compat)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,18 +20,25 @@ from src.agent.condenser import CondensationResult
 def _make_session(tmp_path):
     """Build a PearlSession with scripted LLM, no real model needed."""
     import os
+
     os.environ.setdefault("PEARL_LLM_PROVIDER", "scripted")
     from src.api.session import PearlSession
     from src.config.settings import Settings
 
-    with patch.object(Settings, "LLM_PROVIDER", "scripted"), \
-         patch("src.api.session.RepositoryService.get_or_build", return_value=MagicMock()), \
-         patch("src.api.session.build_startup_index"):
+    with (
+        patch.object(Settings, "LLM_PROVIDER", "scripted"),
+        patch(
+            "src.api.session.RepositoryService.get_or_build", return_value=MagicMock()
+        ),
+        patch("src.api.session.build_startup_index"),
+    ):
         session = PearlSession(tmp_path)
     return session
 
 
-def _drain_queue_sync(q: asyncio.Queue, loop: asyncio.AbstractEventLoop, timeout=2.0) -> list[dict]:
+def _drain_queue_sync(
+    q: asyncio.Queue, loop: asyncio.AbstractEventLoop, timeout=2.0
+) -> list[dict]:
     """Collect all items from an asyncio.Queue until None sentinel, with timeout."""
     items: list[dict] = []
 
@@ -74,9 +82,13 @@ class TestContextCondensedEvent:
         fake_report.replans_used = 0
         fake_report.succeeded = True
 
-        with patch.object(session._condenser, "maybe_condense", return_value=condensed_result), \
-             patch.object(session._synthesizer, "synthesize", return_value="Done."), \
-             patch("src.api.session.AutonomousExecutor") as MockExec:
+        with (
+            patch.object(
+                session._condenser, "maybe_condense", return_value=condensed_result
+            ),
+            patch.object(session._synthesizer, "synthesize", return_value="Done."),
+            patch("src.api.session.AutonomousExecutor") as MockExec,
+        ):
             mock_exec = MagicMock()
             mock_exec.run.return_value = fake_report
             mock_exec.patch_manager.combined_diff.return_value = ""
@@ -119,8 +131,12 @@ class TestContextCondensedEvent:
         session = _make_session(tmp_path)
 
         no_condense = CondensationResult(
-            condensed=False, turns_before=5, turns_after=5,
-            tokens_before=1000, tokens_after=1000, reason="",
+            condensed=False,
+            turns_before=5,
+            turns_after=5,
+            tokens_before=1000,
+            tokens_after=1000,
+            reason="",
         )
 
         fake_report = MagicMock()
@@ -129,9 +145,13 @@ class TestContextCondensedEvent:
         fake_report.replans_used = 0
         fake_report.succeeded = True
 
-        with patch.object(session._condenser, "maybe_condense", return_value=no_condense), \
-             patch.object(session._synthesizer, "synthesize", return_value="Done."), \
-             patch("src.api.session.AutonomousExecutor") as MockExec:
+        with (
+            patch.object(
+                session._condenser, "maybe_condense", return_value=no_condense
+            ),
+            patch.object(session._synthesizer, "synthesize", return_value="Done."),
+            patch("src.api.session.AutonomousExecutor") as MockExec,
+        ):
             mock_exec = MagicMock()
             mock_exec.run.return_value = fake_report
             mock_exec.patch_manager.combined_diff.return_value = ""
@@ -174,8 +194,12 @@ class TestRunLifecycleEvents:
         session = _make_session(tmp_path)
 
         no_condense = CondensationResult(
-            condensed=False, turns_before=0, turns_after=0,
-            tokens_before=0, tokens_after=0, reason="",
+            condensed=False,
+            turns_before=0,
+            turns_after=0,
+            tokens_before=0,
+            tokens_after=0,
+            reason="",
         )
         fake_report = MagicMock()
         fake_report.stop_reason = "complete"
@@ -183,9 +207,13 @@ class TestRunLifecycleEvents:
         fake_report.replans_used = 0
         fake_report.succeeded = True
 
-        with patch.object(session._condenser, "maybe_condense", return_value=no_condense), \
-             patch.object(session._synthesizer, "synthesize", return_value="Done."), \
-             patch("src.api.session.AutonomousExecutor") as MockExec:
+        with (
+            patch.object(
+                session._condenser, "maybe_condense", return_value=no_condense
+            ),
+            patch.object(session._synthesizer, "synthesize", return_value="Done."),
+            patch("src.api.session.AutonomousExecutor") as MockExec,
+        ):
             mock_exec = MagicMock()
             mock_exec.run.return_value = fake_report
             MockExec.return_value = mock_exec
@@ -215,19 +243,29 @@ class TestRunLifecycleEvents:
         assert "result" in types
         rc_idx = types.index("run_complete")
         res_idx = types.index("result")
-        assert rc_idx < res_idx, f"run_complete ({rc_idx}) must precede result ({res_idx})"
+        assert rc_idx < res_idx, (
+            f"run_complete ({rc_idx}) must precede result ({res_idx})"
+        )
 
     def test_run_failed_event_emitted_on_exception(self, tmp_path):
         """RunFailedEvent arrives before the error dict on executor exception."""
         session = _make_session(tmp_path)
 
         no_condense = CondensationResult(
-            condensed=False, turns_before=0, turns_after=0,
-            tokens_before=0, tokens_after=0, reason="",
+            condensed=False,
+            turns_before=0,
+            turns_after=0,
+            tokens_before=0,
+            tokens_after=0,
+            reason="",
         )
 
-        with patch.object(session._condenser, "maybe_condense", return_value=no_condense), \
-             patch("src.api.session.AutonomousExecutor") as MockExec:
+        with (
+            patch.object(
+                session._condenser, "maybe_condense", return_value=no_condense
+            ),
+            patch("src.api.session.AutonomousExecutor") as MockExec,
+        ):
             mock_exec = MagicMock()
             mock_exec.run.side_effect = RuntimeError("something went wrong")
             MockExec.return_value = mock_exec

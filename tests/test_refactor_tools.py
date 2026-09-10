@@ -23,23 +23,31 @@ from src.tools.refactor_tools import batch_write_files, rename_symbol
 
 
 class TestBatchWriteFiles:
-    def test_raises_on_empty_dict(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_on_empty_dict(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         with pytest.raises(ValueError, match="must not be empty"):
             batch_write_files({})
 
-    def test_raises_when_too_many_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_when_too_many_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         files = {f"f{i}.py": f"# {i}" for i in range(51)}
         with pytest.raises(ValueError, match="Too many files"):
             batch_write_files(files)
 
-    def test_raises_on_path_outside_workspace(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_on_path_outside_workspace(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         with pytest.raises(PermissionError):
             batch_write_files({"/etc/evil.py": "boom"})
 
-    def test_writes_files_in_apply_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_writes_files_in_apply_mode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         files = {
             "a.py": "x = 1\n",
@@ -50,7 +58,9 @@ class TestBatchWriteFiles:
         assert (tmp_path / "b.py").read_text() == "y = 2\n"
         assert "Wrote 2" in result
 
-    def test_creates_parent_directories(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_creates_parent_directories(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         batch_write_files({"src/deep/nested/a.py": "pass\n"})
         assert (tmp_path / "src/deep/nested/a.py").exists()
@@ -92,22 +102,30 @@ class TestBatchWriteFiles:
 
 
 class TestRenameSymbol:
-    def test_raises_on_empty_old_name(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_on_empty_old_name(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         with pytest.raises(ValueError, match="old_name"):
             rename_symbol("", "NewName")
 
-    def test_raises_on_non_identifier_new_name(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_on_non_identifier_new_name(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         with pytest.raises(ValueError, match="new_name"):
             rename_symbol("OldName", "new-name-invalid")
 
-    def test_same_name_returns_nothing_to_do(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_same_name_returns_nothing_to_do(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         result = rename_symbol("Foo", "Foo")
         assert "nothing to do" in result.lower()
 
-    def test_no_occurrences_returns_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_occurrences_returns_not_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "a.py").write_text("class Bar: pass\n")
         # Old and new must differ, or this exercises the same-name guard
@@ -124,7 +142,9 @@ class TestRenameSymbol:
     # string that merely happens to spell an identifier, so test data
     # must not spell one that exists.
 
-    def test_renames_in_single_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_renames_in_single_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "a.py").write_text(
             "class OldWidget:\n    def stage(self): pass\n\npm = OldWidget()\n"
@@ -134,10 +154,14 @@ class TestRenameSymbol:
         assert "OldWidget" not in (tmp_path / "a.py").read_text()
         assert "a.py" in result
 
-    def test_renames_across_multiple_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_renames_across_multiple_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "widget.py").write_text("class OldWidget: pass\n")
-        (tmp_path / "consumer.py").write_text("from widget import OldWidget\npm = OldWidget()\n")
+        (tmp_path / "consumer.py").write_text(
+            "from widget import OldWidget\npm = OldWidget()\n"
+        )
         (tmp_path / "unrelated.py").write_text("class Other: pass\n")
         rename_symbol("OldWidget", "NewWidget")
         assert "NewWidget" in (tmp_path / "widget.py").read_text()
@@ -145,12 +169,12 @@ class TestRenameSymbol:
         # Unrelated file untouched
         assert "OldWidget" not in (tmp_path / "unrelated.py").read_text()
 
-    def test_word_boundary_no_false_positives(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_word_boundary_no_false_positives(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "a.py").write_text(
-            "class OldWidget: pass\n"
-            "class ActiveOldWidget: pass\n"
-            "pm = OldWidget()\n"
+            "class OldWidget: pass\nclass ActiveOldWidget: pass\npm = OldWidget()\n"
         )
         rename_symbol("OldWidget", "NewWidget")
         text = (tmp_path / "a.py").read_text()

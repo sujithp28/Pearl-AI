@@ -114,9 +114,9 @@ class ConfidenceFactor:
 class StepConfidence:
     """Confidence score for a single plan step."""
 
-    step_index: int                          # 0-based
+    step_index: int  # 0-based
     tool_name: str
-    score: float                             # [0.0, 1.0]
+    score: float  # [0.0, 1.0]
     factors: list[ConfidenceFactor] = field(default_factory=list)
 
 

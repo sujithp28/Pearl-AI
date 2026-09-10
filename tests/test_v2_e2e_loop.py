@@ -243,8 +243,7 @@ class TestE2EHappyPath:
         assert refl_client.calls, "reflection engine must have been called"
         prompt = refl_client.calls[-1]
         assert "passed: 7" in prompt, (
-            "verification results must reach the reflection prompt; "
-            f"got:\n{prompt}"
+            f"verification results must reach the reflection prompt; got:\n{prompt}"
         )
         assert "(verification not run)" not in prompt
 
@@ -303,8 +302,12 @@ class TestE2EReflectionDrivenReplan:
             planner.client,
             "generate_json",
             _plan_sequence(
-                [{"tool": "create_file",
-                  "arguments": {"path": str(target), "content": "bad\n"}}],
+                [
+                    {
+                        "tool": "create_file",
+                        "arguments": {"path": str(target), "content": "bad\n"},
+                    }
+                ],
                 [{"tool": "_echo", "arguments": {"value": "attempted fix"}}],
             ),
         )
@@ -341,8 +344,12 @@ class TestE2EReflectionDrivenReplan:
             planner.client,
             "generate_json",
             _plan_sequence(
-                [{"tool": "create_file",
-                  "arguments": {"path": str(first), "content": "a\n"}}],
+                [
+                    {
+                        "tool": "create_file",
+                        "arguments": {"path": str(first), "content": "a\n"},
+                    }
+                ],
                 [{"tool": "_echo", "arguments": {"value": "created second"}}],
             ),
         )
@@ -353,9 +360,7 @@ class TestE2EReflectionDrivenReplan:
         assert final.replans_used >= 1, (
             "a 'replan' reflection verdict must drive an actual replan"
         )
-        assert len(refl_client.calls) >= 2, (
-            "reflection must run again after the replan"
-        )
+        assert len(refl_client.calls) >= 2, "reflection must run again after the replan"
         assert final.llm_reflection.status == "complete"
         assert any(s.tool_name == "_echo" for s in final.steps), (
             "the replanned step must actually execute"
@@ -376,8 +381,12 @@ class TestE2EReflectionDrivenReplan:
             planner.client,
             "generate_json",
             _plan_sequence(
-                [{"tool": "create_file",
-                  "arguments": {"path": str(target), "content": "a\n"}}],
+                [
+                    {
+                        "tool": "create_file",
+                        "arguments": {"path": str(target), "content": "a\n"},
+                    }
+                ],
                 [{"tool": "_echo", "arguments": {"value": "again"}}],
             ),
         )
@@ -408,8 +417,10 @@ class TestE2ECancellation:
             planner.client,
             "generate_json",
             _plan_of(
-                {"tool": "create_file",
-                 "arguments": {"path": str(target), "content": "x\n"}},
+                {
+                    "tool": "create_file",
+                    "arguments": {"path": str(target), "content": "x\n"},
+                },
                 {"tool": "_echo", "arguments": {"value": "after"}},
             ),
         )

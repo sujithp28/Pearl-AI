@@ -176,9 +176,7 @@ class Settings:
     # Requires: pip install llama-cpp-python
     #   --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 
-    LOCAL_MODEL_REPO = os.getenv(
-        "LOCAL_MODEL_REPO", "Qwen/Qwen2.5-1.5B-Instruct-GGUF"
-    )
+    LOCAL_MODEL_REPO = os.getenv("LOCAL_MODEL_REPO", "Qwen/Qwen2.5-1.5B-Instruct-GGUF")
     LOCAL_MODEL_FILE = os.getenv(
         "LOCAL_MODEL_FILE", "qwen2.5-1.5b-instruct-q4_k_m.gguf"
     )
@@ -345,8 +343,9 @@ class Settings:
     #   LOCAL_MODEL_CTX = 32 768 → capped at 6 400
     #   Hosted model (200 K ctx) → set PEARL_MAX_CONTEXT_TOKENS=16000 in .env
     TOKEN_BUDGET_MAX_CONTEXT_TOKENS = int(
-        os.getenv("PEARL_MAX_CONTEXT_TOKENS",
-                  str(min(6400, max(500, LOCAL_MODEL_CTX - 6024))))
+        os.getenv(
+            "PEARL_MAX_CONTEXT_TOKENS", str(min(6400, max(500, LOCAL_MODEL_CTX - 6024)))
+        )
     )
 
     # ==================================================
@@ -481,7 +480,9 @@ class Settings:
 
     # Maximum response body size to accept (bytes). Responses larger than
     # this are rejected with a clear error rather than OOM-ing the process.
-    WEB_MAX_RESPONSE_BYTES = int(os.getenv("PEARL_WEB_MAX_RESPONSE_BYTES", str(5 * 1024 * 1024)))
+    WEB_MAX_RESPONSE_BYTES = int(
+        os.getenv("PEARL_WEB_MAX_RESPONSE_BYTES", str(5 * 1024 * 1024))
+    )
 
     # Maximum number of search results to fetch/process per web_context call.
     WEB_MAX_RESULTS = int(os.getenv("PEARL_WEB_MAX_RESULTS", "5"))

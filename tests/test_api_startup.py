@@ -7,6 +7,7 @@ Previously only `python -m src.api` called `init_session()`, so running
 the documented command left `_session` as None and every endpoint behind
 `get_session()` answered 503 while the UI showed "Disconnected".
 """
+
 from __future__ import annotations
 
 import re
@@ -96,9 +97,7 @@ class TestModelReadiness:
     sent the user hunting through their prompt instead of their setup.
     """
 
-    def test_status_reports_ready_when_the_model_is_importable(
-        self, uninitialised_app
-    ):
+    def test_status_reports_ready_when_the_model_is_importable(self, uninitialised_app):
         with TestClient(uninitialised_app.app) as client:
             body = client.get("/api/status").json()
 
@@ -131,18 +130,14 @@ class TestModelReadiness:
         import sys
 
         monkeypatch.setitem(sys.modules, "llama_cpp", None)
-        monkeypatch.setattr(
-            "src.config.settings.Settings.LLM_PROVIDER", "openai"
-        )
+        monkeypatch.setattr("src.config.settings.Settings.LLM_PROVIDER", "openai")
 
         with TestClient(uninitialised_app.app) as client:
             body = client.get("/api/status").json()
 
         assert body["model_ready"] is True
 
-    def test_pearl_gateway_is_not_flagged_unready(
-        self, uninitialised_app, monkeypatch
-    ):
+    def test_pearl_gateway_is_not_flagged_unready(self, uninitialised_app, monkeypatch):
         """`pearl` with a gateway key runs remotely — no GGUF involved."""
         import sys
 

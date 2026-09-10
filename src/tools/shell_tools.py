@@ -746,8 +746,7 @@ def lint_file(path: str) -> dict[str, Any]:
     ruff_bin = shutil.which("ruff")
     if ruff_bin is None:
         raise RuntimeError(
-            "ruff is not installed or not on PATH. "
-            "Install it with: pip install ruff"
+            "ruff is not installed or not on PATH. Install it with: pip install ruff"
         )
 
     workspace = _workspace_cwd()
@@ -786,7 +785,9 @@ def lint_file(path: str) -> dict[str, Any]:
         except (ValueError, KeyError):
             logger.warning("Failed to parse ruff JSON output; returning raw output.")
 
-    logger.info("Lint complete: %d issue(s) found (exit %d)", len(issues), proc.returncode)
+    logger.info(
+        "Lint complete: %d issue(s) found (exit %d)", len(issues), proc.returncode
+    )
 
     return {
         "issues": issues,
