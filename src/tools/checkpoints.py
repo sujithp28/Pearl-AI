@@ -209,7 +209,9 @@ class CheckpointManager:
 
     # -- Internals ----------------------------------------------------------
 
-    def _run(self, *args: str) -> subprocess.CompletedProcess:
+    def _run(
+        self, *args: str, env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess:
         """
         Run one git command against the shadow repository.
 
@@ -229,6 +231,7 @@ class CheckpointManager:
             text=True,
             timeout=GIT_TIMEOUT,
             cwd=str(self.workspace),
+            env=env,
         )
 
     def _migrate_legacy_store(self) -> None:

@@ -10,6 +10,7 @@ would have been silent corruption rather than a visible failure.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -657,6 +658,7 @@ def test_retention_prunes_checkpoints_older_than_max_age(manager, workspace):
         "--amend",
         "--no-edit",
         f"--date={old_date}",
+        env={**os.environ, "GIT_COMMITTER_DATE": old_date},
     )
     assert amended.returncode == 0, amended.stderr
 
