@@ -27,12 +27,12 @@ from src.agent.event_bus import (
 )
 from src.agent.executor import AutonomousExecutor, ExecutionReport, ProgressEvent
 from src.agent.planner import Planner
-from src.llm.parser import ToolCall
 from src.agent.reflection import ReflectionEngine
 from src.agent.synthesizer import Synthesizer
 from src.agent.verification import VerificationEngine
 from src.config.settings import Settings
 from src.llm.errors import ContextLengthError
+from src.llm.parser import ToolCall
 from src.llm.router import ModelRouter
 from src.main import build_registry
 from src.memory import Memory
