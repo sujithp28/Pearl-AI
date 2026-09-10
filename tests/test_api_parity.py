@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from src.api.session import PendingPlanError
 from src.llm.parser import ToolCall
+from src.personality.timeline import TIMELINE_EVENT_KINDS
 
 
 @pytest.fixture
@@ -555,3 +556,44 @@ class TestRunWithoutAPlanIsUnchanged:
 
         assert r.status_code == 200
         assert captured["initial_plan"] is None
+
+
+class TestPersonalityLabels:
+    """
+    Stage wording for the plan preview, in the configured voice.
+
+    The stage names are a client-facing contract shared with the VS Code
+    extension, so they come from one map rather than being spelled out
+    again here.
+    """
+
+    def test_labels_cover_exactly_the_timeline_stages(self, client):
+        body = client.get("/api/personality").json()
+
+        assert set(body["labels"]) == set(TIMELINE_EVENT_KINDS)
+
+    def test_every_stage_has_wording(self, client):
+        labels = client.get("/api/personality").json()["labels"]
+
+        assert all(isinstance(v, str) and v for v in labels.values())
+
+    def test_wording_follows_the_configured_personality(self, client, monkeypatch):
+        """
+        Read through the personality system rather than hardcoded, so
+        changing the configured personality changes the preview.
+        """
+        from src.personality import EventKind, PersonalityManager
+
+        expected = PersonalityManager().format(EventKind.PLAN_READY)
+
+        assert client.get("/api/personality").json()["labels"]["plan_ready"] == expected
+
+    def test_is_available_on_a_shared_instance(self, server, monkeypatch):
+        monkeypatch.setenv("PEARL_AUTH_TOKENS", "tok-alice:alice")
+
+        with TestClient(server.app) as client:
+            r = client.get(
+                "/api/personality", headers={"Authorization": "Bearer tok-alice"}
+            )
+
+        assert r.status_code == 200

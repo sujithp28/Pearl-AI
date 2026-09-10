@@ -46,6 +46,8 @@ from src.api.tenancy import (
     public_mode,
     resolve_user,
 )
+from src.personality import PersonalityManager
+from src.personality.timeline import TIMELINE_EVENT_KINDS
 from src.tools.checkpoint_serialize import (
     checkpoint_to_dict,
     restore_report_to_dict,
@@ -525,6 +527,34 @@ async def checkpoint_restore_preview(
     except CheckpointError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return JSONResponse(restore_report_to_dict(report))
+
+
+# ------------------------------------------------------------------ personality
+
+
+@app.get("/api/personality")
+async def personality_labels() -> JSONResponse:
+    """
+    The configured personality's wording for each plan-preview stage.
+
+    Stage names come from `TIMELINE_EVENT_KINDS`, shared with the
+    protocol adapter, so the extension and the browser cannot disagree
+    about what Pearl is currently doing.
+
+    The manager is built per request rather than cached. It reads
+    `Settings` at construction, so a cached one would freeze the
+    personality at import time, and `format()` is a couple of dict
+    lookups either way.
+    """
+    manager = PersonalityManager()
+    return JSONResponse(
+        {
+            "labels": {
+                stage: manager.format(kind)
+                for stage, kind in TIMELINE_EVENT_KINDS.items()
+            }
+        }
+    )
 
 
 # ------------------------------------------------------------------ memory

@@ -10,11 +10,13 @@
 // those replans arrive on the progress stream. The copy must not imply
 // the approved list is the whole run.
 
+import { get } from "./api.js";
 import { escapeHtml as esc, toolLabel } from "./format.js";
 import { mk, msgInner } from "./state.js";
 
-// Stage wording, replaced by the configured personality when
-// /api/personality is wired in. Plain English until then.
+// Stage wording. Plain English is the fallback; the configured
+// personality replaces it at boot via /api/personality, so the browser
+// and the extension name the same stages the same way.
 const STAGES = {
   planning: "Planning",
   plan_ready: "Plan ready",
@@ -25,6 +27,15 @@ const STAGES = {
 
 export function setStageLabels(labels) {
   Object.assign(STAGES, labels ?? {});
+}
+
+// Best-effort: a preview with plain English stage names is fine, and
+// far better than no preview because one cosmetic request failed.
+export async function loadStageLabels() {
+  try {
+    const { labels } = await get("/api/personality");
+    setStageLabels(labels);
+  } catch {}
 }
 
 export function stageLabel(stage) {

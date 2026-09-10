@@ -8,6 +8,7 @@ import {
 } from "./checkpoints.js";
 import { applyMode, initCodeMode } from "./code.js";
 import { closeMemory, openMemory } from "./memory.js";
+import { loadStageLabels } from "./plan.js";
 import {
   cancel,
   loadStore,
@@ -46,6 +47,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   applyMode();
   pollStatus();
   loadProvider();
+  loadStageLabels();
   setInterval(pollStatus, POLL_MS);
   resize();
 });
