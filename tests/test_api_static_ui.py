@@ -45,6 +45,7 @@ class TestModuleServing:
             "checkpoints.js",
             "code.js",
             "memory.js",
+            "plan.js",
             "conversation.js",
             "format.js",
             "main.js",

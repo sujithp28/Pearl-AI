@@ -16,6 +16,7 @@ import {
   toolLabel,
 } from "./format.js";
 import { renderMd } from "./markdown.js";
+import { showPlanPreview } from "./plan.js";
 import {
   chatTtl,
   emptySt,
@@ -44,7 +45,32 @@ export function submit() {
   hideEmpty(); ensureConv();
   addUserMsg(text);
   if (S.mode === 'chat') doChat(text);
-  else doRun(text);
+  else planThenRun(text);
+}
+
+// Agent mode plans first and shows the steps. The run carries the plan
+// id back, so the server executes the plan the user saw rather than a
+// second one generated moments later.
+async function planThenRun(prompt) {
+  setStreaming(true);
+  let plan;
+  try {
+    plan = await post('/api/plan', { prompt });
+  } catch (e) {
+    // Planning failed, so there is nothing to approve. Fall through to
+    // an ordinary run rather than stranding the user: the executor
+    // plans for itself and reports the failure in the stream.
+    setStreaming(false);
+    addInfo('Could not prepare a plan preview; running directly.');
+    doRun(prompt);
+    return;
+  }
+  setStreaming(false);
+
+  const approved = await showPlanPreview(plan.steps);
+  if (!approved) return;
+
+  doRun(prompt, plan.planId);
 }
 
 function hideEmpty() { if (emptySt.parentNode) emptySt.remove(); }
@@ -84,7 +110,7 @@ async function doChat(message) {
 }
 
 // ─── Agent run ────────────────────────────────────────────────
-async function doRun(prompt) {
+async function doRun(prompt, planId = null) {
   setStreaming(true);
   S.ctrl = new AbortController();
   const groupEl = makeGroup();
@@ -93,7 +119,8 @@ async function doRun(prompt) {
   try {
     const resp = await fetch('/api/run', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt }), signal: S.ctrl.signal,
+      body: JSON.stringify(planId ? { prompt, planId } : { prompt }),
+      signal: S.ctrl.signal,
     });
     for await (const ev of sse(resp)) {
       if (ev.event === 'progress') onProgress(ev.data, groupEl, stepMap);
@@ -303,7 +330,7 @@ function addPearlBubble() {
     // Remove this bubble from DOM and re-run
     r.remove();
     if (S.mode === 'chat') doChat(lastUser.content);
-    else doRun(lastUser.content);
+    else planThenRun(lastUser.content);
   });
   return { setText };
 }

@@ -746,6 +746,29 @@ button:focus:not(:focus-visible) { outline: none; }
 .mem-item:last-child { border-bottom: 0; }
 .mem-txt { flex: 1; color: var(--tx2); overflow-wrap: anywhere; line-height: 1.5; }
 .mem-meta { font-size: 11px; color: var(--tx3); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+/* Plan preview */
+.plan-card {
+  border: 1px solid var(--b2); border-radius: 11px; background: var(--surf);
+  overflow: hidden; margin: 10px 0; animation: fadeUp .18s ease;
+}
+.plan-hd {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  border-bottom: 1px solid var(--b1); font-size: 13px; font-weight: 600;
+}
+.plan-body { padding: 4px 0; }
+.plan-step {
+  display: grid; grid-template-columns: 22px auto 1fr; gap: 10px;
+  align-items: baseline; padding: 6px 14px; font-size: 12.5px;
+}
+.plan-n { color: var(--tx3); font-variant-numeric: tabular-nums; font-size: 11px; }
+.plan-tool { font-weight: 600; color: var(--tx); }
+.plan-args { color: var(--tx3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-acts {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px; border-top: 1px solid var(--b1);
+}
+.plan-note { flex: 1; min-width: 200px; font-size: 11.5px; color: var(--tx3); line-height: 1.5; }
+.plan-outcome { padding: 10px 14px; border-top: 1px solid var(--b1); }
 </style>
 </head>
 <body>

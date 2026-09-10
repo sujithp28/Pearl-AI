@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field
 
 from src.agent.completion import CompletionService
 from src.agent.session_manager import get_session_manager
-from src.api.session import PearlSession, register_loop
+from src.api.session import PearlSession, PendingPlanError, register_loop
 from src.api.tenancy import (
     LOCAL_USER,
     AuthenticationError,
@@ -257,6 +257,9 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
 
 class RunRequest(BaseModel):
     prompt: str
+    # The plan the user approved in a preview. Omitted, the
+    # executor plans for itself exactly as it always has.
+    planId: str | None = None
 
 
 @app.post("/api/run")
@@ -266,11 +269,22 @@ async def run_autonomous(req: RunRequest, request: Request) -> StreamingResponse
     if session.is_running():
         raise HTTPException(status_code=409, detail="A run is already in progress.")
 
+    # Resolved before the run starts, so a stale id is a plain 400
+    # rather than a failure buried in the event stream.
+    initial_plan = None
+    if req.planId is not None:
+        try:
+            initial_plan = session.take_plan(req.planId)
+        except PendingPlanError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     event_queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_event_loop()
 
     threading.Thread(
-        target=lambda: _run_worker(session, req.prompt, event_queue, loop),
+        target=lambda: _run_worker(
+            session, req.prompt, event_queue, loop, initial_plan
+        ),
         daemon=True,
         name="pearl-run",
     ).start()
@@ -291,9 +305,51 @@ def _run_worker(
     prompt: str,
     queue: asyncio.Queue,
     loop: asyncio.AbstractEventLoop,
+    initial_plan: list | None = None,
 ) -> None:
-    session.run_autonomous_stream(prompt, queue)
+    session.run_autonomous_stream(prompt, queue, initial_plan=initial_plan)
     asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+
+
+# ------------------------------------------------------------------ plan
+
+
+class PlanRequest(BaseModel):
+    prompt: str
+
+
+@app.post("/api/plan")
+async def plan_only(req: PlanRequest, request: Request) -> JSONResponse:
+    """
+    Return the steps Pearl would run, without running them.
+
+    The steps are returned for display and also kept on the session
+    against `planId`. To execute them the caller passes that id back to
+    /api/run, and never the steps themselves: accepting a step list over
+    HTTP would be a path from untrusted input straight to tool
+    execution.
+    """
+    session = get_session(request)
+
+    if session.is_running():
+        raise HTTPException(status_code=409, detail="A run is already in progress.")
+
+    try:
+        steps = session.plan_only(req.prompt)
+    except Exception as exc:
+        # Planning failures are the user's problem to see, not a 500:
+        # an ambiguous request or an unreachable model both land here.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    plan_id = session.store_plan(steps)
+    return JSONResponse(
+        {
+            "planId": plan_id,
+            "steps": [
+                {"tool": step.tool_name, "arguments": step.kwargs} for step in steps
+            ],
+        }
+    )
 
 
 # ------------------------------------------------------------------ approval

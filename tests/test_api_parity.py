@@ -19,6 +19,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from src.api.session import PendingPlanError
+from src.llm.parser import ToolCall
+
 
 @pytest.fixture
 def workspace(tmp_path, monkeypatch):
@@ -411,3 +414,144 @@ class TestMemory:
             r = client.get("/api/memory", headers={"Authorization": "Bearer tok-alice"})
 
         assert r.status_code == 200
+
+
+class TestPlanPreview:
+    """
+    The preview must run the plan it showed, and the browser must never
+    be able to hand the executor a step list of its own.
+    """
+
+    @pytest.fixture
+    def planned(self, server, monkeypatch):
+        """Stub the planner so no model is needed."""
+        steps = [ToolCall(tool_name="read_file", args=(), kwargs={"path": "main.py"})]
+        monkeypatch.setattr(
+            server.get_session().planner, "plan", lambda prompt, **kw: steps
+        )
+        return server
+
+    def test_returns_an_id_and_the_steps(self, planned):
+        with TestClient(planned.app) as client:
+            body = client.post("/api/plan", json={"prompt": "read main"}).json()
+
+        assert body["planId"]
+        assert body["steps"] == [
+            {"tool": "read_file", "arguments": {"path": "main.py"}}
+        ]
+
+    def test_planning_alone_executes_nothing(self, planned, workspace):
+        before = _snapshot(workspace)
+
+        with TestClient(planned.app) as client:
+            client.post("/api/plan", json={"prompt": "read main"})
+
+        assert _snapshot(workspace) == before
+
+    def test_a_planning_failure_is_a_400(self, server, monkeypatch):
+        def _boom(prompt, **kw):
+            raise RuntimeError("model unreachable")
+
+        monkeypatch.setattr(server.get_session().planner, "plan", _boom)
+
+        with TestClient(server.app) as client:
+            r = client.post("/api/plan", json={"prompt": "read main"})
+
+        assert r.status_code == 400
+        assert "model unreachable" in r.json()["detail"]
+
+
+class TestPlanIdLifecycle:
+    """
+    Section 5 of the spec. Every one of these returns 400 rather than
+    falling back to planning: a silent fallback would run something the
+    user never saw.
+    """
+
+    def test_an_unknown_id_is_refused(self, client):
+        r = client.post("/api/run", json={"prompt": "go", "planId": "nope"})
+
+        assert r.status_code == 400
+        assert "plan" in r.json()["detail"].lower()
+
+    def test_a_plan_is_consumed_on_first_use(self, server):
+        session = server.get_session()
+        plan_id = session.store_plan(
+            [ToolCall(tool_name="read_file", args=(), kwargs={"path": "main.py"})]
+        )
+
+        session.take_plan(plan_id)
+
+        with pytest.raises(PendingPlanError):
+            session.take_plan(plan_id)
+
+    def test_a_new_plan_replaces_the_previous_one(self, server):
+        session = server.get_session()
+        step = ToolCall(tool_name="read_file", args=(), kwargs={"path": "main.py"})
+        first = session.store_plan([step])
+        session.store_plan([step])
+
+        with pytest.raises(PendingPlanError):
+            session.take_plan(first)
+
+    def test_an_expired_plan_is_refused(self, server, monkeypatch):
+        session = server.get_session()
+        plan_id = session.store_plan(
+            [ToolCall(tool_name="read_file", args=(), kwargs={"path": "main.py"})]
+        )
+
+        # Jump past the TTL rather than sleeping through it.
+        import src.api.session as session_module
+
+        real = session_module.time.monotonic
+        monkeypatch.setattr(
+            session_module.time,
+            "monotonic",
+            lambda: real() + session.PLAN_TTL_SECONDS + 1,
+        )
+
+        with pytest.raises(PendingPlanError):
+            session.take_plan(plan_id)
+
+    def test_one_users_plan_id_is_useless_to_another(self, server, monkeypatch):
+        """
+        Not enforced by a check that could be forgotten: the plan lives
+        on the session object, and sessions are already per user.
+        """
+        alice = server.get_session()
+        plan_id = alice.store_plan(
+            [ToolCall(tool_name="read_file", args=(), kwargs={"path": "main.py"})]
+        )
+        monkeypatch.setenv("PEARL_AUTH_TOKENS", "tok-alice:alice,tok-bob:bob")
+
+        with TestClient(server.app) as client:
+            r = client.post(
+                "/api/run",
+                json={"prompt": "go", "planId": plan_id},
+                headers={"Authorization": "Bearer tok-bob"},
+            )
+
+        assert r.status_code == 400
+
+
+class TestRunWithoutAPlanIsUnchanged:
+    def test_run_still_accepts_a_bare_prompt(self, server, monkeypatch):
+        """
+        The default path. `planId` omitted means the executor plans for
+        itself, exactly as before this endpoint existed.
+        """
+        captured = {}
+
+        def _fake_stream(prompt, queue, initial_plan=None):
+            captured["prompt"] = prompt
+            captured["initial_plan"] = initial_plan
+            queue.put_nowait(None)
+
+        monkeypatch.setattr(server.get_session(), "run_autonomous_stream", _fake_stream)
+
+        with TestClient(server.app) as client:
+            r = client.post("/api/run", json={"prompt": "go"})
+            r.read()
+
+        assert r.status_code == 200
+        assert captured["initial_plan"] is None
