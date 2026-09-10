@@ -204,3 +204,158 @@ class TestReadRoutesAreNotGated:
 
         # 400 for the unknown id, not 403: the route itself is reachable.
         assert r.status_code == 400
+
+
+class TestMutatingRoutesAreGated:
+    """
+    Section 9 of the spec. Checkpoints cannot have an ownership model
+    while every user shares one workspace: the store is keyed by
+    workspace path, and changing the workspace is already refused once
+    auth is configured, so one user restoring rolls back the files
+    everyone else is working in.
+
+    The mutating routes therefore refuse under exactly the condition
+    that already guards `POST /api/workspace`.
+    """
+
+    ROUTES = [
+        ("post", "/api/checkpoints", {"label": "x"}),
+        ("patch", "/api/checkpoints/deadbeef", {"label": "x"}),
+        ("delete", "/api/checkpoints/deadbeef", None),
+        ("post", "/api/checkpoints/deadbeef/restore", None),
+    ]
+
+    @pytest.mark.parametrize("method,path,body", ROUTES)
+    def test_refused_when_auth_is_configured(
+        self, server, monkeypatch, method, path, body
+    ):
+        monkeypatch.setenv("PEARL_AUTH_TOKENS", "tok-alice:alice")
+
+        with TestClient(server.app) as client:
+            kwargs = {"headers": {"Authorization": "Bearer tok-alice"}}
+            if body is not None:
+                kwargs["json"] = body
+            r = getattr(client, method)(path, **kwargs)
+
+        assert r.status_code == 403
+        assert "shared instance" in r.json()["detail"]
+
+    @pytest.mark.parametrize("method,path,body", ROUTES)
+    def test_refused_in_public_mode(self, server, monkeypatch, method, path, body):
+        monkeypatch.setenv("PEARL_PUBLIC_MODE", "true")
+
+        with TestClient(server.app) as client:
+            kwargs = {"json": body} if body is not None else {}
+            r = getattr(client, method)(path, **kwargs)
+
+        assert r.status_code == 403
+
+    def test_allowed_on_a_local_single_user_run(self, client):
+        """
+        The gate must cost the ordinary case nothing. Almost every Pearl
+        user runs it on their own machine with no auth at all.
+        """
+        r = client.post("/api/checkpoints", json={"label": "Manual"})
+
+        assert r.status_code == 200
+
+
+class TestSharedStoreIsNotIsolated:
+    """
+    Documents the constraint rather than pretending it away.
+
+    If per-user workspaces ever arrive this test fails, which is exactly
+    when the gate above should be reconsidered.
+    """
+
+    def test_one_users_checkpoint_is_visible_to_another(self, server, monkeypatch):
+        server.get_session().checkpoints.create("Alice was here")
+        monkeypatch.setenv("PEARL_AUTH_TOKENS", "tok-alice:alice,tok-bob:bob")
+
+        with TestClient(server.app) as client:
+            bob = client.get(
+                "/api/checkpoints",
+                headers={"Authorization": "Bearer tok-bob"},
+            ).json()
+
+        assert [c["label"] for c in bob["checkpoints"]] == ["Alice was here"]
+
+
+class TestCheckpointMutation:
+    def test_create_returns_the_new_checkpoint(self, client):
+        body = client.post("/api/checkpoints", json={"label": "Manual"}).json()
+
+        assert body["checkpoint"]["label"] == "Manual"
+        assert set(body["checkpoint"]) == {"id", "shortId", "label", "createdAt"}
+
+    def test_create_without_a_label_uses_a_default(self, client):
+        body = client.post("/api/checkpoints", json={}).json()
+
+        assert body["checkpoint"]["label"] == "Manual checkpoint"
+
+    def test_create_with_nothing_to_capture_returns_null(self, server, client):
+        """
+        `CheckpointManager.create` returns None when the workspace has
+        not changed since the last snapshot. The route reports that
+        honestly instead of inventing an empty checkpoint.
+        """
+        server.get_session().checkpoints.create("First")
+
+        body = client.post("/api/checkpoints", json={"label": "Second"}).json()
+
+        assert body["checkpoint"] is None
+
+    def test_rename_changes_the_label(self, server, client):
+        cp = server.get_session().checkpoints.create("Old name")
+
+        body = client.patch(
+            f"/api/checkpoints/{cp.id}", json={"label": "New name"}
+        ).json()
+
+        assert body["checkpoint"]["label"] == "New name"
+
+    def test_rename_requires_a_label(self, server, client):
+        cp = server.get_session().checkpoints.create("Old name")
+
+        r = client.patch(f"/api/checkpoints/{cp.id}", json={"label": ""})
+
+        assert r.status_code == 422
+
+    def test_delete_hides_it_from_the_listing(self, server, client):
+        cp = server.get_session().checkpoints.create("Doomed")
+
+        assert client.delete(f"/api/checkpoints/{cp.id}").json() == {"deleted": True}
+        assert client.get("/api/checkpoints").json()["checkpoints"] == []
+
+    def test_unknown_id_is_a_400_on_every_mutating_route(self, client):
+        assert (
+            client.patch("/api/checkpoints/deadbeef", json={"label": "x"}).status_code
+            == 400
+        )
+        assert client.delete("/api/checkpoints/deadbeef").status_code == 400
+        assert client.post("/api/checkpoints/deadbeef/restore").status_code == 400
+
+
+class TestRestore:
+    def test_restore_puts_the_file_back(self, server, workspace, client):
+        cp = server.get_session().checkpoints.create("Before the edit")
+        (workspace / "main.py").write_text("print('changed')\n", encoding="utf-8")
+
+        body = client.post(f"/api/checkpoints/{cp.id}/restore").json()
+
+        assert body["changedAnything"] is True
+        assert (workspace / "main.py").read_text(encoding="utf-8") == "print('hello')\n"
+
+    def test_restore_removes_files_created_since(self, server, workspace, client):
+        """
+        The reason restore is preview-then-confirm rather than one
+        click. A file created after the snapshot is deleted by the
+        restore, and the user has to be shown that before it happens.
+        """
+        cp = server.get_session().checkpoints.create("Before the edit")
+        (workspace / "scratch.py").write_text("# new\n", encoding="utf-8")
+
+        body = client.post(f"/api/checkpoints/{cp.id}/restore").json()
+
+        assert "scratch.py" in body["removed"]
+        assert not (workspace / "scratch.py").exists()

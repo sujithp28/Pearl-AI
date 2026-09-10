@@ -3,6 +3,7 @@
 
 import {
   closeCheckpoints,
+  initCheckpoints,
   openCheckpoints,
 } from "./checkpoints.js";
 import { applyMode, initCodeMode } from "./code.js";
@@ -40,6 +41,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   renderSidebar();
   wire();
   initCodeMode();
+  initCheckpoints();
   applyMode();
   pollStatus();
   loadProvider();

@@ -33,7 +33,7 @@ from typing import Any, AsyncIterator
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.agent.completion import CompletionService
 from src.agent.session_manager import get_session_manager
@@ -339,6 +339,117 @@ async def checkpoints_list(
     return JSONResponse(
         {"checkpoints": [checkpoint_to_dict(c) for c in checkpoints]}
     )
+
+
+def _refuse_on_shared_instance() -> None:
+    """
+    Refuse a checkpoint mutation when Pearl is serving more than one
+    person.
+
+    Checkpoints cannot have an ownership model here. The store is keyed
+    by workspace path and `POST /api/workspace` already refuses under
+    this same condition, so every user of a shared instance is pinned to
+    one workspace and therefore one store. There are no per-user
+    snapshots to own: one person restoring rolls back the files everyone
+    else is working in.
+
+    Reading stays open. Seeing what exists is how a user understands why
+    the rest refuses.
+    """
+    if auth_required() or public_mode():
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Changing checkpoints is disabled on a shared instance. "
+                "Every user shares one workspace, so a restore would roll "
+                "back everyone's files."
+            ),
+        )
+
+
+class CreateCheckpointRequest(BaseModel):
+    label: str = "Manual checkpoint"
+
+
+class RenameCheckpointRequest(BaseModel):
+    # Empty is rejected as a validation error rather than reaching the
+    # store, which would accept it and leave a nameless checkpoint.
+    label: str = Field(min_length=1)
+
+
+@app.post("/api/checkpoints")
+async def checkpoint_create(
+    req: CreateCheckpointRequest, request: Request
+) -> JSONResponse:
+    """
+    Snapshot the workspace on demand.
+
+    The same store, and the same manager, that the executor checkpoints
+    into automatically before writing.
+    """
+    _refuse_on_shared_instance()
+    session = get_session(request)
+    try:
+        checkpoint = session.checkpoints.create(req.label)
+    except CheckpointError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # None means nothing changed since the last snapshot. Reported as
+    # null rather than invented, so the UI can say so.
+    return JSONResponse(
+        {
+            "checkpoint": (
+                checkpoint_to_dict(checkpoint) if checkpoint is not None else None
+            )
+        }
+    )
+
+
+@app.patch("/api/checkpoints/{checkpoint_id}")
+async def checkpoint_rename(
+    checkpoint_id: str, req: RenameCheckpointRequest, request: Request
+) -> JSONResponse:
+    """Change a checkpoint's display label."""
+    _refuse_on_shared_instance()
+    session = get_session(request)
+    try:
+        checkpoint = session.checkpoints.rename(checkpoint_id, req.label)
+    except CheckpointError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse({"checkpoint": checkpoint_to_dict(checkpoint)})
+
+
+@app.delete("/api/checkpoints/{checkpoint_id}")
+async def checkpoint_delete(checkpoint_id: str, request: Request) -> JSONResponse:
+    """
+    Hide a checkpoint from listing and future restores.
+
+    Never rewrites git history: see `CheckpointManager.delete`.
+    """
+    _refuse_on_shared_instance()
+    session = get_session(request)
+    try:
+        session.checkpoints.delete(checkpoint_id)
+    except CheckpointError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse({"deleted": True})
+
+
+@app.post("/api/checkpoints/{checkpoint_id}/restore")
+async def checkpoint_restore(checkpoint_id: str, request: Request) -> JSONResponse:
+    """
+    Restore the workspace to a checkpoint.
+
+    Destructive: files created since the snapshot are removed. The
+    browser calls the preview route and gets a confirmation before it
+    calls this one.
+    """
+    _refuse_on_shared_instance()
+    session = get_session(request)
+    try:
+        report = session.checkpoints.restore(checkpoint_id)
+    except CheckpointError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(restore_report_to_dict(report))
 
 
 @app.get("/api/checkpoints/{checkpoint_id}/restore-preview")
