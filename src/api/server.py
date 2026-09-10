@@ -471,6 +471,26 @@ async def checkpoint_restore_preview(
     return JSONResponse(restore_report_to_dict(report))
 
 
+# ------------------------------------------------------------------ memory
+
+
+@app.get("/api/memory")
+async def memory(request: Request) -> JSONResponse:
+    """
+    What Pearl remembers for the calling user: conversation, tasks,
+    project facts, and execution history.
+
+    Read-only, and reuses `Memory.to_dict()` exactly as the protocol
+    adapter does, so the extension and the browser cannot describe the
+    same session differently. Nothing here mutates memory.
+
+    No shared-instance gate: unlike checkpoints, memory belongs to the
+    caller's own session rather than to the shared workspace.
+    """
+    session = get_session(request)
+    return JSONResponse(session.memory.to_dict())
+
+
 # ------------------------------------------------------------------ patches
 
 

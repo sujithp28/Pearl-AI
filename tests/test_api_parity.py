@@ -359,3 +359,55 @@ class TestRestore:
 
         assert "scratch.py" in body["removed"]
         assert not (workspace / "scratch.py").exists()
+
+
+class TestMemory:
+    """
+    Read-only view of what Pearl remembers: the conversation, the tasks
+    it has been given, facts about the project, and what it has actually
+    executed.
+
+    It reuses `Memory.to_dict()` exactly as the protocol adapter does,
+    so the two surfaces cannot describe the same session differently.
+    """
+
+    def test_returns_the_four_memory_sections(self, client):
+        body = client.get("/api/memory").json()
+
+        assert set(body) == {"conversation", "tasks", "project", "execution_history"}
+
+    def test_an_empty_session_returns_empty_sections(self, client):
+        body = client.get("/api/memory").json()
+
+        assert body["conversation"] == []
+        assert body["tasks"] == []
+        assert body["execution_history"] == []
+
+    def test_recorded_turns_are_visible(self, server, client):
+        server.get_session().memory.record_turn("user", "rename the registry")
+
+        body = client.get("/api/memory").json()
+
+        assert len(body["conversation"]) == 1
+        assert body["conversation"][0]["content"] == "rename the registry"
+
+    def test_reading_memory_does_not_change_it(self, server, client):
+        session = server.get_session()
+        session.memory.record_turn("user", "rename the registry")
+        before = session.memory.to_dict()
+
+        client.get("/api/memory")
+
+        assert session.memory.to_dict() == before
+
+    def test_is_available_on_a_shared_instance(self, server, monkeypatch):
+        """
+        Read-only, and scoped to the caller's own session rather than
+        the shared workspace, so it needs no section 9 gate.
+        """
+        monkeypatch.setenv("PEARL_AUTH_TOKENS", "tok-alice:alice")
+
+        with TestClient(server.app) as client:
+            r = client.get("/api/memory", headers={"Authorization": "Bearer tok-alice"})
+
+        assert r.status_code == 200

@@ -7,6 +7,7 @@ import {
   openCheckpoints,
 } from "./checkpoints.js";
 import { applyMode, initCodeMode } from "./code.js";
+import { closeMemory, openMemory } from "./memory.js";
 import {
   cancel,
   loadStore,
@@ -59,6 +60,9 @@ function wire() {
   g('ws-badge').addEventListener('click', openSettings);
   g('settings-btn').addEventListener('click', openSettings);
   g('cp-btn').addEventListener('click', openCheckpoints);
+  g('mem-btn').addEventListener('click', openMemory);
+  g('mem-close').addEventListener('click', closeMemory);
+  g('mem-modal').addEventListener('click', e => { if (e.target === g('mem-modal')) closeMemory(); });
   g('cp-close').addEventListener('click', closeCheckpoints);
   g('cp-modal').addEventListener('click', e => { if (e.target === g('cp-modal')) closeCheckpoints(); });
   g('sd-cancel').addEventListener('click', closeSettings);
@@ -85,7 +89,7 @@ function wire() {
     c.addEventListener('click', () => { inputTxt.value = c.dataset.prompt; resize(); submit(); });
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeSettings(); closeCheckpoints(); }
+    if (e.key === 'Escape') { closeSettings(); closeCheckpoints(); closeMemory(); }
     if (e.key === '/' && document.activeElement !== inputTxt && !g('settings-modal').classList.contains('open')) {
       e.preventDefault(); inputTxt.focus();
     }
