@@ -30,13 +30,14 @@ import threading
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from src.agent.completion import CompletionService
 from src.agent.session_manager import get_session_manager
-from src.api.session import PearlSession, register_loop
+from src.api.session import PearlSession, PendingPlanError, register_loop
 from src.api.tenancy import (
     LOCAL_USER,
     AuthenticationError,
@@ -45,6 +46,13 @@ from src.api.tenancy import (
     public_mode,
     resolve_user,
 )
+from src.personality import PersonalityManager
+from src.personality.timeline import TIMELINE_EVENT_KINDS
+from src.tools.checkpoint_serialize import (
+    checkpoint_to_dict,
+    restore_report_to_dict,
+)
+from src.tools.checkpoints import CheckpointError
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +150,20 @@ async def serve_ui() -> HTMLResponse:
     return HTMLResponse(ui_file.read_text(encoding="utf-8"))
 
 
+# The browser loads the UI as ES modules, so index.html is no longer the
+# whole front end and cannot be served on its own.
+#
+# Mounted at /js rather than at / so it cannot shadow an API route: a
+# static mount at the root would answer before every /api/* handler
+# below it.
+_UI_JS_DIR = _UI_DIR / "js"
+
+if _UI_JS_DIR.is_dir():
+    app.mount("/js", StaticFiles(directory=_UI_JS_DIR), name="ui-js")
+else:  # pragma: no cover - only in a truncated checkout
+    logger.warning("Pearl UI modules not found at %s.", _UI_JS_DIR)
+
+
 # ------------------------------------------------------------------ status
 
 
@@ -237,6 +259,9 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
 
 class RunRequest(BaseModel):
     prompt: str
+    # The plan the user approved in a preview. Omitted, the
+    # executor plans for itself exactly as it always has.
+    planId: str | None = None
 
 
 @app.post("/api/run")
@@ -246,11 +271,22 @@ async def run_autonomous(req: RunRequest, request: Request) -> StreamingResponse
     if session.is_running():
         raise HTTPException(status_code=409, detail="A run is already in progress.")
 
+    # Resolved before the run starts, so a stale id is a plain 400
+    # rather than a failure buried in the event stream.
+    initial_plan = None
+    if req.planId is not None:
+        try:
+            initial_plan = session.take_plan(req.planId)
+        except PendingPlanError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     event_queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_event_loop()
 
     threading.Thread(
-        target=lambda: _run_worker(session, req.prompt, event_queue, loop),
+        target=lambda: _run_worker(
+            session, req.prompt, event_queue, loop, initial_plan
+        ),
         daemon=True,
         name="pearl-run",
     ).start()
@@ -271,9 +307,51 @@ def _run_worker(
     prompt: str,
     queue: asyncio.Queue,
     loop: asyncio.AbstractEventLoop,
+    initial_plan: list | None = None,
 ) -> None:
-    session.run_autonomous_stream(prompt, queue)
+    session.run_autonomous_stream(prompt, queue, initial_plan=initial_plan)
     asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+
+
+# ------------------------------------------------------------------ plan
+
+
+class PlanRequest(BaseModel):
+    prompt: str
+
+
+@app.post("/api/plan")
+async def plan_only(req: PlanRequest, request: Request) -> JSONResponse:
+    """
+    Return the steps Pearl would run, without running them.
+
+    The steps are returned for display and also kept on the session
+    against `planId`. To execute them the caller passes that id back to
+    /api/run, and never the steps themselves: accepting a step list over
+    HTTP would be a path from untrusted input straight to tool
+    execution.
+    """
+    session = get_session(request)
+
+    if session.is_running():
+        raise HTTPException(status_code=409, detail="A run is already in progress.")
+
+    try:
+        steps = session.plan_only(req.prompt)
+    except Exception as exc:
+        # Planning failures are the user's problem to see, not a 500:
+        # an ambiguous request or an unreachable model both land here.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    plan_id = session.store_plan(steps)
+    return JSONResponse(
+        {
+            "planId": plan_id,
+            "steps": [
+                {"tool": step.tool_name, "arguments": step.kwargs} for step in steps
+            ],
+        }
+    )
 
 
 # ------------------------------------------------------------------ approval
@@ -298,6 +376,205 @@ async def cancel(request: Request) -> JSONResponse:
     session = get_session(request)
     cancelled = session.cancel()
     return JSONResponse({"cancelled": cancelled})
+
+
+# ------------------------------------------------------------------ checkpoints
+
+
+@app.get("/api/checkpoints")
+async def checkpoints_list(
+    request: Request,
+    limit: int = Query(50, gt=0, description="Newest N checkpoints."),
+) -> JSONResponse:
+    """
+    List this workspace's checkpoints, newest first.
+
+    Includes the ones Pearl takes automatically before every approved
+    write, which the browser has never been able to see.
+    """
+    session = get_session(request)
+    checkpoints = session.checkpoints.list(limit=limit)
+    return JSONResponse(
+        {"checkpoints": [checkpoint_to_dict(c) for c in checkpoints]}
+    )
+
+
+def _refuse_on_shared_instance() -> None:
+    """
+    Refuse a checkpoint mutation when Pearl is serving more than one
+    person.
+
+    Checkpoints cannot have an ownership model here. The store is keyed
+    by workspace path and `POST /api/workspace` already refuses under
+    this same condition, so every user of a shared instance is pinned to
+    one workspace and therefore one store. There are no per-user
+    snapshots to own: one person restoring rolls back the files everyone
+    else is working in.
+
+    Reading stays open. Seeing what exists is how a user understands why
+    the rest refuses.
+    """
+    if auth_required() or public_mode():
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Changing checkpoints is disabled on a shared instance. "
+                "Every user shares one workspace, so a restore would roll "
+                "back everyone's files."
+            ),
+        )
+
+
+class CreateCheckpointRequest(BaseModel):
+    label: str = "Manual checkpoint"
+
+
+class RenameCheckpointRequest(BaseModel):
+    # Empty is rejected as a validation error rather than reaching the
+    # store, which would accept it and leave a nameless checkpoint.
+    label: str = Field(min_length=1)
+
+
+@app.post("/api/checkpoints")
+async def checkpoint_create(
+    req: CreateCheckpointRequest, request: Request
+) -> JSONResponse:
+    """
+    Snapshot the workspace on demand.
+
+    The same store, and the same manager, that the executor checkpoints
+    into automatically before writing.
+    """
+    _refuse_on_shared_instance()
+    session = get_session(request)
+    try:
+        checkpoint = session.checkpoints.create(req.label)
+    except CheckpointError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # None means nothing changed since the last snapshot. Reported as
+    # null rather than invented, so the UI can say so.
+    return JSONResponse(
+        {
+            "checkpoint": (
+                checkpoint_to_dict(checkpoint) if checkpoint is not None else None
+            )
+        }
+    )
+
+
+@app.patch("/api/checkpoints/{checkpoint_id}")
+async def checkpoint_rename(
+    checkpoint_id: str, req: RenameCheckpointRequest, request: Request
+) -> JSONResponse:
+    """Change a checkpoint's display label."""
+    _refuse_on_shared_instance()
+    session = get_session(request)
+    try:
+        checkpoint = session.checkpoints.rename(checkpoint_id, req.label)
+    except CheckpointError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse({"checkpoint": checkpoint_to_dict(checkpoint)})
+
+
+@app.delete("/api/checkpoints/{checkpoint_id}")
+async def checkpoint_delete(checkpoint_id: str, request: Request) -> JSONResponse:
+    """
+    Hide a checkpoint from listing and future restores.
+
+    Never rewrites git history: see `CheckpointManager.delete`.
+    """
+    _refuse_on_shared_instance()
+    session = get_session(request)
+    try:
+        session.checkpoints.delete(checkpoint_id)
+    except CheckpointError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse({"deleted": True})
+
+
+@app.post("/api/checkpoints/{checkpoint_id}/restore")
+async def checkpoint_restore(checkpoint_id: str, request: Request) -> JSONResponse:
+    """
+    Restore the workspace to a checkpoint.
+
+    Destructive: files created since the snapshot are removed. The
+    browser calls the preview route and gets a confirmation before it
+    calls this one.
+    """
+    _refuse_on_shared_instance()
+    session = get_session(request)
+    try:
+        report = session.checkpoints.restore(checkpoint_id)
+    except CheckpointError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(restore_report_to_dict(report))
+
+
+@app.get("/api/checkpoints/{checkpoint_id}/restore-preview")
+async def checkpoint_restore_preview(
+    checkpoint_id: str, request: Request
+) -> JSONResponse:
+    """
+    Report what restoring would change, without changing anything.
+
+    Separate from the restore itself because restoring can delete files
+    created since the snapshot. The browser shows this and asks, the
+    same way Pearl shows a diff before writing.
+    """
+    session = get_session(request)
+    try:
+        report = session.checkpoints.preview_restore(checkpoint_id)
+    except CheckpointError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(restore_report_to_dict(report))
+
+
+# ------------------------------------------------------------------ personality
+
+
+@app.get("/api/personality")
+async def personality_labels() -> JSONResponse:
+    """
+    The configured personality's wording for each plan-preview stage.
+
+    Stage names come from `TIMELINE_EVENT_KINDS`, shared with the
+    protocol adapter, so the extension and the browser cannot disagree
+    about what Pearl is currently doing.
+
+    The manager is built per request rather than cached. It reads
+    `Settings` at construction, so a cached one would freeze the
+    personality at import time, and `format()` is a couple of dict
+    lookups either way.
+    """
+    manager = PersonalityManager()
+    return JSONResponse(
+        {
+            "labels": {
+                stage: manager.format(kind)
+                for stage, kind in TIMELINE_EVENT_KINDS.items()
+            }
+        }
+    )
+
+
+# ------------------------------------------------------------------ memory
+
+
+@app.get("/api/memory")
+async def memory(request: Request) -> JSONResponse:
+    """
+    What Pearl remembers for the calling user: conversation, tasks,
+    project facts, and execution history.
+
+    Read-only, and reuses `Memory.to_dict()` exactly as the protocol
+    adapter does, so the extension and the browser cannot describe the
+    same session differently. Nothing here mutates memory.
+
+    No shared-instance gate: unlike checkpoints, memory belongs to the
+    caller's own session rather than to the shared workspace.
+    """
+    session = get_session(request)
+    return JSONResponse(session.memory.to_dict())
 
 
 # ------------------------------------------------------------------ patches

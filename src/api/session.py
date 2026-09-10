@@ -11,6 +11,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +32,7 @@ from src.agent.synthesizer import Synthesizer
 from src.agent.verification import VerificationEngine
 from src.config.settings import Settings
 from src.llm.errors import ContextLengthError
+from src.llm.parser import ToolCall
 from src.llm.router import ModelRouter
 from src.main import build_registry
 from src.memory import Memory
@@ -40,6 +43,13 @@ from src.tools.checkpoints import CheckpointManager
 from src.tools.repo_tools import build_startup_index
 
 logger = logging.getLogger(__name__)
+
+
+class PendingPlanError(RuntimeError):
+    """
+    A plan id did not name a usable pending plan: unknown, already
+    consumed, replaced by a newer plan, or expired.
+    """
 
 
 class PearlSession:
@@ -56,7 +66,14 @@ class PearlSession:
         self.registry = build_registry()
         self.dispatcher = ToolDispatcher(self.registry)
         self.memory = Memory()
-        self.checkpoints = CheckpointManager()
+        # Bound to this session's workspace, not to the process working
+        # directory. The bare `CheckpointManager()` defaults to
+        # `Path.cwd()`, which is the same directory only when Pearl was
+        # launched from inside the project — so it looked right in
+        # ordinary use while snapshotting the wrong tree whenever
+        # `--workspace` pointed elsewhere, or after the workspace was
+        # changed from the settings dialog.
+        self.checkpoints = CheckpointManager(self.workspace)
 
         router = ModelRouter()
         self._planning_llm = router.planning_client()
@@ -99,6 +116,9 @@ class PearlSession:
         self._executor_lock = threading.Lock()
         # Prompt of the current/most-recent run, needed for post-approval synthesis.
         self._current_prompt: str = ""
+
+        self._pending_plan: tuple[str, list[ToolCall], float] | None = None
+        self._plan_lock = threading.Lock()
 
         # Build startup index in background
         threading.Thread(
@@ -210,7 +230,83 @@ class PearlSession:
                 return []
             return self._executor.patch_manager.affected_files()
 
-    def run_autonomous_stream(self, prompt: str, event_queue: asyncio.Queue):
+    # ---------------------------------------------------------------
+    # Pending plan (plan preview)
+    # ---------------------------------------------------------------
+    #
+    # A plan the user has been shown and may approve. Held here, on the
+    # session, rather than in a process-global map: sessions are already
+    # one per user, so a plan is unreachable from another user's session
+    # by construction rather than by a check someone could forget.
+    #
+    # At most one is pending. Producing a new plan replaces it, because
+    # a user who re-plans has abandoned the previous preview.
+    #
+    # In memory only. A plan does not survive a restart, and does not
+    # need to: re-planning is one request.
+
+    PLAN_TTL_SECONDS = 600
+
+    def store_plan(self, steps: list[ToolCall]) -> str:
+        """
+        Remember `steps` for a later run and return its id.
+
+        The id is a lookup key in this session's memory, not a
+        capability token. It grants nothing on its own and is useless in
+        another session.
+        """
+        plan_id = uuid.uuid4().hex
+        with self._plan_lock:
+            self._pending_plan = (plan_id, list(steps), time.monotonic())
+        return plan_id
+
+    def take_plan(self, plan_id: str) -> list[ToolCall]:
+        """
+        Consume the pending plan, or raise `PendingPlanError`.
+
+        Consumed on first successful use, so one approval runs once.
+
+        Raises rather than falling back to planning. A silent fallback
+        would run something the user never saw, which is the failure
+        this whole mechanism exists to prevent.
+        """
+        with self._plan_lock:
+            pending = self._pending_plan
+
+            if pending is None:
+                raise PendingPlanError("No plan is pending. Re-plan and try again.")
+
+            stored_id, steps, created = pending
+
+            if stored_id != plan_id:
+                raise PendingPlanError(
+                    "That plan is no longer pending; a newer one replaced it."
+                )
+
+            # A plan reflects the workspace as the planner read it. One
+            # the user walked away from an hour ago should not be a
+            # click away from executing.
+            if time.monotonic() - created > self.PLAN_TTL_SECONDS:
+                self._pending_plan = None
+                raise PendingPlanError("That plan expired. Re-plan and try again.")
+
+            self._pending_plan = None
+            return steps
+
+    def plan_only(self, prompt: str) -> list[ToolCall]:
+        """
+        Produce a plan without executing anything.
+
+        Nothing is dispatched and nothing is recorded in Memory.
+        """
+        return list(self.planner.plan(prompt))
+
+    def run_autonomous_stream(
+        self,
+        prompt: str,
+        event_queue: asyncio.Queue,
+        initial_plan: list[ToolCall] | None = None,
+    ):
         """
         Run an autonomous task in the current thread, publishing
         structured events onto `event_queue` so the SSE handler can
@@ -298,7 +394,7 @@ class PearlSession:
         report = None
         while report is None:
             try:
-                report = executor.run(prompt)
+                report = executor.run(prompt, initial_plan=initial_plan)
             except ContextLengthError as exc:
                 if retries_left <= 0:
                     error_msg = (

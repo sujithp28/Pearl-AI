@@ -208,13 +208,19 @@ body {
 #conn-dot.ok { background: var(--suc); box-shadow: 0 0 5px rgba(34,197,94,.4); }
 #conn-dot.err { background: var(--err); }
 #conn-label { font-size: 11.5px; color: var(--tx3); flex: 1; }
-#settings-btn {
+#settings-btn,
+#cp-btn,
+#mem-btn {
   width: 26px; height: 26px; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   color: var(--tx3); transition: background var(--ease), color var(--ease);
 }
-#settings-btn:hover { background: var(--surf2); color: var(--tx); }
-#settings-btn svg { width: 14px; height: 14px; }
+#settings-btn:hover,
+#cp-btn:hover,
+#mem-btn:hover { background: var(--surf2); color: var(--tx); }
+#settings-btn svg,
+#cp-btn svg,
+#mem-btn svg { width: 14px; height: 14px; }
 
 /* === Main === */
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100vh; background: var(--bg); }
@@ -629,13 +635,19 @@ body {
 #code-ghost { color: var(--tx3); opacity: .85; }
 
 /* === Settings modal === */
-#settings-modal {
+#settings-modal,
+#cp-modal,
+#mem-modal {
   display: none; position: fixed; inset: 0;
   background: rgba(0,0,0,.55); backdrop-filter: blur(6px);
   z-index: 100; align-items: center; justify-content: center;
 }
-#settings-modal.open { display: flex; }
-#settings-dlg {
+#settings-modal.open,
+#cp-modal.open,
+#mem-modal.open { display: flex; }
+#settings-dlg,
+#cp-dlg,
+#mem-dlg {
   background: var(--surf); border: 1px solid var(--b2);
   border-radius: 15px; padding: 24px; width: 420px;
   max-width: 90vw; max-height: 80vh; overflow-y: auto;
@@ -698,6 +710,65 @@ button:focus:not(:focus-visible) { outline: none; }
   #composer { padding: 8px 10px 12px; }
   #es-chips { max-width: 100%; }
 }
+/* Checkpoints list */
+#cp-dlg { width: 520px; }
+#cp-list { display: flex; flex-direction: column; gap: 1px; background: var(--b1); border: 1px solid var(--b1); border-radius: 9px; overflow: hidden; }
+.cp-row { background: var(--surf); padding: 10px 13px; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: baseline; }
+.cp-label { font-size: 13px; font-weight: 600; color: var(--tx); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-when { font-size: 11.5px; color: var(--tx3); font-variant-numeric: tabular-nums; }
+.cp-id { grid-column: 1 / -1; font-family: var(--mono, ui-monospace, monospace); font-size: 11px; color: var(--tx3); }
+.cp-empty { padding: 18px 13px; text-align: center; font-size: 12.5px; color: var(--tx3); line-height: 1.6; }
+.cp-row { grid-template-columns: 1fr auto auto; }
+.cp-acts { grid-column: 1 / -1; display: flex; gap: 6px; margin-top: 6px; }
+.cp-act {
+  font-size: 11.5px; padding: 3px 9px; border-radius: 6px;
+  border: 1px solid var(--b2); color: var(--tx2); background: transparent;
+  transition: background var(--ease), color var(--ease), border-color var(--ease);
+}
+.cp-act:hover:not(:disabled) { background: var(--surf2); color: var(--tx); }
+.cp-act:disabled { opacity: .55; }
+.cp-danger { border-color: var(--err); color: var(--err); }
+.cp-danger:hover:not(:disabled) { background: var(--err); color: #fff; }
+.cp-confirm { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; }
+.cp-confirm-txt { font-size: 12.5px; color: var(--tx2); margin: 0; line-height: 1.55; }
+.cp-confirm-acts { display: flex; gap: 6px; }
+.cp-files { font-size: 11.5px; color: var(--tx3); }
+.cp-files strong { display: block; color: var(--tx2); margin-bottom: 2px; font-weight: 600; }
+.cp-files ul { margin: 0; padding-left: 16px; }
+.cp-error { grid-column: 1 / -1; font-size: 11.5px; color: var(--err); padding-top: 6px; }
+#cp-head { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+#mem-dlg { width: 560px; }
+.mem-sec { margin-bottom: 16px; }
+.mem-item {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 6px 10px; border-bottom: 1px solid var(--b1); font-size: 12.5px;
+}
+.mem-item:last-child { border-bottom: 0; }
+.mem-txt { flex: 1; color: var(--tx2); overflow-wrap: anywhere; line-height: 1.5; }
+.mem-meta { font-size: 11px; color: var(--tx3); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+/* Plan preview */
+.plan-card {
+  border: 1px solid var(--b2); border-radius: 11px; background: var(--surf);
+  overflow: hidden; margin: 10px 0; animation: fadeUp .18s ease;
+}
+.plan-hd {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  border-bottom: 1px solid var(--b1); font-size: 13px; font-weight: 600;
+}
+.plan-body { padding: 4px 0; }
+.plan-step {
+  display: grid; grid-template-columns: 22px auto 1fr; gap: 10px;
+  align-items: baseline; padding: 6px 14px; font-size: 12.5px;
+}
+.plan-n { color: var(--tx3); font-variant-numeric: tabular-nums; font-size: 11px; }
+.plan-tool { font-weight: 600; color: var(--tx); }
+.plan-args { color: var(--tx3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-acts {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px; border-top: 1px solid var(--b1);
+}
+.plan-note { flex: 1; min-width: 200px; font-size: 11.5px; color: var(--tx3); line-height: 1.5; }
+.plan-outcome { padding: 10px 14px; border-top: 1px solid var(--b1); }
 </style>
 </head>
 <body>
@@ -741,6 +812,18 @@ button:focus:not(:focus-visible) { outline: none; }
         <div id="conn-dot" role="status" aria-live="polite"></div>
         <span id="conn-label" aria-live="polite">Connecting…</span>
         <span id="provider-badge" style="font-size:11px;color:var(--tx3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:right;padding-right:4px" aria-live="polite"></span>
+        <button id="mem-btn" aria-label="Open memory">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 2.5h6a1.5 1.5 0 0 1 1.5 1.5v9.5L8 11l-4.5 2.5V4A1.5 1.5 0 0 1 5 2.5z"/>
+          </svg>
+        </button>
+        <button id="cp-btn" aria-label="Open checkpoints">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M8 4v4l2.5 1.5"/>
+            <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/>
+            <path d="M2 3v2.5h2.5"/>
+          </svg>
+        </button>
         <button id="settings-btn" aria-label="Open settings">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
             <circle cx="8" cy="8" r="2.5"/>
@@ -892,1055 +975,36 @@ button:focus:not(:focus-visible) { outline: none; }
   </div>
 </div>
 
-<script>
-// ─── Config ──────────────────────────────────────────────────
-const STORE_KEY = 'pearl-convs-v3';
-const MAX_CONVS = 60;
-const POLL_MS   = 9000;
-
-// ─── State ───────────────────────────────────────────────────
-const S = {
-  mode:     'agent',
-  streaming: false,
-  id:       null,
-  convs:    [],
-  ws:       { path: '', name: '' },
-  ctrl:     null,
-};
-
-// ─── DOM refs ─────────────────────────────────────────────────
-const g  = id => document.getElementById(id);
-const mk = (t, c) => { const e = document.createElement(t); if (c) e.className = c; return e; };
-const msgInner = g('msg-inner');
-const emptySt  = g('empty-state');
-const sidebar  = g('sidebar');
-const sbList   = g('sb-list');
-const sbSearch = g('sb-search');
-const inputTxt = g('input-txt');
-const sendBtn  = g('send-btn');
-const stopBtn  = g('stop-btn');
-const connDot  = g('conn-dot');
-const connLbl  = g('conn-label');
-const wsName   = g('ws-name');
-const chatTtl  = g('chat-title');
-
-// ─── Boot ─────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', async () => {
-  await loadStore();
-  renderSidebar();
-  wire();
-  initCodeMode();
-  applyMode();
-  pollStatus();
-  loadProvider();
-  setInterval(pollStatus, POLL_MS);
-  resize();
-});
-
-// ─── Status ───────────────────────────────────────────────────
-async function pollStatus() {
-  try {
-    const d = await get('/api/status');
-    // Reachable is not the same as usable. A server whose interpreter
-    // lacks the model library answers /api/status perfectly while every
-    // actual request fails — showing a healthy "Connected" there sends
-    // the user hunting through their prompt instead of their setup.
-    if (d.model_ready === false) {
-      connDot.className = 'err';
-      connLbl.textContent = 'Model unavailable';
-      if (d.model_error && !S.modelWarned) {
-        S.modelWarned = true;
-        addErr(d.model_error);
-      }
-    } else {
-      connDot.className = 'ok';
-      connLbl.textContent = 'Connected';
-      S.modelWarned = false;
-    }
-    if (d.workspace) {
-      S.ws = d.workspace;
-      wsName.textContent = d.workspace.name || d.workspace.path;
-      g('sd-ws').value = d.workspace.path || '';
-    }
-  } catch {
-    connDot.className = 'err';
-    connLbl.textContent = 'Disconnected';
-  }
-}
-
-// ─── Wire ─────────────────────────────────────────────────────
-function wire() {
-  g('sb-toggle').addEventListener('click', () => {
-    const c = sidebar.classList.toggle('collapsed');
-    g('sb-toggle').setAttribute('aria-expanded', !c);
-  });
-  g('new-chat-btn').addEventListener('click', () => newChat());
-  g('ws-badge').addEventListener('click', openSettings);
-  g('settings-btn').addEventListener('click', openSettings);
-  g('sd-cancel').addEventListener('click', closeSettings);
-  g('sd-save').addEventListener('click', saveSettings);
-  g('settings-modal').addEventListener('click', e => { if (e.target === g('settings-modal')) closeSettings(); });
-  g('theme-btn').addEventListener('click', () => {
-    const t = document.documentElement.getAttribute('data-theme');
-    document.documentElement.setAttribute('data-theme', t === 'dark' ? 'light' : 'dark');
-  });
-  document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => {
-    S.mode = b.dataset.mode;
-    document.querySelectorAll('.mode-btn').forEach(x => {
-      x.classList.toggle('active', x.dataset.mode === S.mode);
-      x.setAttribute('aria-pressed', String(x.dataset.mode === S.mode));
-    });
-    applyMode();
-  }));
-  sendBtn.addEventListener('click', submit);
-  stopBtn.addEventListener('click', cancel);
-  inputTxt.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } });
-  inputTxt.addEventListener('input', resize);
-  sbSearch.addEventListener('input', () => renderSidebar(sbSearch.value.trim().toLowerCase()));
-  document.querySelectorAll('.es-chip').forEach(c => {
-    c.addEventListener('click', () => { inputTxt.value = c.dataset.prompt; resize(); submit(); });
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeSettings();
-    if (e.key === '/' && document.activeElement !== inputTxt && !g('settings-modal').classList.contains('open')) {
-      e.preventDefault(); inputTxt.focus();
-    }
-  });
-  g('sd-ws').addEventListener('keydown', e => { if (e.key === 'Enter') saveSettings(); });
-}
-
-function resize() {
-  inputTxt.style.height = 'auto';
-  inputTxt.style.height = Math.min(inputTxt.scrollHeight, 200) + 'px';
-}
-
-// ─── Submit ───────────────────────────────────────────────────
-function submit() {
-  const text = inputTxt.value.trim();
-  if (!text || S.streaming) return;
-  inputTxt.value = ''; resize();
-  hideEmpty(); ensureConv();
-  addUserMsg(text);
-  if (S.mode === 'chat') doChat(text);
-  else doRun(text);
-}
-
-function hideEmpty() { if (emptySt.parentNode) emptySt.remove(); }
-
-function setStreaming(v) {
-  S.streaming = v;
-  sendBtn.disabled = v;
-  stopBtn.classList.toggle('show', v);
-}
-
-async function cancel() {
-  if (S.ctrl) S.ctrl.abort();
-  try { await post('/api/cancel'); } catch {}
-  setStreaming(false);
-}
-
-// ─── Chat ─────────────────────────────────────────────────────
-async function doChat(message) {
-  setStreaming(true);
-  S.ctrl = new AbortController();
-  const { setText } = addPearlBubble();
-  let full = '';
-  let errored = false;
-  try {
-    const resp = await fetch('/api/chat', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ message }), signal: S.ctrl.signal,
-    });
-    for await (const ev of sse(resp)) {
-      if (ev.event === 'chunk') { full += ev.data.text || ''; setText(full, true); }
-      else if (ev.event === 'error') { errored = true; setText(ev.data.text || 'Error.', false); break; }
-      else if (ev.event === 'done') break;
-    }
-    if (!errored) { setText(full, false); saveMsg('assistant', full); }
-  } catch (e) { if (e.name !== 'AbortError') addErr(e.message); }
-  finally { setStreaming(false); }
-}
-
-// ─── Agent run ────────────────────────────────────────────────
-async function doRun(prompt) {
-  setStreaming(true);
-  S.ctrl = new AbortController();
-  const groupEl = makeGroup();
-  const stepMap = new Map();
-
-  try {
-    const resp = await fetch('/api/run', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt }), signal: S.ctrl.signal,
-    });
-    for await (const ev of sse(resp)) {
-      if (ev.event === 'progress') onProgress(ev.data, groupEl, stepMap);
-      else if (ev.event === 'result') await onResult(ev.data, groupEl, stepMap);
-      else if (ev.event === 'error') addErr(ev.data.message || 'Run failed.');
-      else if (ev.event === 'context_condensed') onContextCondensed(ev.data);
-      else if (ev.event === 'run_failed') { /* handled by error event */ }
-      else if (ev.event === 'run_complete') { /* handled by result event */ }
-      else if (ev.event === 'done') break;
-    }
-  } catch (e) { if (e.name !== 'AbortError') addErr(e.message); groupHdr(groupEl,'err','✕ Stopped',null,null); }
-  finally { setStreaming(false); }
-}
-
-function onProgress(d, g, map) {
-  const { status, currentStep: cs, totalSteps: ts, currentAction: ca } = d;
-  if (status === 'planning') groupHdr(g,'run','⚡ Planning…',cs,ts);
-  else if (status === 'executing_step') {
-    groupHdr(g,'run','⚡ Pearl is working',cs,ts);
-    if (ca) { const k = ca + (cs||0); if (!map.has(k)) { map.set(k, addStep(g,ca,'run','')); } }
-  } else if (status === 'step_completed') {
-    if (ca) { const k = ca + (cs||0); const el = map.get(k); if (el) doneStep(el, true); }
-  } else if (status === 'awaiting_approval') groupHdr(g,'warn','📋 Review required',cs,ts);
-  else if (status === 'task_completed') groupHdr(g,'ok','✓ Done',cs,ts);
-  // A run that ended in failure must not also render a green "Done" —
-  // the error card below it says the opposite.
-  else if (status === 'task_failed') groupHdr(g,'err','✕ Failed',cs,ts);
-  scrollBot();
-}
-
-async function onResult(d, grp, map) {
-  const r = d.report;
-  if (!r) return;
-  if (r.steps?.length) {
-    refreshSteps(grp, r.steps);
-    const ok = r.steps.every(s => s.succeeded);
-    groupHdr(grp, ok ? 'ok' : 'warn', ok ? `✓ Done — ${r.steps.length} step(s)` : '⚠ Some steps failed', r.steps.length, r.steps.length);
-  }
-  if (r.stop_reason === 'awaiting_approval') {
-    groupHdr(grp,'warn','📋 Changes ready for review',null,null);
-    await showDiff();
-  } else if (!r.succeeded) {
-    // Prefer a reason the user can act on. A planning failure produces no
-    // steps, so `fail` is undefined and the old fallback printed the bare
-    // stop_reason — "fatal_error" explains nothing. r.error carries what
-    // actually went wrong.
-    const fail = r.steps?.find(s => !s.succeeded);
-    addErr(r.error || fail?.error || `Stopped: ${r.stop_reason}`);
-    // The synthesizer's explanation was previously computed and discarded
-    // on every failure path, which is exactly when it is most useful.
-    if (r.final_answer) {
-      const { setText } = addPearlBubble();
-      setText(r.final_answer, false);
-      saveMsg('assistant', r.final_answer);
-    }
-  } else {
-    const txt = r.final_answer || bestOutput(r.steps);
-    if (txt) { const { setText } = addPearlBubble(); setText(txt, false); saveMsg('assistant', txt); }
-  }
-}
-
-function onContextCondensed(d) {
-  const saved = d.tokens_before && d.tokens_after
-    ? ` (~${Math.round((1 - d.tokens_after / d.tokens_before) * 100)}% tokens freed)`
-    : '';
-  addInfo(`Session history condensed${saved} to fit within context window.`);
-}
-
-function bestOutput(steps) {
-  if (!steps?.length) return null;
-  const textTools = ['explain_file','summarize_project','search_text','find_symbol','find_references','read_file'];
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const s = steps[i];
-    if (!s.succeeded) continue;
-    if (textTools.some(t => s.tool_name?.includes(t))) {
-      if (typeof s.result === 'string' && s.result.length > 50) return s.result.slice(0, 5000);
-      if (s.summary?.length > 20) return s.summary;
-    }
-  }
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const s = steps[i];
-    if (s.succeeded && typeof s.result === 'string' && s.result.length > 80) return s.result.slice(0, 5000);
-  }
-  return null;
-}
-
-// ─── Approval ─────────────────────────────────────────────────
-async function showDiff() {
-  let diff = '', files = [];
-  try { const p = await get('/api/patches'); diff = p.diff || ''; files = p.files || []; } catch {}
-  if (!files.length && !diff) return;
-  addDiffCard(diff, files);
-}
-async function approve(card) {
-  const ab = card.querySelector('.btn-approve');
-  ab.disabled = true; ab.textContent = 'Applying…';
-  try {
-    const r = await post('/api/approve');
-    card.remove();
-    if (r.steps !== undefined) addResultCard(r);
-    else addErr(r.error || 'Failed.');
-    if (r.final_answer) { const { setText } = addPearlBubble(); setText(r.final_answer, false); saveMsg('assistant', r.final_answer); }
-    else saveMsg('system','[Changes approved]');
-  } catch (e) { addErr(e.message); }
-}
-async function reject(card) {
-  try { await post('/api/reject'); } catch {}
-  card.remove();
-  addInfo('Changes rejected. Nothing written to disk.');
-  saveMsg('system','[Changes rejected]');
-}
-
-// ─── Tool group DOM ───────────────────────────────────────────
-function makeGroup() {
-  const w = mk('div','tool-group open msg-row msg-system');
-  w.innerHTML = `
-    <div class="tg-head" role="button" aria-expanded="true">
-      <span class="tg-icon spin">⟳</span>
-      <span class="tg-title">⚡ Pearl is working…</span>
-      <span class="tg-count"></span>
-      <span class="tg-chev" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6l4 4 4-4"/></svg></span>
+<!-- Checkpoints modal (read-only list) -->
+<div id="cp-modal" role="dialog" aria-modal="true" aria-labelledby="cp-ttl">
+  <div id="cp-dlg">
+    <h2 class="sd-ttl" id="cp-ttl">Checkpoints</h2>
+    <p class="sd-note" style="margin:-12px 0 14px">
+      Snapshots of this workspace, newest first. Pearl takes one automatically
+      before every approved write.
+    </p>
+    <div id="cp-head"><button class="cp-act" id="cp-new">New checkpoint</button></div>
+    <div id="cp-list" aria-live="polite"></div>
+    <div class="sd-btns">
+      <button class="sd-cancel" id="cp-close">Close</button>
     </div>
-    <div class="tg-body" role="list"></div>`;
-  w.querySelector('.tg-head').addEventListener('click', () => {
-    const o = w.classList.toggle('open');
-    w.querySelector('.tg-head').setAttribute('aria-expanded', String(o));
-  });
-  msgInner.appendChild(w);
-  scrollBot();
-  return w;
-}
-function groupHdr(w, st, title, cur, tot) {
-  const ic = w.querySelector('.tg-icon'), ti = w.querySelector('.tg-title'), cn = w.querySelector('.tg-count');
-  ti.textContent = title;
-  if (st === 'run') { ic.className = 'tg-icon spin'; ic.textContent = '⟳'; }
-  else if (st === 'ok')   { ic.className = 'tg-icon'; ic.textContent = '✓'; ic.style.color = 'var(--suc)'; }
-  else if (st === 'warn') { ic.className = 'tg-icon'; ic.textContent = '⚠'; ic.style.color = 'var(--warn)'; }
-  else if (st === 'err')  { ic.className = 'tg-icon'; ic.textContent = '✕'; ic.style.color = 'var(--err)'; }
-  if (cur != null && tot != null) cn.textContent = `${cur}/${tot}`;
-}
-function addStep(w, name, status, summary) {
-  const body = w.querySelector('.tg-body');
-  const el = mk('div','t-step'); el.setAttribute('role','listitem');
-  const icon = status === 'run' ? '<span class="ts-ic spin" style="color:var(--acc-l)">⟳</span>'
-             : status === 'ok'  ? '<span class="ts-ic" style="color:var(--suc)">✓</span>'
-             :                    '<span class="ts-ic" style="color:var(--err)">✕</span>';
-  el.innerHTML = `${icon}<span class="ts-nm">${esc(toolLabel(name))}</span><span class="ts-sm">${esc(summary||'')}</span>`;
-  body.appendChild(el);
-  return el;
-}
-function doneStep(el, ok) {
-  const ic = el.querySelector('.ts-ic');
-  if (ic) { ic.className = 'ts-ic'; ic.style.color = ok ? 'var(--suc)' : 'var(--err)'; ic.textContent = ok ? '✓' : '✕'; }
-}
-function refreshSteps(w, steps) {
-  const body = w.querySelector('.tg-body'); body.innerHTML = '';
-  steps.forEach(s => {
-    const el = mk('div','t-step'); el.setAttribute('role','listitem');
-    const ok = s.succeeded;
-    const out = s.result || s.error || '';
-    const hasOut = typeof out === 'string' && out.length > 0;
-    el.innerHTML = `
-      <span class="ts-ic" style="color:var(--${ok?'suc':'err'})">${ok?'✓':'✕'}</span>
-      <span class="ts-nm">${esc(toolLabel(s.tool_name))}</span>
-      <span class="ts-sm">${esc(s.summary||'')}</span>
-      ${hasOut ? `<button class="ts-exp" aria-label="Toggle output">▾</button>` : ''}`;
-    if (hasOut) {
-      const outEl = mk('div','ts-out');
-      outEl.textContent = typeof out === 'string' ? out : JSON.stringify(out,null,2);
-      el.querySelector('.ts-exp').addEventListener('click', ev => {
-        ev.stopPropagation();
-        outEl.classList.toggle('show');
-        ev.target.textContent = outEl.classList.contains('show') ? '▴' : '▾';
-      });
-      el.appendChild(outEl);
-    }
-    body.appendChild(el);
-  });
-}
+  </div>
+</div>
 
-// ─── Message DOM helpers ──────────────────────────────────────
-function addUserMsg(text) {
-  const r = mk('div','msg-row msg-user');
-  r.innerHTML = `<div class="user-bub">${esc(text)}</div>`;
-  msgInner.appendChild(r); scrollBot();
-  saveMsg('user', text);
-}
-function addPearlBubble() {
-  const r = mk('div','msg-row msg-pearl');
-  r.innerHTML = `
-    <div class="pearl-label"><span class="pearl-dot" aria-hidden="true"></span>Pearl</div>
-    <div class="pearl-bub md"><span class="cursor" aria-hidden="true"></span></div>
-    <div class="pearl-acts">
-      <button class="pa-btn pa-copy" aria-label="Copy response">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M4 11H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v1"/></svg>
-        Copy
-      </button>
-      <button class="pa-btn pa-regen" aria-label="Regenerate response">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2 8a6 6 0 1 1 1.5 4"/><path d="M2 13V9h4" stroke-linejoin="round"/></svg>
-        Regenerate
-      </button>
+<!-- Memory modal (read-only) -->
+<div id="mem-modal" role="dialog" aria-modal="true" aria-labelledby="mem-ttl">
+  <div id="mem-dlg">
+    <h2 class="sd-ttl" id="mem-ttl">Memory</h2>
+    <p class="sd-note" style="margin:-12px 0 14px">
+      What Pearl remembers for this session. Read-only.
+    </p>
+    <div id="mem-body" aria-live="polite"></div>
+    <div class="sd-btns">
+      <button class="sd-cancel" id="mem-close">Close</button>
     </div>
-    <div class="msg-meta">${now()}</div>`;
-  msgInner.appendChild(r); scrollBot();
-  const bub = r.querySelector('.pearl-bub');
-  let _rawMd = '';
-  function setText(md, streaming) {
-    _rawMd = md || '';
-    bub.innerHTML = md ? renderMd(md) : '';
-    if (streaming) { const c = mk('span','cursor'); c.setAttribute('aria-hidden','true'); bub.appendChild(c); }
-    scrollBot();
-  }
-  r.querySelector('.pa-copy').addEventListener('click', e => {
-    const btn = e.currentTarget;
-    navigator.clipboard.writeText(_rawMd).then(() => {
-      btn.classList.add('copied'); btn.childNodes[btn.childNodes.length-1].textContent = ' Copied!';
-      setTimeout(() => { btn.classList.remove('copied'); btn.childNodes[btn.childNodes.length-1].textContent = ' Copy'; }, 2000);
-    }).catch(() => {});
-  });
-  r.querySelector('.pa-regen').addEventListener('click', () => {
-    const c = S.convs.find(x => x.id === S.id);
-    if (!c || S.streaming) return;
-    const lastUser = [...c.msgs].reverse().find(m => m.role === 'user');
-    if (!lastUser) return;
-    // Remove this bubble from DOM and re-run
-    r.remove();
-    if (S.mode === 'chat') doChat(lastUser.content);
-    else doRun(lastUser.content);
-  });
-  return { setText };
-}
-function addDiffCard(diff, files) {
-  const card = mk('div','diff-card msg-row msg-system');
-  const fileHtml = files.map(f => `<div class="diff-file"><span class="dft dft-m">M</span>${esc(f)}</div>`).join('');
-  const diffHtml = diff.split('\n').map(line => {
-    let cls = 'ctx';
-    if (line.startsWith('+') && !line.startsWith('+++')) cls = 'add';
-    else if (line.startsWith('-') && !line.startsWith('---')) cls = 'del';
-    else if (line.startsWith('@@')) cls = 'hunk';
-    return `<span class="dl ${cls}">${esc(line)}</span>`;
-  }).join('');
-  card.innerHTML = `
-    <div class="diff-hd"><span aria-hidden="true">📄</span><span>Proposed changes${files.length ? ` — ${files.length} file${files.length!==1?'s':''}` : ''}</span></div>
-    ${files.length ? `<div class="diff-files">${fileHtml}</div>` : ''}
-    ${diff ? `<div class="diff-body">${diffHtml}</div>` : ''}
-    <div class="diff-acts">
-      <span class="diff-note">Pearl is asking for approval before writing to disk.</span>
-      <button class="btn-reject">Reject</button>
-      <button class="btn-approve">✓ Approve &amp; Apply</button>
-    </div>`;
-  card.querySelector('.btn-approve').addEventListener('click', () => approve(card));
-  card.querySelector('.btn-reject').addEventListener('click', () => reject(card));
-  msgInner.appendChild(card); scrollBot();
-}
-function addResultCard(r) {
-  const ok = r.succeeded;
-  const card = mk('div',`result-card ${ok?'ok':'fail'}`);
-  const steps = r.steps || [];
-  const vr = r.verification;
-  const vrHtml = vr ? (() => {
-    const st = vr.status || '';
-    const stCls = st === 'SUCCESS' ? 'rs-ok' : (st === 'FAILED' ? 'rs-fail' : 'rs-warn');
-    const conf = vr.confidence != null ? ` · confidence ${Math.round(vr.confidence*100)}%` : '';
-    const risk = vr.risk ? ` · risk ${vr.risk}` : '';
-    const tests = vr.tests_run ? ` · ${vr.tests_passed}/${vr.tests_run} tests passed` : '';
-    const unexpected = vr.unexpected_files?.length ? `<div class="rs-item"><span class="rs-fail" aria-hidden="true">!</span><span class="rs-txt">Unexpected files: ${vr.unexpected_files.map(esc).join(', ')}</span></div>` : '';
-    const changed = vr.changed_files?.length ? `<div class="rs-item"><span class="rs-ok" aria-hidden="true">↑</span><span class="rs-txt">Changed: ${vr.changed_files.map(esc).join(', ')}</span></div>` : '';
-    const evidence = (vr.evidence?.length && st !== 'SUCCESS') ? vr.evidence.slice(0,3).map(e => `<div class="rs-item"><span class="rs-warn" aria-hidden="true">·</span><span class="rs-txt" style="color:var(--tx2)">${esc(String(e))}</span></div>`).join('') : '';
-    return `<div class="rs-item" style="border-top:1px solid var(--b1);margin-top:6px;padding-top:6px">
-      <span class="${stCls}" aria-hidden="true">⬡</span>
-      <span class="rs-txt">Verification: ${esc(st)}${conf}${risk}${tests}</span>
-    </div>${changed}${unexpected}${evidence}`;
-  })() : '';
-  // Reflection — the agent's own judgement of whether the task actually
-  // completed, based on verification evidence rather than tool success.
-  const rf = r.reflection;
-  const rfHtml = rf ? (() => {
-    const st = rf.status || '';
-    const stCls = st === 'complete' ? 'rs-ok' : (st === 'blocked' ? 'rs-fail' : 'rs-warn');
-    const conf = rf.confidence != null ? ` · confidence ${Math.round(rf.confidence*100)}%` : '';
-    const reason = rf.reason ? `<div class="rs-item"><span class="rs-warn" aria-hidden="true">·</span><span class="rs-txt" style="color:var(--tx2)">${esc(rf.reason)}</span></div>` : '';
-    const missing = rf.missing_requirements?.length
-      ? `<div class="rs-item"><span class="rs-warn" aria-hidden="true">!</span><span class="rs-txt">Still needed: ${rf.missing_requirements.map(esc).join(', ')}</span></div>`
-      : '';
-    return `<div class="rs-item" style="border-top:1px solid var(--b1);margin-top:6px;padding-top:6px">
-      <span class="${stCls}" aria-hidden="true">◈</span>
-      <span class="rs-txt">Reflection: ${esc(st)}${conf}</span>
-    </div>${reason}${missing}`;
-  })() : '';
-  const replanHtml = r.replans_used
-    ? `<div class="rs-item"><span class="rs-warn" aria-hidden="true">↻</span><span class="rs-txt">Replanned ${r.replans_used} time${r.replans_used!==1?'s':''}</span></div>`
-    : '';
-  card.innerHTML = `
-    <div class="result-hd">
-      <span aria-hidden="true">${ok?'✓':'✕'}</span>
-      <span>${ok?'Completed':'Failed'} — ${steps.length} step${steps.length!==1?'s':''}</span>
-      <span style="margin-left:auto;font-size:11px;color:var(--tx3)">${esc(r.stop_reason||'')}</span>
-    </div>
-    <div class="result-steps">${steps.map(s=>`
-      <div class="rs-item">
-        <span class="${s.succeeded?'rs-ok':'rs-fail'}" aria-hidden="true">${s.succeeded?'✓':'✕'}</span>
-        <span class="rs-txt">${esc(toolLabel(s.tool_name))} — ${esc(s.summary||'')}</span>
-      </div>`).join('')}${replanHtml}${vrHtml}${rfHtml}
-    </div>`;
-  msgInner.appendChild(card); scrollBot();
-}
-function addErr(msg) {
-  const el = mk('div','err-note'); el.setAttribute('role','alert');
-  el.innerHTML = `<span aria-hidden="true">⚠</span><span>${esc(msg)}</span>`;
-  msgInner.appendChild(el); scrollBot();
-}
-function addInfo(msg) {
-  const el = mk('div','info-note');
-  el.textContent = msg;
-  msgInner.appendChild(el); scrollBot();
-}
-function scrollBot() { const m = g('messages'); m.scrollTop = m.scrollHeight; }
+  </div>
+</div>
 
-// ─── Sidebar & storage ────────────────────────────────────────
-// Sessions are created/renamed/deleted on the server when available.
-// localStorage stores message content (server doesn't have it).
-// Hybrid: server is source of truth for session existence; local for messages.
-
-async function loadStore() {
-  // Load local message data
-  let localMap = {};
-  try {
-    const local = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
-    local.forEach(c => { localMap[c.id] = c; });
-  } catch {}
-
-  // Try to merge server sessions in
-  try {
-    const data = await get('/api/sessions');
-    const srv = (data.sessions || []).map(s => {
-      const local = localMap[s.session_id] || {};
-      return {
-        id: s.session_id,
-        title: s.title || local.title || 'New conversation',
-        ts: s.created_at ? new Date(s.created_at).getTime() : (local.ts || Date.now()),
-        msgs: local.msgs || [],
-        _server: true,
-      };
-    });
-    const srvIds = new Set(srv.map(c => c.id));
-    // Keep local-only conversations (not yet synced) too
-    const localOnly = Object.values(localMap).filter(c => !srvIds.has(c.id));
-    S.convs = [...srv, ...localOnly].sort((a, b) => b.ts - a.ts);
-  } catch {
-    // Server unavailable — fall back to local only
-    S.convs = Object.values(localMap).sort((a, b) => b.ts - a.ts);
-  }
-}
-function save() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(S.convs.slice(-MAX_CONVS))); } catch {}
-}
-function ensureConv() { if (!S.id) newChat(false); }
-async function newChat(render = true) {
-  const id = 'c' + Date.now();
-  const conv = { id, title: 'New conversation', ts: Date.now(), msgs: [] };
-  S.convs.unshift(conv);
-  S.id = id; save();
-  // Register on server (best-effort, fire-and-forget)
-  try {
-    const r = await post('/api/sessions', {});
-    if (r.session_id && r.session_id !== id) {
-      // Server gave us a different ID — update
-      conv.id = r.session_id;
-      if (S.id === id) S.id = r.session_id;
-      save();
-    }
-  } catch { /* server unavailable, keep local-only conv */ }
-  if (render) { clearMsgs(); chatTtl.textContent = 'Pearl AI'; }
-  renderSidebar();
-}
-function clearMsgs() {
-  while (msgInner.firstChild) msgInner.removeChild(msgInner.firstChild);
-  msgInner.appendChild(emptySt); emptySt.style.display = '';
-}
-function saveMsg(role, content) {
-  const c = S.convs.find(x => x.id === S.id); if (!c) return;
-  if (role === 'user' && c.title === 'New conversation' && content.length > 2) {
-    c.title = content.slice(0,54) + (content.length > 54 ? '…' : '');
-    chatTtl.textContent = c.title;
-    renderSidebar();
-    // Sync auto-generated title to server (best-effort)
-    try { fetch(`/api/sessions/${c.id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({title: c.title}) }); } catch {}
-  }
-  c.msgs.push({ role, content, ts: Date.now() }); save();
-}
-function loadConv(id) {
-  const c = S.convs.find(x => x.id === id); if (!c) return;
-  S.id = id; chatTtl.textContent = c.title; clearMsgs();
-  c.msgs.filter(m => m.role === 'user' || m.role === 'assistant').forEach(m => {
-    if (m.role === 'user') {
-      const r = mk('div','msg-row msg-user');
-      r.innerHTML = `<div class="user-bub">${esc(m.content)}</div>`;
-      msgInner.appendChild(r);
-    } else {
-      const r = mk('div','msg-row msg-pearl');
-      const rawMd = m.content;
-      r.innerHTML = `
-        <div class="pearl-label"><span class="pearl-dot" aria-hidden="true"></span>Pearl</div>
-        <div class="pearl-bub md">${renderMd(rawMd)}</div>
-        <div class="pearl-acts">
-          <button class="pa-btn pa-copy" aria-label="Copy response">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M4 11H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v1"/></svg>
-            Copy
-          </button>
-        </div>
-        <div class="msg-meta">${tsStr(m.ts)}</div>`;
-      r.querySelector('.pa-copy').addEventListener('click', e => {
-        const btn = e.currentTarget;
-        navigator.clipboard.writeText(rawMd).then(() => {
-          btn.classList.add('copied'); btn.childNodes[btn.childNodes.length-1].textContent = ' Copied!';
-          setTimeout(() => { btn.classList.remove('copied'); btn.childNodes[btn.childNodes.length-1].textContent = ' Copy'; }, 2000);
-        }).catch(() => {});
-      });
-      msgInner.appendChild(r);
-    }
-  });
-  if (!msgInner.firstChild || msgInner.firstChild === emptySt) {
-    if (!emptySt.parentNode) msgInner.appendChild(emptySt);
-  } else if (emptySt.parentNode) emptySt.remove();
-  renderSidebar(); scrollBot();
-}
-function renderSidebar(filter = '') {
-  sbList.innerHTML = '';
-  const groups = [['Today',0,86400000],['Yesterday',86400000,172800000],['Last 7 days',172800000,604800000],['Older',604800000,Infinity]];
-  const now = Date.now();
-  groups.forEach(([label, lo, hi]) => {
-    const items = S.convs.filter(c => {
-      const age = now - c.ts;
-      return age >= lo && age < hi && (!filter || c.title.toLowerCase().includes(filter));
-    });
-    if (!items.length) return;
-    const gl = mk('div','sb-group-label'); gl.textContent = label; sbList.appendChild(gl);
-    items.forEach(conv => {
-      const item = mk('div',`sb-item${conv.id === S.id ? ' active' : ''}`);
-      item.setAttribute('role','button'); item.setAttribute('tabindex','0'); item.setAttribute('aria-label', conv.title);
-      item.innerHTML = `
-        <span class="sb-item-title">${esc(conv.title)}</span>
-        <span class="sb-item-ts">${relTs(conv.ts)}</span>
-        <span class="sb-item-actions">
-          <button class="sb-act rename" aria-label="Rename conversation" title="Rename">✎</button>
-          <button class="sb-act del" aria-label="Delete conversation" title="Delete">✕</button>
-        </span>`;
-      item.addEventListener('click', e => { if (!e.target.closest('.sb-act')) loadConv(conv.id); });
-      item.addEventListener('keydown', e => { if (e.key === 'Enter') loadConv(conv.id); });
-      item.querySelector('.rename').addEventListener('click', async e => {
-        e.stopPropagation();
-        const t = prompt('Rename:', conv.title);
-        if (!t?.trim()) return;
-        conv.title = t.trim(); save(); renderSidebar(filter);
-        // Sync rename to server (best-effort)
-        try { await fetch(`/api/sessions/${conv.id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({title: conv.title}) }); } catch {}
-      });
-      item.querySelector('.del').addEventListener('click', async e => {
-        e.stopPropagation();
-        if (!confirm('Delete this conversation?')) return;
-        const delId = conv.id;
-        S.convs = S.convs.filter(x => x.id !== delId);
-        if (S.id === delId) { S.id = null; clearMsgs(); chatTtl.textContent = 'Pearl AI'; }
-        save(); renderSidebar(filter);
-        // Sync delete to server (best-effort)
-        try { await fetch(`/api/sessions/${delId}`, { method: 'DELETE' }); } catch {}
-      });
-      sbList.appendChild(item);
-    });
-  });
-}
-
-// ─── Provider ─────────────────────────────────────────────────
-let S_prov = { provider: 'pearl', configured: false, ollama_running: false };
-
-async function loadProvider() {
-  try {
-    const p = await get('/api/provider');
-    S_prov = p;
-    const badge = g('provider-badge');
-    if (badge) badge.textContent = p.display || p.provider;
-    renderProviderTiles(p);
-  } catch {}
-}
-
-function renderProviderTiles(p) {
-  ['pearl', 'advanced'].forEach(id => {
-    const t = g('prov-' + id);
-    if (t) t.classList.toggle('active', p.provider === id);
-  });
-
-  const pearlSt = g('prov-pearl-status');
-  if (pearlSt) {
-    if (p.configured && p.provider === 'pearl') {
-      pearlSt.textContent = 'Configured';
-      pearlSt.className = 'prov-status ok';
-    } else if (!p.configured && p.provider === 'pearl') {
-      pearlSt.textContent = 'llama-cpp-python not installed';
-      pearlSt.className = 'prov-status warn';
-    } else {
-      pearlSt.textContent = p.configured ? '—' : 'Not configured';
-      pearlSt.className = 'prov-status';
-    }
-  }
-
-  const note = g('prov-note');
-  if (note) {
-    if (!p.configured && p.provider === 'pearl') {
-      note.textContent = 'Install llama-cpp-python to enable local AI (no API key needed). See docs/PEARL_INFERENCE_CONTRACT.md.';
-    } else {
-      note.textContent = '';
-    }
-  }
-}
-
-async function selectProvider(name) {
-  if (name === 'advanced') {
-    const note = g('prov-note');
-    if (note) note.textContent = 'Set PEARL_LLM_PROVIDER and matching credentials in your .env file, then restart.';
-    const pearlT = g('prov-pearl'); if (pearlT) pearlT.classList.remove('active');
-    const adv = g('prov-advanced'); if (adv) adv.classList.add('active');
-    return;
-  }
-  try {
-    const r = await post('/api/provider', { provider: name });
-    if (r.ok) {
-      addInfo(`Model provider: ${r.display}`);
-      await loadProvider();
-    }
-  } catch (e) { addErr(`Could not switch provider: ${e.message}`); }
-}
-
-// ─── Settings ─────────────────────────────────────────────────
-function openSettings() {
-  g('settings-modal').classList.add('open');
-  g('sd-ws').focus();
-  loadProvider();
-}
-function closeSettings() { g('settings-modal').classList.remove('open'); }
-async function saveSettings() {
-  const path = g('sd-ws').value.trim(); if (!path) return;
-  try {
-    const r = await post('/api/workspace', { path });
-    if (r.ok) { S.ws = r.workspace; wsName.textContent = r.workspace.name; closeSettings(); addInfo(`Workspace: ${r.workspace.path}`); }
-    else addErr(r.detail || 'Could not change workspace.');
-  } catch (e) { addErr(e.message); }
-}
-
-// ─── SSE ──────────────────────────────────────────────────────
-async function* sse(resp) {
-  const reader = resp.body.getReader(), dec = new TextDecoder();
-  let buf = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const parts = buf.split('\n\n'); buf = parts.pop() ?? '';
-    for (const part of parts) {
-      if (!part.trim()) continue;
-      let event = 'message', data = '';
-      for (const line of part.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim();
-        else if (line.startsWith('data:')) data = line.slice(5).trim();
-      }
-      if (!data) continue;
-      try { yield { event, data: JSON.parse(data) }; } catch {}
-    }
-  }
-}
-
-// ─── API helpers ──────────────────────────────────────────────
-async function get(path) {
-  const r = await fetch(path);
-  if (!r.ok) throw new Error(await r.text() || `HTTP ${r.status}`);
-  return r.json();
-}
-async function post(path, body) {
-  const r = await fetch(path, {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!r.ok) throw new Error(await r.text() || `HTTP ${r.status}`);
-  return r.json();
-}
-
-// ─── Code mode: inline completion ─────────────────────────────
-//
-// Mirrors the VS Code provider's behaviour against the same
-// /api/complete endpoint: debounce a burst of keystrokes into one
-// request, drop a response whose context is already stale, and stay
-// silent on failure. A suggestion that lands after you have typed past
-// it is worse than no suggestion, so late responses are discarded
-// rather than rendered.
-
-const CODE_DEBOUNCE_MS = 150;
-
-const CODE = {
-  timer: null,
-  ghost: '',        // the suggestion currently shown
-  seq: 0,           // request counter; only the newest may render
-};
-
-function applyMode() {
-  const isCode = S.mode === 'code';
-  g('code-pane').hidden = !isCode;
-  g('messages').hidden = isCode;
-  g('composer').hidden = isCode;
-  if (isCode) {
-    g('code-input').focus();
-    syncMirror();
-  }
-}
-
-// Repaint the layer that actually shows text. The textarea's own text is
-// transparent, so nothing is visible until this runs.
-function syncMirror() {
-  const input = g('code-input');
-  g('code-typed').textContent = input.value;
-  g('code-ghost').textContent = CODE.ghost;
-}
-
-function clearGhost() {
-  if (!CODE.ghost) return;
-  CODE.ghost = '';
-  syncMirror();
-  g('code-status').textContent = '';
-}
-
-// Only suggest at the very end of the buffer. Ghost text rendered
-// mid-document would appear detached from the caret, since the mirror
-// appends it rather than inserting at the cursor.
-function atEnd(input) {
-  return input.selectionStart === input.value.length &&
-         input.selectionEnd === input.value.length;
-}
-
-function requestCompletion() {
-  const input = g('code-input');
-  const prefix = input.value;
-
-  if (!prefix.trim() || !atEnd(input)) { clearGhost(); return; }
-
-  const seq = ++CODE.seq;
-  g('code-status').textContent = 'thinking…';
-
-  post('/api/complete', {
-    prefix,
-    suffix: '',
-    language: g('code-lang').value,
-  }).then(res => {
-    // A newer keystroke has already superseded this request, or the
-    // buffer moved on while it was in flight.
-    if (seq !== CODE.seq || input.value !== prefix) return;
-
-    CODE.ghost = res.completion || '';
-    syncMirror();
-    g('code-status').textContent = CODE.ghost
-      ? (res.cached ? 'cached' : 'suggestion ready')
-      : (res.declined_reason || 'no suggestion');
-  }).catch(() => {
-    if (seq !== CODE.seq) return;
-    clearGhost();
-    // Silent by design: a failed completion must never interrupt typing.
-    g('code-status').textContent = '';
-  });
-}
-
-function scheduleCompletion() {
-  clearTimeout(CODE.timer);
-  clearGhost();
-  CODE.timer = setTimeout(requestCompletion, CODE_DEBOUNCE_MS);
-}
-
-function initCodeMode() {
-  const input = g('code-input');
-  const mirror = g('code-mirror');
-
-  input.addEventListener('input', scheduleCompletion);
-  // Moving the caret invalidates a suggestion computed for the old
-  // position, but must not trigger a new request on its own.
-  input.addEventListener('click', clearGhost);
-
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Tab' && CODE.ghost) {
-      e.preventDefault();
-      input.value += CODE.ghost;
-      clearGhost();
-      syncMirror();
-      input.selectionStart = input.selectionEnd = input.value.length;
-      return;
-    }
-    if (e.key === 'Tab') {           // no suggestion: indent, don't tab away
-      e.preventDefault();
-      const at = input.selectionStart;
-      input.value = input.value.slice(0, at) + '    ' + input.value.slice(at);
-      input.selectionStart = input.selectionEnd = at + 4;
-      syncMirror();
-      return;
-    }
-    if (e.key === 'Escape' && CODE.ghost) { e.preventDefault(); clearGhost(); return; }
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
-        e.key === 'ArrowUp' || e.key === 'ArrowDown') clearGhost();
-  });
-
-  // Keep the painted layer aligned while scrolling a long buffer.
-  input.addEventListener('scroll', () => {
-    mirror.scrollTop = input.scrollTop;
-    mirror.scrollLeft = input.scrollLeft;
-  });
-
-  g('code-lang').addEventListener('change', () => { clearGhost(); input.focus(); });
-  g('code-clear').addEventListener('click', () => {
-    input.value = ''; clearGhost(); syncMirror(); input.focus();
-  });
-}
-
-// ─── Markdown ─────────────────────────────────────────────────
-function renderMd(text) {
-  if (!text) return '';
-  const blocks = [], inlines = [];
-  // Extract fenced code blocks first
-  let s = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-    const i = blocks.length; blocks.push({lang, code}); return `\x00B${i}\x00`;
-  });
-  // Inline code
-  s = s.replace(/`([^`\n]+)`/g, (_, c) => { const i = inlines.length; inlines.push(c); return `\x00I${i}\x00`; });
-  // HTML escape
-  s = he(s);
-  // Block-level
-  s = s.replace(/^#{4} (.+)$/gm,'<h4>$1</h4>');
-  s = s.replace(/^#{3} (.+)$/gm,'<h3>$1</h3>');
-  s = s.replace(/^#{2} (.+)$/gm,'<h2>$1</h2>');
-  s = s.replace(/^#{1} (.+)$/gm,'<h1>$1</h1>');
-  s = s.replace(/^[-*]{3,}$/gm,'<hr>');
-  s = s.replace(/^&gt; (.+)$/gm,'<blockquote>$1</blockquote>');
-  // Lists
-  s = s.replace(/^[*\-+] (.+)$/gm,'<li>$1</li>');
-  s = s.replace(/((?:^<li>.*<\/li>\n?)+)/gm, m => `<ul>${m}</ul>`);
-  s = s.replace(/^\d+\. (.+)$/gm,'<XLI>$1</XLI>');
-  s = s.replace(/((?:^<XLI>.*<\/XLI>\n?)+)/gm, m => `<ol>${m.replace(/<XLI>/g,'<li>').replace(/<\/XLI>/g,'</li>')}</ol>`);
-  // Inline markup
-  s = s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
-  s = s.replace(/__(.+?)__/g,'<strong>$1</strong>');
-  s = s.replace(/\*([^*\n]+)\*/g,'<em>$1</em>');
-  s = s.replace(/~~(.+?)~~/g,'<del>$1</del>');
-  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
-  // Paragraphs
-  const paras = s.split(/\n{2,}/);
-  s = paras.map(p => {
-    const t = p.trim();
-    if (!t || /^<(h[1-4]|ul|ol|blockquote|hr|table)/.test(t)) return t;
-    return `<p>${t.replace(/\n/g,'<br>')}</p>`;
-  }).join('\n');
-  // Restore inlines
-  s = s.replace(/\x00I(\d+)\x00/g, (_,i) => `<code>${he(inlines[+i])}</code>`);
-  // Restore blocks
-  s = s.replace(/\x00B(\d+)\x00/g, (_,i) => {
-    const {lang, code} = blocks[+i];
-    const hl = hilight(code, lang);
-    return `<div class="cbw"><div class="cbh"><span class="cb-lang">${esc(lang||'text')}</span><button class="copy-btn" onclick="doCopy(this,${JSON.stringify(code)})">Copy</button></div><pre><code>${hl}</code></pre></div>`;
-  });
-  return s;
-}
-function he(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-// ─── Copy ─────────────────────────────────────────────────────
-function doCopy(btn, code) {
-  navigator.clipboard.writeText(code).then(() => {
-    btn.textContent = 'Copied!'; btn.classList.add('done');
-    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 2000);
-  }).catch(() => { btn.textContent = 'Failed'; setTimeout(() => btn.textContent = 'Copy', 1500); });
-}
-
-// ─── Syntax highlight ─────────────────────────────────────────
-const KW = {
-  python: new Set('def class import from return if elif else for while with try except finally raise pass break continue and or not in is lambda yield async await True False None global nonlocal del assert as'.split(' ')),
-  javascript: new Set('function class const let var return if else for while do switch case break continue new this super import export default async await typeof instanceof in of try catch finally throw null undefined true false void delete yield from extends static'.split(' ')),
-  typescript: new Set('function class const let var return if else for while do switch case break continue new this super import export default async await typeof instanceof in of try catch finally throw null undefined true false void delete yield from extends static interface type enum namespace abstract implements declare readonly private public protected as'.split(' ')),
-  rust: new Set('fn let mut const struct enum impl trait use mod pub return if else match for while loop break continue true false self super crate where type async await move ref in as'.split(' ')),
-  go: new Set('func var const type struct interface package import return if else for range switch case break continue go chan select defer map make new nil true false iota fallthrough goto'.split(' ')),
-  bash: new Set('if then else elif fi for while do done case esac function return in echo export local readonly shift set unset trap exit source'.split(' ')),
-};
-function hilight(code, lang) {
-  if (!lang || lang === 'text' || lang === 'plain') return he(code);
-  if (lang === 'diff') return hDiff(code);
-  if (lang === 'json') return hJson(code);
-  const kws = KW[lang] || KW.javascript;
-  let out = '', i = 0, n = code.length;
-  while (i < n) {
-    // Comments
-    if ((lang==='python'||lang==='bash') && code[i]==='#') {
-      let j=i; while (j<n && code[j]!=='\n') j++;
-      out += `<span class="hl-cmt">${he(code.slice(i,j))}</span>`; i=j; continue;
-    }
-    if ((lang==='javascript'||lang==='typescript'||lang==='rust'||lang==='go') && code.slice(i,i+2)==='//') {
-      let j=i; while (j<n && code[j]!=='\n') j++;
-      out += `<span class="hl-cmt">${he(code.slice(i,j))}</span>`; i=j; continue;
-    }
-    if ((lang==='javascript'||lang==='typescript'||lang==='rust'||lang==='go') && code.slice(i,i+2)==='/*') {
-      const end = code.indexOf('*/',i+2); const j = end===-1?n:end+2;
-      out += `<span class="hl-cmt">${he(code.slice(i,j))}</span>`; i=j; continue;
-    }
-    // Triple string Python
-    if (lang==='python' && (code.slice(i,i+3)==='"""'||code.slice(i,i+3)==="'''")) {
-      const q=code.slice(i,i+3), end=code.indexOf(q,i+3), j=end===-1?n:end+3;
-      out += `<span class="hl-str">${he(code.slice(i,j))}</span>`; i=j; continue;
-    }
-    // Strings
-    if (code[i]==='"'||code[i]==="'"||code[i]==='`') {
-      const q=code[i]; let j=i+1;
-      while (j<n) { if (code[j]==='\\'){j+=2;continue} if (code[j]===q){j++;break} if (q!=='`'&&code[j]==='\n') break; j++; }
-      out += `<span class="hl-str">${he(code.slice(i,j))}</span>`; i=j; continue;
-    }
-    // Numbers
-    if (/\d/.test(code[i])&&(i===0||/\W/.test(code[i-1]))) {
-      let j=i; while (j<n&&/[\d.xXa-fA-F_]/.test(code[j])) j++;
-      out += `<span class="hl-num">${he(code.slice(i,j))}</span>`; i=j; continue;
-    }
-    // Identifiers
-    if (/[a-zA-Z_$]/.test(code[i])) {
-      let j=i; while (j<n&&/\w/.test(code[j])) j++;
-      const w = code.slice(i,j);
-      const prev = out.replace(/<[^>]*>/g,'').trimEnd();
-      const prevWord = prev.split(/\s+/).pop()||'';
-      if (prevWord==='class') { out += `<span class="hl-cls">${he(w)}</span>`; i=j; continue; }
-      if (['def','function','fn','func'].includes(prevWord)) { out += `<span class="hl-fn">${he(w)}</span>`; i=j; continue; }
-      if (lang==='python'&&i>0&&code[i-1]==='@') { out += `<span class="hl-dec">${he(w)}</span>`; i=j; continue; }
-      out += kws.has(w) ? `<span class="hl-kw">${he(w)}</span>` : he(w);
-      i=j; continue;
-    }
-    if (code[i]==='@'&&lang==='python') { out += `<span class="hl-dec">@</span>`; i++; continue; }
-    out += he(code[i]); i++;
-  }
-  return out;
-}
-function hDiff(code) {
-  return code.split('\n').map(l => {
-    if (l.startsWith('+')) return `<span class="hl-str">${he(l)}</span>`;
-    if (l.startsWith('-')) return `<span class="hl-num">${he(l)}</span>`;
-    if (l.startsWith('@@')) return `<span class="hl-kw">${he(l)}</span>`;
-    return he(l);
-  }).join('\n');
-}
-function hJson(code) {
-  return he(code)
-    .replace(/(&quot;[^&]*&quot;)(\s*:)/g, '<span class="hl-fn">$1</span>$2')
-    .replace(/:\s*(&quot;[^&]*&quot;)/g, (m,v) => m.replace(v, `<span class="hl-str">${v}</span>`))
-    .replace(/\b(true|false|null)\b/g, '<span class="hl-kw">$1</span>')
-    .replace(/\b(\d+\.?\d*)\b/g, '<span class="hl-num">$1</span>');
-}
-
-// ─── Utilities ────────────────────────────────────────────────
-function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function now() { return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
-function tsStr(ts) { if (!ts) return ''; return new Date(ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
-function relTs(ts) {
-  const d = Date.now()-ts;
-  if (d<3600000) return Math.max(1,Math.floor(d/60000))+'m';
-  if (d<86400000) return Math.floor(d/3600000)+'h';
-  return Math.floor(d/86400000)+'d';
-}
-function toolLabel(name) {
-  if (!name) return 'Tool';
-  const m = { read_file:'Read file', write_file:'Write file', search_text:'Search', find_symbol:'Find symbol',
-    execute_shell:'Run command', index_repository:'Index repo', explain_file:'Explain file',
-    summarize_project:'Summarize project', find_references:'Find references', rename_symbol:'Rename symbol',
-    batch_write_files:'Write files', create_file:'Create file', replace_in_file:'Replace in file' };
-  return m[name] || name.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
-}
-</script>
+<script type="module" src="/js/main.js"></script>
 </body>
 </html>

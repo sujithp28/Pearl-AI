@@ -49,6 +49,7 @@ from src.agent.execution_model import (
     _reflect,
     _summarize,
 )
+from src.agent.plan_validator import validate_plan
 from src.agent.planner import Planner
 from src.agent.retry import classify_error, is_transient_error
 from src.agent.verification import VerificationEngine
@@ -546,13 +547,37 @@ class AutonomousExecutor:
         except Exception:
             pass  # Not a git repo, or git unavailable — non-fatal
 
-    def run(self, prompt: str) -> ExecutionReport:
+    def run(
+        self, prompt: str, initial_plan: list[ToolCall] | None = None
+    ) -> ExecutionReport:
         """
         Plan `prompt`, then execute steps one at a time until the
         task completes, a failure can't be recovered from (the
         replan budget is exhausted), `max_iterations` is reached,
         execution is cancelled, or edits are staged and awaiting
         approval.
+
+        `initial_plan` supplies the opening plan instead of asking the
+        planner for one. It exists so a client that has already shown
+        the user a plan executes that plan rather than a second one
+        generated moments later: they usually match, and a preview that
+        can silently diverge from what runs manufactures confidence
+        rather than informing it.
+
+        Named `initial_plan`, not `steps`, because `steps` is already a
+        local here holding the executed `ExecutionStep` record, and
+        because it names what it actually promises. Only the opening
+        plan is fixed; replanning on failure proceeds as usual, so an
+        approved plan is a starting point and not a contract for the
+        whole run.
+
+        A supplied plan is still validated. `Planner.plan` runs
+        `validate_plan` itself, so skipping the planning call would skip
+        the validator with it.
+
+        `None` is the default and preserves the existing behaviour
+        exactly. An empty list is a supplied plan, not an absent one,
+        and is rejected by the validator.
         """
 
         if self.approval_coordinator.is_awaiting_approval():
@@ -598,7 +623,13 @@ class AutonomousExecutor:
         workspace_context = self._build_workspace_context(prompt)
 
         try:
-            pending = self._plan_with_retry(prompt, workspace_context, events, steps)
+            if initial_plan is None:
+                pending = self._plan_with_retry(
+                    prompt, workspace_context, events, steps
+                )
+            else:
+                validate_plan(initial_plan)
+                pending = list(initial_plan)
         except LLMCancelled:
             self._check_cancelled(events, steps)
             return ExecutionReport(
