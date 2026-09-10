@@ -43,13 +43,16 @@ from src.mcp.protocol import (
     tool_to_mcp_schema,
 )
 from src.memory import Memory
-from src.personality import EventKind, PersonalityManager
+from src.personality import PersonalityManager
+from src.personality.timeline import TIMELINE_EVENT_KINDS
 from src.prompts.system import build_chat_system_prompt
+from src.tools.checkpoint_serialize import (
+    checkpoint_to_dict,
+    restore_report_to_dict,
+)
 from src.tools.checkpoints import (
-    Checkpoint,
     CheckpointError,
     CheckpointManager,
-    RestoreReport,
 )
 from src.tools.registry import ToolRegistry
 
@@ -85,24 +88,6 @@ def _progress_event_to_dict(event: ProgressEvent) -> dict[str, Any]:
         "currentStep": event.current_step,
         "totalSteps": event.total_steps,
         "currentAction": event.current_action,
-    }
-
-
-def _checkpoint_to_dict(checkpoint: Checkpoint) -> dict[str, Any]:
-    return {
-        "id": checkpoint.id,
-        "shortId": checkpoint.short_id,
-        "label": checkpoint.label,
-        "createdAt": checkpoint.created_at,
-    }
-
-
-def _restore_report_to_dict(report: RestoreReport) -> dict[str, Any]:
-    return {
-        "checkpointId": report.checkpoint_id,
-        "restored": report.restored,
-        "removed": report.removed,
-        "changedAnything": report.changed_anything,
     }
 
 
@@ -684,14 +669,6 @@ class MCPServer:
     # it at all, it's driven client-side via `pearl/planOnly` +
     # `tools/call`, so its stage labels need their own, one-shot
     # lookup instead.
-    _TIMELINE_EVENT_KINDS: dict[str, EventKind] = {
-        "planning": EventKind.PLANNING,
-        "plan_ready": EventKind.PLAN_READY,
-        "waiting_approval": EventKind.APPROVAL,
-        "running_tool": EventKind.EXECUTING,
-        "completed": EventKind.COMPLETED,
-    }
-
     def _personality_labels(
         self, params: dict[str, Any], notify: NotifyFn
     ) -> dict[str, Any]:
@@ -708,7 +685,7 @@ class MCPServer:
 
         labels = {
             stage: self._personality.format(event_kind)
-            for stage, event_kind in self._TIMELINE_EVENT_KINDS.items()
+            for stage, event_kind in TIMELINE_EVENT_KINDS.items()
         }
 
         return {"labels": labels}
@@ -735,7 +712,7 @@ class MCPServer:
 
         return {
             "checkpoint": (
-                _checkpoint_to_dict(checkpoint) if checkpoint is not None else None
+                checkpoint_to_dict(checkpoint) if checkpoint is not None else None
             )
         }
 
@@ -753,7 +730,7 @@ class MCPServer:
 
         checkpoints = self.checkpoints.list(limit=limit)
 
-        return {"checkpoints": [_checkpoint_to_dict(c) for c in checkpoints]}
+        return {"checkpoints": [checkpoint_to_dict(c) for c in checkpoints]}
 
     def _checkpoint_restore_preview(
         self, params: dict[str, Any], notify: NotifyFn
@@ -772,7 +749,7 @@ class MCPServer:
         except CheckpointError as exc:
             raise MCPProtocolError(INVALID_PARAMS, str(exc)) from exc
 
-        return _restore_report_to_dict(report)
+        return restore_report_to_dict(report)
 
     def _checkpoint_restore(
         self, params: dict[str, Any], notify: NotifyFn
@@ -788,7 +765,7 @@ class MCPServer:
         except CheckpointError as exc:
             raise MCPProtocolError(INVALID_PARAMS, str(exc)) from exc
 
-        return _restore_report_to_dict(report)
+        return restore_report_to_dict(report)
 
     def _checkpoint_delete(
         self, params: dict[str, Any], notify: NotifyFn
@@ -826,7 +803,7 @@ class MCPServer:
         except CheckpointError as exc:
             raise MCPProtocolError(INVALID_PARAMS, str(exc)) from exc
 
-        return {"checkpoint": _checkpoint_to_dict(checkpoint)}
+        return {"checkpoint": checkpoint_to_dict(checkpoint)}
 
     @staticmethod
     def _require_checkpoint_id(params: dict[str, Any]) -> str:
