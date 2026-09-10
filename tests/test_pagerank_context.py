@@ -8,18 +8,14 @@ many others) should score higher than an equally-matched leaf file.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
-import pytest
-
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from src.repository.context import ContextConfig, SemanticContextBuilder
 from src.repository.graph import Edge, EdgeKind, Node, NodeKind, RepositoryGraph
 from src.repository.index import RepositoryIndex, SymbolEntry
 from src.repository.models import FileInfo, Language
 from src.repository.parsers import SymbolDef, SymbolKind
-
 
 # ---------------------------------------------------------------------------
 # Minimal index / graph builders

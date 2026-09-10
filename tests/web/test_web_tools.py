@@ -12,11 +12,9 @@ from src.web.models import (
     RawPage,
     SearchResult,
     WebContext,
-    WebDocument,
     WebSource,
 )
 from src.web.search import WebSearchError
-
 
 # ---------------------------------------------------------------------------
 # web_search

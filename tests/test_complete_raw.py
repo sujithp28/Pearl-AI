@@ -25,7 +25,6 @@ from src.llm.providers.base import LLMProvider
 from src.llm.providers.local_inference import LocalInferenceProvider
 from src.llm.providers.scripted import ScriptedProvider
 
-
 # ---------------------------------------------------------------------------
 # Default fallback (LLMProvider.complete_raw)
 # ---------------------------------------------------------------------------

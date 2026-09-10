@@ -1,8 +1,6 @@
 """Tests for src/llm/context_budget.py."""
 from __future__ import annotations
 
-import pytest
-
 from src.llm.context_budget import ContextBudget
 
 

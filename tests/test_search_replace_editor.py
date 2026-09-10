@@ -24,8 +24,6 @@ import pytest
 
 from src.config.workspace import clear_workspace_root, set_workspace_root
 from src.tools.search_replace_editor import (
-    EditResult,
-    MatchFailed,
     SearchReplaceEditor,
     _find_exact,
     _find_fuzzy,

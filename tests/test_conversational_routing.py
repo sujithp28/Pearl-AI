@@ -17,7 +17,6 @@ from src.agent.conversational import needs_no_tools
 from src.agent.dependency_graph import topological_sort
 from src.llm.parser import ToolCall
 
-
 # ---------------------------------------------------------------------------
 # 1. Conversational short-circuit
 # ---------------------------------------------------------------------------
@@ -382,8 +381,9 @@ class TestTopologicalSortUnknownDeps:
 
 class TestFailureStatus:
     def test_task_failed_is_a_valid_progress_status(self):
-        from src.agent.executor import ProgressStatus
         from typing import get_args
+
+        from src.agent.executor import ProgressStatus
 
         assert "task_failed" in get_args(ProgressStatus)
 

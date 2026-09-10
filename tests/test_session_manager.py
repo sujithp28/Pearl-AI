@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from src.agent.session_manager import SessionManager, SessionRecord, SessionMessage
+from src.agent.session_manager import SessionManager, SessionRecord
 
 
 @pytest.fixture
@@ -93,7 +93,7 @@ class TestListSessions:
 
     def test_sorted_newest_first(self, manager: SessionManager) -> None:
         sid1 = manager.create_session(workspace="/a")
-        sid2 = manager.create_session(workspace="/b")
+        manager.create_session(workspace="/b")
         # Touch sid1 so it becomes definitively newer than sid2.
         manager.rename_session(sid1, "Touched")
         sessions = manager.list_sessions()

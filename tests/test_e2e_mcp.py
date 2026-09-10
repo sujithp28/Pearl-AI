@@ -27,12 +27,11 @@ from __future__ import annotations
 import json
 import os
 import queue
+import site
 import subprocess
 import sys
 import threading
 from pathlib import Path
-
-import site
 
 import pytest
 

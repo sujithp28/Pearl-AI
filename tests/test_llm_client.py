@@ -9,7 +9,6 @@ from openai import APIConnectionError
 from src.config.settings import Settings
 from src.llm.client import LLMClient
 from src.llm.errors import ProviderAuthError
-from src.llm.providers.openai_compatible import OpenAICompatibleProvider
 
 
 @pytest.fixture(autouse=True)

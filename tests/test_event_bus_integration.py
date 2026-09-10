@@ -13,18 +13,15 @@ import asyncio
 import threading
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.agent.condenser import CondensationResult
-from src.agent.event_bus import ContextCondensedEvent, RunCompleteEvent, RunFailedEvent
 
 
 def _make_session(tmp_path):
     """Build a PearlSession with scripted LLM, no real model needed."""
     import os
     os.environ.setdefault("PEARL_LLM_PROVIDER", "scripted")
-    from src.config.settings import Settings
     from src.api.session import PearlSession
+    from src.config.settings import Settings
 
     with patch.object(Settings, "LLM_PROVIDER", "scripted"), \
          patch("src.api.session.RepositoryService.get_or_build", return_value=MagicMock()), \

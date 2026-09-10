@@ -3,8 +3,6 @@ Tests for src/agent/headless.py — ExecutionPolicy
 """
 from __future__ import annotations
 
-import pytest
-
 from src.agent.headless import ExecutionPolicy, get_execution_policy
 
 

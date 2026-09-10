@@ -12,12 +12,10 @@ Coverage
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.tools.refactor_tools import batch_write_files, rename_symbol
-
 
 # ---------------------------------------------------------------------------
 # batch_write_files
@@ -62,8 +60,8 @@ class TestBatchWriteFiles:
     ) -> None:
         monkeypatch.chdir(tmp_path)
 
-        from src.tools.patch_manager import ChangeManager
         from src.tools.edit_tools import set_active_patch_manager
+        from src.tools.patch_manager import ChangeManager
 
         pm = ChangeManager()
         set_active_patch_manager(pm)
@@ -168,8 +166,8 @@ class TestRenameSymbol:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "a.py").write_text("class Foo: pass\nfoo = Foo()\n")
 
-        from src.tools.patch_manager import ChangeManager
         from src.tools.edit_tools import set_active_patch_manager
+        from src.tools.patch_manager import ChangeManager
 
         pm = ChangeManager()
         set_active_patch_manager(pm)

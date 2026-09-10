@@ -102,8 +102,8 @@ def test_write_file_rejects_path_traversal(tmp_path):
 def test_ensure_within_workspace_fails_closed_on_null_byte(tmp_path):
     # A null-byte path can't resolve cleanly; must raise PermissionError, not
     # propagate an unexpected ValueError (fail-closed, not fail-open).
-    from src.tools.file_tools import _ensure_within_workspace
     from src.config.workspace import clear_workspace_root, set_workspace_root
+    from src.tools.file_tools import _ensure_within_workspace
     set_workspace_root(tmp_path)
     try:
         with pytest.raises(PermissionError):
@@ -119,8 +119,8 @@ def test_prefix_collision_blocked(tmp_path):
     sibling.mkdir(exist_ok=True)
     evil = sibling / "secret.txt"
     evil.write_text("top secret")
-    from src.tools.file_tools import _ensure_within_workspace
     from src.config.workspace import clear_workspace_root, set_workspace_root
+    from src.tools.file_tools import _ensure_within_workspace
     set_workspace_root(tmp_path)
     try:
         with pytest.raises(PermissionError):

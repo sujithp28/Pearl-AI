@@ -1,8 +1,6 @@
 """Tests for src/agent/tool_filter.py."""
 from __future__ import annotations
 
-import pytest
-
 from src.agent.tool_filter import relevant_tools
 
 

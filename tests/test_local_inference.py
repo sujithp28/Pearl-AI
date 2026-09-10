@@ -8,17 +8,16 @@ verified separately (see Phase 7 in the engineering report).
 
 from __future__ import annotations
 
-import threading
-from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.config.settings import Settings
-from src.llm.providers import LocalInferenceProvider, LocalModelNotReadyError, create_provider
-from src.llm.providers.local_inference import _get_shared_llm
-
+from src.llm.providers import (
+    LocalInferenceProvider,
+    LocalModelNotReadyError,
+    create_provider,
+)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

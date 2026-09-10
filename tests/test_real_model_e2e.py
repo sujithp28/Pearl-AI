@@ -197,8 +197,8 @@ class TestRealPlanning:
         """
         from src.agent.dispatcher import ToolDispatcher
         from src.agent.planner import Planner
-        from src.main import build_registry
         from src.llm.parser import ToolCall
+        from src.main import build_registry
 
         registry = build_registry()
         planner = Planner(

@@ -8,11 +8,8 @@ Visual acceptance of the UI must be done manually in a real browser.
 """
 from __future__ import annotations
 
-import re
 from html.parser import HTMLParser
 from pathlib import Path
-
-import pytest
 
 UI_DIR = Path(__file__).resolve().parent.parent / "pearl_ui"
 UI_FILE = UI_DIR / "index.html"

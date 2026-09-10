@@ -1,3 +1,5 @@
+import json as _json
+import logging as _logging
 import sys
 from pathlib import Path
 
@@ -2085,9 +2087,6 @@ class TestExecutionStepErrorType:
 # Structured JSON logging (Task 40)
 # ---------------------------------------------------------------------
 
-
-import json as _json
-import logging as _logging
 
 
 def _structured_events(caplog, event_name: str | None = None) -> list[dict]:

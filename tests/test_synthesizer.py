@@ -6,13 +6,10 @@ Tests 1-8 are unit tests (no LLM, no filesystem).
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from src.agent.executor import ExecutionReport, ExecutionStep
 from src.agent.synthesizer import Synthesizer, _format_results, _truncate
-
 
 # ---------------------------------------------------------------------------
 # Helpers

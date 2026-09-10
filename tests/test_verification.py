@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -29,7 +29,6 @@ from src.agent.verification import (
     _determine_status,
     _parse_pytest_counts,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

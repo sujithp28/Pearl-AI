@@ -7,13 +7,13 @@ and that LLMCancelled is never swallowed by the retry logic.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from src.agent.executor import AutonomousExecutor
-from src.llm.parser import ToolCall
 from src.llm.client import LLMCancelled
+from src.llm.parser import ToolCall
 
 
 def _make_executor() -> AutonomousExecutor:

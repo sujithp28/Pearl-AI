@@ -26,8 +26,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 from src.repository.context import (
     ContextConfig,
     RankedFile,
@@ -37,9 +35,8 @@ from src.repository.context import (
 )
 from src.repository.graph import RepositoryGraph
 from src.repository.index import RepositoryIndex
-from src.repository.models import FileInfo, Language, detect_language
-from src.repository.parsers import ParseResult, ParserRegistry
-
+from src.repository.models import FileInfo, detect_language
+from src.repository.parsers import ParserRegistry
 
 # ---------------------------------------------------------------------------
 # Test helpers

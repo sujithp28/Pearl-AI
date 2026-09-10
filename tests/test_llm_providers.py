@@ -10,7 +10,6 @@ from src.llm.providers import (
     GeminiProvider,
     LLMProvider,
     OpenAICompatibleProvider,
-    PearlInferenceNotConfiguredError,
     PearlInferenceProvider,
     ScriptedProvider,
     create_provider,
@@ -196,7 +195,6 @@ def test_pearl_without_key_creates_local_inference_provider(monkeypatch, tmp_pat
 def test_pearl_local_inference_raises_import_error_without_llama_cpp(monkeypatch, tmp_path):
     # If llama-cpp-python is not installed, the first model call must raise
     # a clear ImportError with install instructions, not a confusing AttributeError.
-    from src.llm.providers.local_inference import LocalInferenceProvider
     monkeypatch.setattr(Settings, "PEARL_INFERENCE_API_KEY", "")
     monkeypatch.setattr(Settings, "LOCAL_MODEL_DIR", str(tmp_path))
     monkeypatch.setattr(Settings, "LOCAL_MODEL_FILE", "model.gguf")

@@ -21,18 +21,15 @@ Coverage areas
 from __future__ import annotations
 
 import hashlib
-import os
-import stat
+import sys
 import time
 from pathlib import Path
-import sys
 from unittest.mock import patch
 
 import pytest
 
 from src.repository.models import (
     EXTENSION_TO_LANGUAGE,
-    FileInfo,
     Language,
     ScanResult,
     detect_language,
@@ -43,7 +40,6 @@ from src.repository.scanner import (
     _collect_file_info,
     _compile_gitignore_pattern,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

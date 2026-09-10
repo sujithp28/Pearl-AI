@@ -21,7 +21,6 @@ from src.tools.metadata import tool
 from src.tools.registry import ToolRegistry
 from src.tools.shell_tools import set_active_command_approver
 
-
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
@@ -169,7 +168,6 @@ def test_report_has_reflection_after_fatal_error(monkeypatch):
 
 def test_report_reflection_is_none_when_awaiting_approval(monkeypatch, tmp_path):
     executor, planner = _build_executor()
-    target = tmp_path / "out.txt"
     monkeypatch.setattr(
         planner.client,
         "generate_json",

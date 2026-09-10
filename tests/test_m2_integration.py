@@ -28,10 +28,8 @@ from src.llm.parser import ToolCall
 from src.llm.validation import validate_tool_call
 from src.tools.edit_tools import create_file, replace_in_file, set_active_patch_manager
 from src.tools.metadata import tool
-from src.tools.patch_manager import ChangeManager
 from src.tools.registry import ToolRegistry
 from src.tools.shell_tools import set_active_command_approver
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures / helpers
@@ -334,7 +332,6 @@ class TestIT3ReplanConfidence:
         End-to-end: after one tool failure causes a replan, the score
         logged by Planner.replan() must reflect the replan penalty.
         """
-        import logging
 
         executor, planner = _build_executor()
 

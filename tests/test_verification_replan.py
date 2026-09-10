@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.agent.executor import AutonomousExecutor
 from src.agent.verification import (
     RiskLevel,
@@ -23,7 +21,6 @@ from src.agent.verification import (
     VerificationStatus,
 )
 from src.llm.parser import ToolCall
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -108,7 +105,7 @@ class TestVerificationReplan:
         with patch("src.agent.executor.set_active_patch_manager"), \
              patch("src.agent.executor.set_active_command_approver"), \
              patch("src.agent.executor.refresh_indexed_file"):
-            report = executor.approve()
+            executor.approve()
 
         # Planner.replan must not have been called (no verifier)
         executor.planner.replan.assert_not_called()
@@ -344,8 +341,6 @@ class TestDirtyWorkspaceDetection:
         executor.planner.plan.side_effect = RuntimeError("stop early")
 
         warn_called = []
-
-        original = executor._warn_if_dirty_workspace
 
         def _capture():
             warn_called.append(True)

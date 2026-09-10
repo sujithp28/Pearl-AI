@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.agent.completion import CompletionResult, CompletionService
+from src.agent.completion import CompletionService
 
 
 class _FakeClient:

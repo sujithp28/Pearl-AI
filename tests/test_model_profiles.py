@@ -25,7 +25,6 @@ from src.llm.router import (
     _effective_provider,
     _is_local_pearl,
     _local_model_file,
-    _override_model,
     resolve_profile,
 )
 

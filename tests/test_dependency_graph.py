@@ -32,7 +32,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.agent.dependency_graph import DependencyCycleError, topological_sort
-from src.llm.parser import ParseError
 from src.agent.dispatcher import ToolDispatcher
 from src.agent.plan_validator import (
     PlanValidationError,
@@ -41,10 +40,9 @@ from src.agent.plan_validator import (
 )
 from src.agent.planner import Planner
 from src.llm.client import LLMClient
-from src.llm.parser import ToolCall, ToolParser
+from src.llm.parser import ParseError, ToolCall, ToolParser
 from src.tools.metadata import tool
 from src.tools.registry import ToolRegistry
-
 
 # ---------------------------------------------------------------------------
 # Helpers

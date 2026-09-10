@@ -11,9 +11,8 @@ from __future__ import annotations
 
 import inspect
 import json
-import threading
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -21,7 +20,6 @@ from src.agent.executor import AutonomousExecutor
 from src.agent.plan_validator import PlanValidationError
 from src.llm.client import LLMCancelled
 from src.llm.parser import ToolCall
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # G1 — Plan failure recovery
@@ -222,8 +220,7 @@ class TestCreateFileSafety:
 
     def test_create_file_within_workspace_succeeds(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        from src.tools.edit_tools import create_file
-        from src.tools.edit_tools import set_active_patch_manager
+        from src.tools.edit_tools import create_file, set_active_patch_manager
 
         # Ensure no patch manager is active (direct write mode).
         set_active_patch_manager(None)
@@ -233,9 +230,9 @@ class TestCreateFileSafety:
 
     def test_create_file_outside_workspace_raises(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        from src.tools.edit_tools import create_file
-        from src.tools.edit_tools import set_active_patch_manager
         import tempfile
+
+        from src.tools.edit_tools import create_file, set_active_patch_manager
 
         set_active_patch_manager(None)
         outside = str(Path(tempfile.gettempdir()) / "escape.py")
@@ -245,8 +242,7 @@ class TestCreateFileSafety:
 
     def test_create_file_path_traversal_rejected(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        from src.tools.edit_tools import create_file
-        from src.tools.edit_tools import set_active_patch_manager
+        from src.tools.edit_tools import create_file, set_active_patch_manager
 
         set_active_patch_manager(None)
         traversal = str(tmp_path / ".." / "escape.py")

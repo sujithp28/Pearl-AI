@@ -28,18 +28,16 @@ Coverage areas
 from __future__ import annotations
 
 import ast
-import time
-import tempfile
-from dataclasses import dataclass
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 import pytest
 
+from src.repository.index import IndexStats, RepositoryIndex, SymbolEntry
 from src.repository.models import FileInfo, Language
 from src.repository.parsers import ParseResult, SymbolDef, SymbolKind
-from src.repository.index import IndexStats, RepositoryIndex, SymbolEntry
-
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
@@ -842,8 +840,8 @@ class TestIntegrationPythonParser:
         assert len(index.files_importing("os")) == 1
 
     def test_full_pipeline_scan_parse_index(self) -> None:
-        from src.repository.scanner import RepositoryScanner
         from src.repository.parsers import ParserRegistry
+        from src.repository.scanner import RepositoryScanner
 
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
@@ -870,8 +868,8 @@ class TestIntegrationPythonParser:
 
     def test_build_pearl_own_src(self) -> None:
         """Build index from Pearl's own source — no crashes, reasonable counts."""
-        from src.repository.scanner import RepositoryScanner
         from src.repository.parsers import ParserRegistry
+        from src.repository.scanner import RepositoryScanner
 
         root = Path(__file__).parent.parent.parent
         scanner = RepositoryScanner(root)

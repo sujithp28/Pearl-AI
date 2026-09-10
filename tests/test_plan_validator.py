@@ -23,7 +23,6 @@ from src.llm.parser import ToolCall
 from src.tools.metadata import tool
 from src.tools.registry import ToolRegistry
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

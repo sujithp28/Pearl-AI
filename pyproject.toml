@@ -87,3 +87,9 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+# E501 is off on ruff's own advice for a project that also runs
+# `ruff format`. The formatter owns line length, so E501 then fires only
+# on what the formatter cannot split — long string literals, URLs and
+# comments — where the only way to satisfy it is to make the code worse.
+# Everything else in E, plus all of F and I, stays on.
+ignore = ["E501"]

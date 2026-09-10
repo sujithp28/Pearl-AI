@@ -19,17 +19,15 @@ Covers all 14 specified cases:
 """
 from __future__ import annotations
 
-import threading
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from src.agent.condenser import CannotCondenseError, Condenser, CondensationResult
+from src.agent.condenser import CannotCondenseError, CondensationResult, Condenser
 from src.config.settings import Settings
 from src.llm.errors import ContextLengthError
 from src.memory.memory import ConversationTurn, Memory
-
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 

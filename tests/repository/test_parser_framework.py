@@ -17,10 +17,8 @@ Coverage areas
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 from typing import Iterator
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -32,7 +30,6 @@ from src.repository.parsers import (
     SymbolDef,
     SymbolKind,
 )
-
 
 # ---------------------------------------------------------------------------
 # Test fixtures / concrete parser implementations
@@ -745,7 +742,6 @@ class TestParserFrameworkIntegration:
 class TestLayerRule:
     def test_parsers_package_does_not_import_agent(self) -> None:
         import ast
-        import importlib.util
         src = Path(__file__).parent.parent.parent / "src" / "repository" / "parsers" / "__init__.py"
         tree = ast.parse(src.read_text(encoding="utf-8"))
         imports = []

@@ -27,7 +27,6 @@ import ast
 import os
 import stat
 import time
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -38,9 +37,7 @@ from src.repository.parsers.python_parser import (
     PythonParser,
     _classify_name,
     _decorator_name,
-    _extract_imports,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -919,7 +916,7 @@ class TestIntegration:
             if result.errors:
                 failures.append(f"{py_file.name}: {result.errors}")
 
-        assert not failures, f"Parse errors in Pearl's own source:\n" + "\n".join(failures)
+        assert not failures, "Parse errors in Pearl's own source:\n" + "\n".join(failures)
 
 
 # ---------------------------------------------------------------------------
@@ -976,7 +973,7 @@ class TestPythonParserBenchmarks:
                 f"class Class{i}:",
                 f'    """Class {i} docstring."""',
                 f"    CLASS_CONST = {i}",
-                f"    class_var: int = 0",
+                "    class_var: int = 0",
                 "",
             ]
             for j in range(methods_per_class):
@@ -985,7 +982,7 @@ class TestPythonParserBenchmarks:
                 lines += [
                     f"    {dec}{async_kw}def method_{j}(self) -> None:",
                     f'        """Method {j} of Class {i}."""',
-                    f"        pass",
+                    "        pass",
                     "",
                 ]
         for k in range(10):
@@ -993,8 +990,8 @@ class TestPythonParserBenchmarks:
                 f"def top_func_{k}(x: int, y: str = 'default') -> bool:",
                 f'    """Top function {k}."""',
                 f"    def inner_{k}():",
-                f"        pass",
-                f"    return True",
+                "        pass",
+                "    return True",
                 "",
             ]
         return "\n".join(lines)

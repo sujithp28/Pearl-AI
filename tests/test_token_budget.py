@@ -8,8 +8,6 @@ Planner.build_prompt().
 
 from __future__ import annotations
 
-import pytest
-
 from src.llm.token_budget import (
     _TRUNCATION_NOTICE,
     estimate_tokens,

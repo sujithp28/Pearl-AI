@@ -20,7 +20,6 @@ import pytest
 
 from src.llm.router import ModelRouter, _effective_provider, _override_model
 
-
 # ---------------------------------------------------------------------------
 # _effective_provider
 # ---------------------------------------------------------------------------
@@ -213,8 +212,8 @@ class TestModelRouter:
 
 class TestMCPServerChatLlm:
     def test_chat_uses_chat_llm_when_provided(self) -> None:
-        from src.mcp.server import MCPServer
         from src.mcp.protocol import JsonRpcRequest
+        from src.mcp.server import MCPServer
         from src.tools.registry import ToolRegistry
 
         chat_chunks = ["Hello", " world"]
@@ -245,8 +244,8 @@ class TestMCPServerChatLlm:
         assert collected == ["Hello", " world"]
 
     def test_chat_falls_back_to_llm_when_no_chat_llm(self) -> None:
-        from src.mcp.server import MCPServer
         from src.mcp.protocol import JsonRpcRequest
+        from src.mcp.server import MCPServer
         from src.tools.registry import ToolRegistry
 
         chunks = ["ok"]

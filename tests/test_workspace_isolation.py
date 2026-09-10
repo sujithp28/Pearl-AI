@@ -18,8 +18,11 @@ from pathlib import Path
 
 import pytest
 
-from src.config.workspace import clear_workspace_root, get_workspace_root, set_workspace_root
-
+from src.config.workspace import (
+    clear_workspace_root,
+    get_workspace_root,
+    set_workspace_root,
+)
 
 # ---------------------------------------------------------------------------
 # Workspace ContextVar helpers
@@ -62,7 +65,8 @@ class TestConcurrentWorkspaceIsolation:
         """Two threads setting different roots do not interfere."""
         ws_a = tmp_path / "workspace_a"
         ws_b = tmp_path / "workspace_b"
-        ws_a.mkdir(); ws_b.mkdir()
+        ws_a.mkdir()
+        ws_b.mkdir()
 
         results: dict[str, Path | None] = {"a": None, "b": None}
         barrier = threading.Barrier(2)
@@ -79,8 +83,10 @@ class TestConcurrentWorkspaceIsolation:
 
         t_a = threading.Thread(target=run_a, daemon=True)
         t_b = threading.Thread(target=run_b, daemon=True)
-        t_a.start(); t_b.start()
-        t_a.join(); t_b.join()
+        t_a.start()
+        t_b.start()
+        t_a.join()
+        t_b.join()
 
         assert results["a"] == ws_a.resolve(), "Thread A got the wrong workspace"
         assert results["b"] == ws_b.resolve(), "Thread B got the wrong workspace"

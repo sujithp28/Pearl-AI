@@ -10,10 +10,9 @@ Users saw a long blank wait followed by the full response appearing at once.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -46,7 +45,6 @@ def test_chat_streams_chunks_before_generator_finishes(client, monkeypatch):
         yield "hello"
         yield " world"
 
-    session = client.app.state  # not used — we patch at the session level
     from src.api import server as srv_mod
 
     real_session = srv_mod._session

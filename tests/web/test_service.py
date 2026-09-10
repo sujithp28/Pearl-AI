@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
-
-from src.web.models import RawPage, SearchResult, WebDocument, WebSource
+from src.web.models import RawPage, SearchResult, WebDocument
 from src.web.search import WebSearchError
 from src.web.service import WebIntelligenceService
 

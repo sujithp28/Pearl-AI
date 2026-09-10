@@ -6,15 +6,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from src.repository.parsers import ParseResult, ParserRegistry, SymbolKind
 from src.repository.models import Language
+from src.repository.parsers import ParseResult, ParserRegistry, SymbolKind
 
 
 def _make_file_info(tmp_path: Path, name: str, content: str):
     """Write content to a temp file and return a FileInfo for it."""
-    from src.repository.models import FileInfo, EXTENSION_TO_LANGUAGE
+    from src.repository.models import EXTENSION_TO_LANGUAGE, FileInfo
     p = tmp_path / name
     p.write_text(content, encoding="utf-8")
     ext = Path(name).suffix.lower()

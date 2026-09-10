@@ -43,7 +43,6 @@ from src.tools.metadata import tool
 from src.tools.registry import ToolRegistry
 from src.tools.shell_tools import set_active_command_approver
 
-
 # ---------------------------------------------------------------------------
 # Fixtures / scaffolding
 # ---------------------------------------------------------------------------
@@ -336,9 +335,8 @@ class TestE2EReflectionDrivenReplan:
             verifier=verifier,
         )
         first = workspace / "first.py"
-        second = workspace / "second.py"
 
-        # Initial plan creates first.py; the replan creates second.py.
+        # Initial plan creates first.py; the replan echoes instead.
         monkeypatch.setattr(
             planner.client,
             "generate_json",

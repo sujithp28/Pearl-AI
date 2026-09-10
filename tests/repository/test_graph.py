@@ -38,12 +38,12 @@ from pathlib import Path
 import pytest
 
 from src.repository.graph import (
-    EdgeKind,
     Edge,
+    EdgeKind,
     GraphStats,
     ImpactResult,
-    NodeKind,
     Node,
+    NodeKind,
     RepositoryGraph,
     _build_module_map,
     _extract_imported_names,
@@ -52,9 +52,8 @@ from src.repository.graph import (
     _resolve_to_file,
 )
 from src.repository.index import RepositoryIndex
-from src.repository.models import FileInfo, Language, detect_language
-from src.repository.parsers import ParseResult, ParserRegistry, SymbolDef, SymbolKind
-
+from src.repository.models import FileInfo, detect_language
+from src.repository.parsers import ParserRegistry
 
 # ---------------------------------------------------------------------------
 # Test helpers
@@ -1367,7 +1366,7 @@ class TestLayerRule:
 class TestIntegration:
     def test_pearl_agent_codebase(self) -> None:
         """Build graph from the actual pearl-agent source tree."""
-        from src.repository import RepositoryScanner, Language
+        from src.repository import Language, RepositoryScanner
         from src.repository.parsers import ParserRegistry
 
         root = Path(__file__).parent.parent.parent
@@ -1395,7 +1394,7 @@ class TestIntegration:
 
     def test_inherits_edges_in_real_codebase(self) -> None:
         """INHERITS edges should exist in pearl-agent (BaseParser subclasses)."""
-        from src.repository import RepositoryScanner, Language
+        from src.repository import Language, RepositoryScanner
         from src.repository.parsers import ParserRegistry
 
         root = Path(__file__).parent.parent.parent
@@ -1412,7 +1411,7 @@ class TestIntegration:
 
     def test_cycle_detection_real_codebase(self) -> None:
         """pearl-agent itself must be acyclic (it is well-structured)."""
-        from src.repository import RepositoryScanner, Language
+        from src.repository import Language, RepositoryScanner
         from src.repository.parsers import ParserRegistry
 
         root = Path(__file__).parent.parent.parent
@@ -1429,7 +1428,7 @@ class TestIntegration:
         assert isinstance(cycles, list)
 
     def test_impact_analysis_real_file(self) -> None:
-        from src.repository import RepositoryScanner, Language
+        from src.repository import Language, RepositoryScanner
         from src.repository.parsers import ParserRegistry
 
         root = Path(__file__).parent.parent.parent

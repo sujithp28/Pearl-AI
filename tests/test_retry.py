@@ -32,7 +32,6 @@ from src.tools.metadata import tool
 from src.tools.registry import ToolRegistry
 from src.tools.shell_tools import set_active_command_approver
 
-
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------

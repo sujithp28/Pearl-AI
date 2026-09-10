@@ -13,13 +13,10 @@ Coverage:
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from src.agent.condenser import CondensationResult
 from src.agent.context_engine import ContextEngine, EngineContext
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import inspect
 import threading
+from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 class TestInferenceLock:
@@ -84,8 +83,6 @@ class TestInferenceLock:
 
         lock_acquired_during_call: list[bool] = []
 
-        original_ccc = fake_llm.create_chat_completion.side_effect
-
         # The lock this provider's model maps to.
         model_lock = mod._get_inference_lock("fake.gguf", 512)
 
@@ -154,6 +151,7 @@ class TestWorkspaceIsolationConcurrent:
         explicit argument and must not rely on os.getcwd().
         """
         import inspect
+
         from src.tools.repo_tools import build_startup_index
         source = inspect.getsource(build_startup_index)
         # build_startup_index should use the `path` parameter, not cwd.
@@ -169,6 +167,7 @@ class TestWorkspaceIsolationConcurrent:
         process-global cwd that the other thread changes.
         """
         import threading
+
         from src.tools.patch_manager import ChangeManager
 
         ws_a = tmp_path / "workspace_a"
@@ -191,8 +190,10 @@ class TestWorkspaceIsolationConcurrent:
 
         t1 = threading.Thread(target=write_in, args=(ws_a, "a"))
         t2 = threading.Thread(target=write_in, args=(ws_b, "b"))
-        t1.start(); t2.start()
-        t1.join(); t2.join()
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
 
         assert not errors, f"Concurrent writes failed: {errors}"
         assert len(results) == 2

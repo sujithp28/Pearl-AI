@@ -21,7 +21,6 @@ git_blame:
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -33,7 +32,6 @@ from src.tools.git_tools import (
     git_blame,
     git_stage,
 )
-
 
 # ---------------------------------------------------------------------------
 # git_stage
