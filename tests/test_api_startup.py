@@ -11,6 +11,8 @@ the documented command left `_session` as None and every endpoint behind
 from __future__ import annotations
 
 import re
+import sys
+import types
 import uuid
 from pathlib import Path
 
@@ -97,7 +99,11 @@ class TestModelReadiness:
     sent the user hunting through their prompt instead of their setup.
     """
 
-    def test_status_reports_ready_when_the_model_is_importable(self, uninitialised_app):
+    def test_status_reports_ready_when_the_model_is_importable(
+        self, uninitialised_app, monkeypatch
+    ):
+        monkeypatch.setitem(sys.modules, "llama_cpp", types.ModuleType("llama_cpp"))
+
         with TestClient(uninitialised_app.app) as client:
             body = client.get("/api/status").json()
 
