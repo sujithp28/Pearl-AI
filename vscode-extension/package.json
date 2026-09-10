@@ -126,7 +126,7 @@
         "pearl.provider": {
           "type": "string",
           "default": "",
-          "description": "Informational only: the LLM provider Pearl's MCP server is configured to use (e.g. pearl, claude, openai, gemini, custom), shown in the status bar. This mirrors your server-side PEARL_LLM_PROVIDER setting but is not read from the server itself — set it to match if you want it displayed."
+          "description": "Informational only: the LLM provider Pearl's MCP server is configured to use (e.g. pearl, claude, openai, gemini, custom), shown in the status bar. This mirrors your server-side PEARL_LLM_PROVIDER setting but is not read from the server itself \u2014 set it to match if you want it displayed."
         },
         "pearl.inlineCompletion.enabled": {
           "type": "boolean",
@@ -141,7 +141,7 @@
     "watch": "tsc -w -p ./",
     "pretest": "npm run compile",
     "test": "node --test \"out/test/**/*.test.js\"",
-    "package": "npm run compile && npx vsce package"
+    "package": "npm run compile && npx @vscode/vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -1,0 +1,61 @@
+name: Release
+
+# Only a tag produces a release. Nothing here runs on an ordinary push,
+# so the repository cannot publish anything by accident.
+#
+#   git tag v1.2.0-beta.1
+#   git push origin v1.2.0-beta.1
+#
+# The result is a GitHub release with the packaged extension attached,
+# which is enough for someone to download and install it. Publishing to
+# the VS Code Marketplace or to PyPI needs accounts and secrets this
+# repository does not have, and is deliberately not attempted here.
+on:
+  push:
+    tags: ["v*"]
+
+# Creating a release is a write to the repository.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # `npm ci` rather than `npm install`: it installs exactly what the
+      # lockfile says and fails loudly if the lockfile and the manifest
+      # have drifted apart, which is what you want when the output is
+      # something people download.
+      - name: Install extension dependencies
+        working-directory: vscode-extension
+        run: npm ci
+
+      - name: Package the extension
+        working-directory: vscode-extension
+        run: npm run package
+
+      # Semver says a hyphen in the version means a prerelease, so
+      # v1.2.0-beta.1 is marked as one and v1.2.0 would not be. Without
+      # this every release would be flagged a prerelease forever, or
+      # none would.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          case "$TAG" in
+            *-*) PRERELEASE=--prerelease ;;
+            *)   PRERELEASE= ;;
+          esac
+          gh release create "$TAG" vscode-extension/*.vsix \
+            --title "Pearl $TAG" \
+            --generate-notes \
+            $PRERELEASE
