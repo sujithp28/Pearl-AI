@@ -56,6 +56,7 @@ def _python_files(root: Path) -> list[Path]:
     ),
     parameters={"files": "dict[str, str]"},
     returns="str",
+    risk_level="staged",
 )
 def batch_write_files(files: dict[str, str]) -> str:
     """
@@ -123,6 +124,7 @@ def batch_write_files(files: dict[str, str]) -> str:
     ),
     parameters={"old_name": "str", "new_name": "str"},
     returns="str",
+    risk_level="staged",
 )
 def rename_symbol(old_name: str, new_name: str) -> str:
     """

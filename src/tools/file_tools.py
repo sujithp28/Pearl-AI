@@ -127,6 +127,7 @@ def read_file(path: str) -> str:
         "content": "str",
     },
     returns="None | str",
+    risk_level="staged",
 )
 def write_file(path: str, content: str) -> None | str:
     """
@@ -170,6 +171,7 @@ def write_file(path: str, content: str) -> None | str:
         "content": "str",
     },
     returns="None | str",
+    risk_level="staged",
 )
 def append_file(path: str, content: str) -> None | str:
     """
@@ -260,6 +262,7 @@ def list_directory(path: str = ".") -> list[str]:
         "path": "str",
     },
     returns="None",
+    risk_level="staged",
 )
 def make_directory(path: str) -> None:
     """
@@ -326,6 +329,7 @@ def delete_file(path: str) -> None | str:
         "path": "str",
     },
     returns="int",
+    risk_level="safe",
 )
 def file_size(path: str) -> int:
     """
@@ -350,6 +354,7 @@ def file_size(path: str) -> int:
         "path_b": "str",
     },
     returns="str",
+    risk_level="safe",
 )
 def diff_files(path_a: str, path_b: str) -> str:
     file_a = _ensure_within_workspace(path_a)
@@ -382,6 +387,7 @@ def diff_files(path_a: str, path_b: str) -> str:
         "destination": "str",
     },
     returns="None",
+    risk_level="dangerous",
 )
 def rename_file(source: str, destination: str) -> None:
     src = _ensure_within_workspace(source)
@@ -408,6 +414,7 @@ def rename_file(source: str, destination: str) -> None:
         "destination": "str",
     },
     returns="None",
+    risk_level="dangerous",
 )
 def copy_file(source: str, destination: str) -> None:
     src = _ensure_within_workspace(source)

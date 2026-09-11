@@ -351,6 +351,7 @@ def _apply_or_stage(file_path: Path, updated_content: str, summary: str) -> str:
         "new_source": "str",
     },
     returns="str",
+    risk_level="staged",
 )
 def replace_method(
     class_name: str, method_name: str, new_source: str, path: str = ""
@@ -376,6 +377,7 @@ def replace_method(
     ),
     parameters={"path": "str", "name": "str"},
     returns="dict",
+    risk_level="safe",
 )
 def find_function(name: str, path: str = "") -> dict[str, Any]:
     file_path = _resolve_path(path, name)
@@ -395,6 +397,7 @@ def find_function(name: str, path: str = "") -> dict[str, Any]:
     ),
     parameters={"path": "str", "name": "str"},
     returns="dict",
+    risk_level="safe",
 )
 def find_class(name: str, path: str = "") -> dict[str, Any]:
     file_path = _resolve_path(path, name)
@@ -414,6 +417,7 @@ def find_class(name: str, path: str = "") -> dict[str, Any]:
     ),
     parameters={"path": "str", "class_name": "str", "method_name": "str"},
     returns="dict",
+    risk_level="safe",
 )
 def find_method(class_name: str, method_name: str, path: str = "") -> dict[str, Any]:
     file_path = _resolve_path(path, class_name)
@@ -435,6 +439,7 @@ def find_method(class_name: str, method_name: str, path: str = "") -> dict[str, 
     ),
     parameters={"path": "str", "name": "str", "new_source": "str"},
     returns="str",
+    risk_level="staged",
 )
 def replace_function(name: str, new_source: str, path: str = "") -> str:
     file_path = _resolve_path(path, name)
@@ -458,6 +463,7 @@ def replace_function(name: str, new_source: str, path: str = "") -> str:
     ),
     parameters={"path": "str", "name": "str", "new_source": "str"},
     returns="str",
+    risk_level="staged",
 )
 def replace_class(name: str, new_source: str, path: str = "") -> str:
     file_path = _resolve_path(path, name)
@@ -480,6 +486,7 @@ def replace_class(name: str, new_source: str, path: str = "") -> str:
     ),
     parameters={"path": "str", "name": "str", "new_source": "str"},
     returns="str",
+    risk_level="staged",
 )
 def insert_after_symbol(name: str, new_source: str, path: str = "") -> str:
     file_path = _resolve_path(path, name)
@@ -502,6 +509,7 @@ def insert_after_symbol(name: str, new_source: str, path: str = "") -> str:
     ),
     parameters={"path": "str", "name": "str", "new_source": "str"},
     returns="str",
+    risk_level="staged",
 )
 def insert_before_symbol(name: str, new_source: str, path: str = "") -> str:
     file_path = _resolve_path(path, name)

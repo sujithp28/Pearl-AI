@@ -10,7 +10,7 @@ V2 adds a ``risk_level`` parameter for tiered approval:
   "staged"     — write, subject to ChangeManager approval gate
   "dangerous"  — destructive/irreversible, always requires confirmation
 
-Default: "staged" (fail-safe — an unclassified tool is treated as
+Default: "dangerous" (fail closed — an unclassified tool is treated as
          requiring approval rather than running freely).
 """
 
@@ -26,7 +26,7 @@ def tool(
     description: str,
     parameters: dict[str, str] | None = None,
     returns: str = "Any",
-    risk_level: RiskLevel = "staged",
+    risk_level: RiskLevel = "dangerous",
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator used to register metadata on a tool function.

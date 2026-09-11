@@ -487,6 +487,7 @@ def _run_fixed_command(command: str) -> str:
         "memory_mb": "int",
     },
     returns="subprocess.CompletedProcess | str",
+    risk_level="dangerous",
 )
 def execute_shell(
     command: str,
@@ -571,6 +572,7 @@ def _run_python_script(
         "memory_mb": "int",
     },
     returns="subprocess.CompletedProcess",
+    risk_level="dangerous",
 )
 def run_python(
     script: str,
@@ -618,6 +620,7 @@ def run_python(
 @tool(
     description="Return the current working directory.",
     returns="str",
+    risk_level="safe",
 )
 def pwd() -> str:
     """
@@ -634,6 +637,7 @@ def pwd() -> str:
         "show_hidden": "bool",
     },
     returns="list[str]",
+    risk_level="safe",
 )
 def ls(
     path: str = ".",
@@ -668,6 +672,7 @@ def ls(
         "command": "str",
     },
     returns="str | None",
+    risk_level="safe",
 )
 def which(command: str) -> str | None:
     """
@@ -683,6 +688,7 @@ def which(command: str) -> str | None:
         "command": "str",
     },
     returns="bool",
+    risk_level="safe",
 )
 def is_command_available(command: str) -> bool:
     """
@@ -695,6 +701,7 @@ def is_command_available(command: str) -> bool:
 @tool(
     description="Return the operating system name.",
     returns="str",
+    risk_level="safe",
 )
 def operating_system() -> str:
     """
@@ -717,6 +724,7 @@ def operating_system() -> str:
         "path": "str",
     },
     returns="dict",
+    risk_level="safe",
 )
 def lint_file(path: str) -> dict[str, Any]:
     """
@@ -799,6 +807,7 @@ def lint_file(path: str) -> dict[str, Any]:
 @tool(
     description="Return the current username.",
     returns="str",
+    risk_level="safe",
 )
 def current_user() -> str:
     """
@@ -857,6 +866,7 @@ def _parse_pytest_summary(output: str) -> tuple[int, int, int]:
         "timeout": "int",
     },
     returns="dict",
+    risk_level="staged",
 )
 def run_tests(
     path: str = ".",

@@ -81,6 +81,7 @@ def _get_extractor() -> ContentExtractor:
         "max_results": "int",
     },
     returns="list[dict]",
+    risk_level="safe",
 )
 def web_search(query: str, max_results: int = 5) -> list[dict]:
     """
@@ -123,6 +124,7 @@ def web_search(query: str, max_results: int = 5) -> list[dict]:
     ),
     parameters={"url": "str"},
     returns="dict",
+    risk_level="safe",
 )
 def web_fetch(url: str) -> dict:
     """
@@ -165,6 +167,7 @@ def web_fetch(url: str) -> dict:
         "query": "str",
     },
     returns="str",
+    risk_level="safe",
 )
 def web_context(query: str) -> str:
     """

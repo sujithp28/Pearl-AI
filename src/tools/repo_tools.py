@@ -372,6 +372,7 @@ def _truncation_notice(matches: list[dict[str, Any]], limit: int) -> dict[str, A
         "path": "str",
     },
     returns="dict",
+    risk_level="safe",
 )
 def index_repository(path: str = ".") -> dict[str, Any]:
     """
@@ -404,6 +405,7 @@ def index_repository(path: str = ".") -> dict[str, Any]:
         "path": "str",
     },
     returns="list[dict]",
+    risk_level="safe",
 )
 def find_symbol(name: str, path: str = ".") -> list[dict[str, Any]]:
     """
@@ -429,6 +431,7 @@ def find_symbol(name: str, path: str = ".") -> list[dict[str, Any]]:
         "path": "str",
     },
     returns="list[dict]",
+    risk_level="safe",
 )
 def find_references(
     symbol: str,
@@ -462,6 +465,7 @@ def find_references(
         "path": "str",
     },
     returns="list[dict]",
+    risk_level="safe",
 )
 def search_text(query: str, path: str = ".") -> list[dict[str, Any]]:
     """
@@ -494,6 +498,7 @@ def search_text(query: str, path: str = ".") -> list[dict[str, Any]]:
         "path": "str",
     },
     returns="dict",
+    risk_level="safe",
 )
 def summarize_project(path: str = ".") -> dict[str, Any]:
     """
@@ -559,6 +564,7 @@ def summarize_project(path: str = ".") -> dict[str, Any]:
         "path": "str",
     },
     returns="dict",
+    risk_level="safe",
 )
 def explain_file(path: str) -> dict[str, Any]:
     """

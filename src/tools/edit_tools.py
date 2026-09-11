@@ -177,6 +177,7 @@ def _apply_hunks(
         "content": "str",
     },
     returns="None | str",
+    risk_level="staged",
 )
 def create_file(path: str, content: str = "") -> None | str:
     """
@@ -222,6 +223,7 @@ def create_file(path: str, content: str = "") -> None | str:
         "count": "int",
     },
     returns="int",
+    risk_level="staged",
 )
 def replace_in_file(
     path: str,
@@ -286,6 +288,7 @@ def replace_in_file(
         "new_content": "str",
     },
     returns="None | str",
+    risk_level="staged",
 )
 def edit_lines(
     path: str,
@@ -342,6 +345,7 @@ def edit_lines(
         "patch": "str",
     },
     returns="None | str",
+    risk_level="staged",
 )
 def patch_file(path: str, patch: str) -> None | str:
     """

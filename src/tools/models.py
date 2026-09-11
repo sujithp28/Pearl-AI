@@ -25,7 +25,10 @@ class Tool:
 
     parameters: dict[str, str] = field(default_factory=dict)
     returns: str = "Any"
-    risk_level: RiskLevel = "staged"
+    # Fail closed. A tool that never declared a tier is treated as the
+    # most restrictive one, so forgetting the decorator cannot silently
+    # grant a tool auto-approval in headless mode.
+    risk_level: RiskLevel = "dangerous"
 
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         """
