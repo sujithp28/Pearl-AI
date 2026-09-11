@@ -118,12 +118,38 @@ class TestApprovalGate:
     def test_yes_flag_defers_to_execution_policy(self, monkeypatch):
         """--yes routes through ExecutionPolicy rather than assuming consent."""
         executor = MagicMock()
+        executor.staged_risk_level.return_value = "staged"
         policy = MagicMock()
         policy.can_auto_approve.return_value = True
         policy.approval_reason.return_value = "headless"
         with patch("src.agent.headless.get_execution_policy", return_value=policy):
             assert _decide(executor, auto_yes=True) is True
+        # The tier comes from what the run actually staged. This used to
+        # assert a hardcoded "staged" literal, which is how a staged
+        # deletion — a dangerous tool — reached auto-approval.
         policy.can_auto_approve.assert_called_once_with("staged")
+
+    def test_yes_flag_refuses_a_batch_that_staged_a_dangerous_change(self):
+        """
+        The regression this replaces a weaker assertion for.
+
+        A real policy, not a mock: in headless mode with the staged
+        policy set to approve, an ordinary edit is auto-approved and a
+        dangerous one is not. --yes removes the prompt, never the
+        protection.
+        """
+        from src.agent.headless import ExecutionPolicy
+
+        policy = ExecutionPolicy(mode="headless", staged_policy="approve")
+
+        ordinary = MagicMock()
+        ordinary.staged_risk_level.return_value = "staged"
+        risky = MagicMock()
+        risky.staged_risk_level.return_value = "dangerous"
+
+        with patch("src.agent.headless.get_execution_policy", return_value=policy):
+            assert _decide(ordinary, auto_yes=True) is True
+            assert _decide(risky, auto_yes=True) is False
 
     def test_yes_flag_respects_a_blocking_policy(self):
         """

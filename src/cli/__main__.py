@@ -119,12 +119,19 @@ def _decide(executor: Any, auto_yes: bool) -> bool:
         from src.agent.headless import get_execution_policy
 
         policy = get_execution_policy()
-        allowed = policy.can_auto_approve("staged")
+
+        # Ask what was actually staged rather than assuming it was an
+        # ordinary edit. This used to pass a hardcoded "staged", so a run
+        # that staged a deletion — a dangerous tool — was auto-approved in
+        # headless mode under the staged policy. Dangerous operations are
+        # exactly what --yes must not wave through.
+        risk = executor.staged_risk_level()
+        allowed = policy.can_auto_approve(risk)
         print()
         if allowed:
-            print(render.dim(f"  auto-approved — {policy.approval_reason('staged')}"))
+            print(render.dim(f"  auto-approved — {policy.approval_reason(risk)}"))
         else:
-            print(render.yellow(f"  blocked — {policy.approval_reason('staged')}"))
+            print(render.yellow(f"  blocked — {policy.approval_reason(risk)}"))
             print(
                 render.dim(
                     "  set PEARL_EXECUTION_MODE=headless and "

@@ -58,3 +58,25 @@ class Tool:
 
     def __str__(self) -> str:
         return self.name
+
+
+# Ordering of the risk tiers, least to most restrictive. Used to answer
+# "how risky was this batch, overall" — a set of operations is as risky
+# as its riskiest member, never as its average.
+_RISK_ORDER: dict[RiskLevel, int] = {"safe": 0, "staged": 1, "dangerous": 2}
+
+
+def max_risk(*levels: RiskLevel) -> RiskLevel:
+    """
+    Return the most restrictive of `levels`.
+
+    Returns "safe" when called with nothing, which is the correct answer
+    for "no risky operation happened" rather than a fail-open default:
+    the caller has a risk to report only if a tool produced one.
+
+    An unrecognised level is treated as the most restrictive, so a tier
+    added later without updating this ordering fails closed.
+    """
+    if not levels:
+        return "safe"
+    return max(levels, key=lambda level: _RISK_ORDER.get(level, len(_RISK_ORDER)))
