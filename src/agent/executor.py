@@ -60,7 +60,8 @@ from src.personality import EventKind, PersonalityManager
 from src.tools.checkpoints import CheckpointManager
 from src.tools.command_approval import CommandApprovalManager
 from src.tools.edit_tools import set_active_patch_manager
-from src.tools.patch_manager import ChangeManager
+from src.tools.models import RiskLevel, max_risk
+from src.tools.patch_manager import ChangeManager, StaleFileError
 from src.tools.repo_tools import refresh_indexed_file
 from src.tools.shell_tools import _run_shell_command, set_active_command_approver
 
@@ -155,20 +156,34 @@ class ApprovalCoordinator:
         self.patch_manager = patch_manager
         self.command_approver = command_approver
         self._paused: _PausedState | None = None
+        # Approve and reject arrive from request threads, and the run
+        # itself is on another. Popping the paused state has to be one
+        # atomic step: without it two approvals racing can both read a
+        # non-None state, both clear it, and both go on to apply the
+        # same batch.
+        self._lock = threading.Lock()
 
     def is_awaiting_approval(self) -> bool:
         return self._paused is not None
 
     def pause(self, state: _PausedState) -> None:
-        self._paused = state
+        with self._lock:
+            self._paused = state
 
     def take_paused(self) -> _PausedState:
-        """Pop and return the paused state (raises if not paused)."""
-        if self._paused is None:
-            raise RuntimeError("No execution is currently awaiting approval.")
-        state = self._paused
-        self._paused = None
-        return state
+        """
+        Pop and return the paused state, atomically.
+
+        Raises when nothing is paused — which is also what the loser of
+        a race sees, so a duplicate approval is reported rather than
+        silently applied twice.
+        """
+        with self._lock:
+            if self._paused is None:
+                raise RuntimeError("No execution is currently awaiting approval.")
+            state = self._paused
+            self._paused = None
+            return state
 
     def discard_all(self) -> tuple[list[str], list[str]]:
         """Discard all staged patches and commands; return (files, cmds)."""
@@ -244,6 +259,11 @@ class AutonomousExecutor:
         self.command_approver = _ca
         self.checkpoints = _ck
 
+        # Risk tiers of the tools that actually added to the pending
+        # change set this run. Correlated here rather than in
+        # ChangeManager, which deliberately knows nothing about tools.
+        self._staging_risks: list[RiskLevel] = []
+
         # Only ever shapes the wording of ProgressEvent.current_action
         # below — never anything the planner, dispatcher, or any tool
         # sees or acts on.
@@ -296,6 +316,60 @@ class AutonomousExecutor:
         """
 
         self._cancel_event.set()
+
+    def _staged_count(self) -> int:
+        """
+        How many items are waiting for approval, across both gates.
+
+        Shell commands stage in `CommandApprovalManager`, not in
+        `ChangeManager`. Counting only file edits made a run whose sole
+        staged item was an arbitrary shell command look like it had
+        staged nothing at all — so it was scored "safe" and
+        auto-approved in headless mode, which is precisely the case the
+        dangerous tier exists to stop.
+        """
+        return len(self.patch_manager) + len(self.command_approver.pending)
+
+    def _note_if_staged(self, tool_name: str, pending_before: int) -> None:
+        """
+        Record this tool's risk tier if the call added a staged change.
+
+        Correlating here keeps ChangeManager free of any knowledge about
+        tools: it still deals only in paths and text, and the executor —
+        which knows both — observes that the pending set grew across a
+        named tool call.
+
+        A tool whose tier cannot be resolved is recorded as dangerous
+        rather than skipped. An unresolvable tool that just wrote to the
+        pending set is exactly the case that must not be waved through.
+        """
+        if self._staged_count() <= pending_before:
+            return
+
+        try:
+            risk = self.dispatcher.describe_tool(tool_name).risk_level
+        except Exception:
+            logger.warning(
+                "Could not resolve a risk tier for %r after it staged a "
+                "change; treating it as dangerous.",
+                tool_name,
+            )
+            risk = "dangerous"
+
+        self._staging_risks.append(risk)
+
+    def staged_risk_level(self) -> RiskLevel:
+        """
+        The highest risk tier among tools that staged a pending change.
+
+        "safe" when nothing was staged. A batch is as risky as its
+        riskiest member: a run that deletes a file and edits another is
+        a dangerous batch, not an average one.
+
+        Callers deciding whether to skip interactive approval should ask
+        this rather than assuming the batch is merely staged.
+        """
+        return max_risk(*self._staging_risks)
 
     def is_cancelled(self) -> bool:
         """
@@ -597,6 +671,8 @@ class AutonomousExecutor:
         events: list[ProgressEvent] = []
         completed_for_replan: list[dict[str, Any]] = []
 
+        self._staging_risks = []
+
         self._warn_if_dirty_workspace()
 
         set_active_patch_manager(self.patch_manager)
@@ -680,6 +756,17 @@ class AutonomousExecutor:
         cancelled (discarding the staged patches and commands)
         instead of resuming.
         """
+
+        # Time-of-check/time-of-use gate, before the paused state is
+        # consumed. The user approved a diff against specific file
+        # contents; if any of those files changed since, this approval
+        # no longer describes what would be written. Refuse while the
+        # run is still resumable, so they can reject or re-run rather
+        # than being left with a half-finished execution.
+        stale = self.patch_manager.stale_paths()
+        if stale:
+            logger.error("Approval aborted — files changed since staging: %s", stale)
+            raise StaleFileError(stale)
 
         state = self.approval_coordinator.take_paused()
 
@@ -1222,12 +1309,15 @@ class AutonomousExecutor:
                 current_action=self._personality.format(EventKind.EXECUTING),
             )
 
+            pending_before = self._staged_count()
+
             try:
                 result = self.dispatcher.execute(
                     tool_call.tool_name,
                     *tool_call.args,
                     **tool_call.kwargs,
                 )
+                self._note_if_staged(tool_call.tool_name, pending_before)
             except Exception as exc:
                 # Transient errors are retried before the replan path.
                 # The same ToolCall object is re-queued at the front of

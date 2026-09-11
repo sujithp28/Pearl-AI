@@ -85,3 +85,20 @@ def _clean_workspace_root():
     clear_workspace_root()
     yield
     clear_workspace_root()
+
+
+def write_lf(path, text: str) -> None:
+    """
+    Write `text` byte-for-byte, with no newline translation.
+
+    ``Path.write_text`` translates ``\n`` to ``\r\n`` on Windows, so a
+    fixture that says LF lands as CRLF there. Pearl's editing tools now
+    preserve whatever endings a file really has, and its approval gate
+    compares staged content against the file's real bytes — so a
+    platform-translated fixture no longer matches the literal a test
+    stages beside it. Use this whenever a test's assertions name the
+    exact bytes of a file.
+    """
+
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text)

@@ -5,8 +5,11 @@ Pearl Repository Intelligence — Semantic Context Builder (Phase 6).
 and ``RepositoryGraph`` — to build the smallest, highest-quality context
 string for the LLM planner.
 
-What makes this "semantic" vs. the older ``ContextBuilder`` in
-``src/tools/context_manager.py``:
+It is the single retrieval implementation in Pearl: an earlier,
+flat-matching ``ContextBuilder`` under ``src/tools/`` was removed once
+this one covered it. ``ContextEngine`` (``src/agent/context_engine.py``)
+calls into here for ranking and then budgets the result; nothing else
+ranks files. What makes this "semantic":
 
 1. **Richer symbol matching** — matches against the fully-qualified name
    (``"ChangeManager.stage"``), the docstring first line, and decorators,

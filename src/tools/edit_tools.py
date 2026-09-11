@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from src.tools.file_io import dominant_newline, read_text, write_text
 from src.tools.file_tools import _ensure_within_workspace
 from src.tools.metadata import tool
 from src.tools.patch_manager import ChangeManager
@@ -54,27 +55,44 @@ def get_active_patch_manager() -> ChangeManager | None:
     return _active_patch_manager.get()
 
 
-def _read_lines(file_path: Path) -> tuple[list[str], bool]:
+def _read_lines(file_path: Path) -> tuple[str, list[str], bool, str]:
     """
-    Read `file_path` as lines, plus whether it ends with a newline.
+    Read `file_path` and return its exact text, its lines, whether it
+    ends with a newline, and which line ending it uses.
+
+    The raw text comes back alongside the lines because a staged edit
+    has to record what was really on disk. Rebuilding the "original"
+    from `splitlines()` output normalises anything unusual in the file —
+    mixed endings, a lone CR — so the reconstruction would not match the
+    bytes the approval gate re-reads before writing, and a perfectly
+    good apply would be refused as a phantom conflict.
+
+    `splitlines()` discards the endings it split on, so the ending has
+    to be carried separately: rebuilding a CRLF file with "\n" would
+    rewrite every line in it, turning a two-line edit into a whole-file
+    diff.
     """
 
-    text = file_path.read_text(encoding="utf-8")
-    trailing_newline = text == "" or text.endswith("\n")
+    text = read_text(file_path)
+    trailing_newline = text == "" or text.endswith(("\n", "\r"))
 
-    return text.splitlines(), trailing_newline
+    return text, text.splitlines(), trailing_newline, dominant_newline(text)
 
 
-def _lines_to_text(lines: list[str], trailing_newline: bool) -> str:
+def _lines_to_text(
+    lines: list[str],
+    trailing_newline: bool,
+    newline: str = "\n",
+) -> str:
     """
-    Join `lines` back into file content, restoring the trailing
-    newline.
+    Join `lines` back into file content with `newline` endings,
+    restoring the trailing newline.
     """
 
-    content = "\n".join(lines)
+    content = newline.join(lines)
 
     if trailing_newline and lines:
-        content += "\n"
+        content += newline
 
     return content
 
@@ -83,12 +101,13 @@ def _write_lines(
     file_path: Path,
     lines: list[str],
     trailing_newline: bool,
+    newline: str = "\n",
 ) -> None:
     """
     Write `lines` back to `file_path`, restoring the trailing newline.
     """
 
-    file_path.write_text(_lines_to_text(lines, trailing_newline), encoding="utf-8")
+    write_text(file_path, _lines_to_text(lines, trailing_newline, newline))
 
 
 def _parse_hunks(patch: str) -> list[dict[str, Any]]:
@@ -177,6 +196,7 @@ def _apply_hunks(
         "content": "str",
     },
     returns="None | str",
+    risk_level="staged",
 )
 def create_file(path: str, content: str = "") -> None | str:
     """
@@ -207,7 +227,7 @@ def create_file(path: str, content: str = "") -> None | str:
 
     logger.info("Creating file: %s", file_path)
 
-    file_path.write_text(content, encoding="utf-8")
+    write_text(file_path, content)
     refresh_indexed_file(str(file_path))
 
 
@@ -222,6 +242,7 @@ def create_file(path: str, content: str = "") -> None | str:
         "count": "int",
     },
     returns="int",
+    risk_level="staged",
 )
 def replace_in_file(
     path: str,
@@ -243,36 +264,45 @@ def replace_in_file(
     if not file_path.exists():
         raise FileNotFoundError(path)
 
-    text = file_path.read_text(encoding="utf-8")
+    # SearchReplaceEditor owns the matching: exact first, then
+    # whitespace-normalized, then a confidence-guarded fuzzy match. An
+    # exact hit behaves exactly as a plain str.replace() would, so this
+    # only changes what happens when the model's quoted snippet differs
+    # from the file in indentation or wrapping — previously a silent
+    # zero-replacement no-op, now a minimal edit against the real text.
+    # Staging still runs through the active ChangeManager, so the
+    # approval boundary is unchanged.
+    #
+    # Imported here rather than at module scope: search_replace_editor
+    # imports get_active_patch_manager from this module.
+    from src.tools.search_replace_editor import SearchReplaceEditor
 
-    occurrences = text.count(search)
-
-    if occurrences == 0:
-        return 0
-
-    replaced = occurrences if count < 0 else min(count, occurrences)
-    updated_text = text.replace(search, replacement, count)
-
-    manager = get_active_patch_manager()
-
-    if manager is not None:
-        logger.info("Previewing replace_in_file: %s", file_path)
-
-        manager.propose(str(file_path), text, updated_text)
-
-        return replaced
-
-    logger.info(
-        "Replacing %d occurrence(s) of %r in %s",
-        replaced,
-        search,
-        file_path,
+    result = SearchReplaceEditor().apply(
+        path=str(file_path),
+        search=search,
+        replace=replacement,
+        count=count,
     )
 
-    file_path.write_text(updated_text, encoding="utf-8")
-    refresh_indexed_file(str(file_path))
+    if not result.succeeded:
+        logger.info("replace_in_file found no match in %s: %s", file_path, result.error)
+        return 0
 
-    return replaced
+    if result.occurrences == 0:
+        return 0
+
+    logger.info(
+        "Replaced %d occurrence(s) in %s via %s match (similarity %.2f)",
+        result.occurrences,
+        file_path,
+        result.strategy,
+        result.similarity,
+    )
+
+    if get_active_patch_manager() is None:
+        refresh_indexed_file(str(file_path))
+
+    return result.occurrences
 
 
 @tool(
@@ -286,6 +316,7 @@ def replace_in_file(
         "new_content": "str",
     },
     returns="None | str",
+    risk_level="staged",
 )
 def edit_lines(
     path: str,
@@ -306,7 +337,7 @@ def edit_lines(
     if not file_path.exists():
         raise FileNotFoundError(path)
 
-    lines, trailing_newline = _read_lines(file_path)
+    original_text, lines, trailing_newline, newline = _read_lines(file_path)
 
     if start_line < 1 or end_line < start_line or end_line > len(lines):
         raise ValueError(
@@ -323,15 +354,14 @@ def edit_lines(
     if manager is not None:
         logger.info("Previewing edit_lines: %s", file_path)
 
-        original_text = _lines_to_text(lines, trailing_newline)
-        updated_text = _lines_to_text(new_lines, trailing_newline)
+        updated_text = _lines_to_text(new_lines, trailing_newline, newline)
         manager.propose(str(file_path), original_text, updated_text)
 
         return f"Preview staged: lines {start_line}-{end_line} in '{path}'."
 
     logger.info("Editing lines %d-%d in %s", start_line, end_line, file_path)
 
-    _write_lines(file_path, new_lines, trailing_newline)
+    _write_lines(file_path, new_lines, trailing_newline, newline)
     refresh_indexed_file(str(file_path))
 
 
@@ -342,6 +372,7 @@ def edit_lines(
         "patch": "str",
     },
     returns="None | str",
+    risk_level="staged",
 )
 def patch_file(path: str, patch: str) -> None | str:
     """
@@ -356,7 +387,7 @@ def patch_file(path: str, patch: str) -> None | str:
     if not file_path.exists():
         raise FileNotFoundError(path)
 
-    lines, trailing_newline = _read_lines(file_path)
+    original_text, lines, trailing_newline, newline = _read_lines(file_path)
 
     hunks = _parse_hunks(patch)
     patched_lines = _apply_hunks(lines, hunks)
@@ -366,13 +397,12 @@ def patch_file(path: str, patch: str) -> None | str:
     if manager is not None:
         logger.info("Previewing patch_file: %s", file_path)
 
-        original_text = _lines_to_text(lines, trailing_newline)
-        updated_text = _lines_to_text(patched_lines, trailing_newline)
+        updated_text = _lines_to_text(patched_lines, trailing_newline, newline)
         manager.propose(str(file_path), original_text, updated_text)
 
         return f"Preview staged: patch for '{path}'."
 
     logger.info("Patching file: %s", file_path)
 
-    _write_lines(file_path, patched_lines, trailing_newline)
+    _write_lines(file_path, patched_lines, trailing_newline, newline)
     refresh_indexed_file(str(file_path))

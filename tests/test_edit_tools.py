@@ -11,6 +11,18 @@ from src.tools.edit_tools import (
 from src.tools.patch_manager import ChangeManager
 
 
+def _write_lf(path, text: str) -> None:
+    """
+    Write `text` byte-for-byte, with no newline translation, so a
+    fixture that says LF is LF on Windows too. The editing tools now
+    preserve whatever endings a file actually has, which makes a
+    platform-translated fixture untestable.
+    """
+
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+
+
 @pytest.fixture(autouse=True)
 def _workspace(tmp_path, monkeypatch):
     """
@@ -260,7 +272,7 @@ def test_create_file_preview_mode_still_rejects_existing_file(tmp_path):
 
 def test_replace_in_file_preview_mode_stages_instead_of_writing(tmp_path):
     file = tmp_path / "code.py"
-    file.write_text("foo = 1\n")
+    _write_lf(file, "foo = 1\n")
     manager = ChangeManager()
     set_active_patch_manager(manager)
 
@@ -274,7 +286,7 @@ def test_replace_in_file_preview_mode_stages_instead_of_writing(tmp_path):
 
 def test_edit_lines_preview_mode_stages_instead_of_writing(tmp_path):
     file = tmp_path / "code.py"
-    file.write_text("line1\nline2\nline3\n")
+    _write_lf(file, "line1\nline2\nline3\n")
     manager = ChangeManager()
     set_active_patch_manager(manager)
 
@@ -287,7 +299,7 @@ def test_edit_lines_preview_mode_stages_instead_of_writing(tmp_path):
 
 def test_patch_file_preview_mode_stages_instead_of_writing(tmp_path):
     file = tmp_path / "code.py"
-    file.write_text("line1\nline2\n")
+    _write_lf(file, "line1\nline2\n")
     manager = ChangeManager()
     set_active_patch_manager(manager)
 

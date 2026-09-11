@@ -329,33 +329,61 @@ def test_execute_shell_denylist_still_applies_to_an_allowed_command():
 # ---------------------------------------------------------------------
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX resource limits only")
-def test_execute_shell_passes_preexec_fn_when_limits_requested(monkeypatch):
+def _capture_run(monkeypatch):
+    """
+    Replace subprocess.run and return the dict it records its call into.
+    """
+
     captured = {}
 
     def _fake_run(*args, **kwargs):
-        captured.update(kwargs)
+        captured["args"] = args
+        captured["kwargs"] = kwargs
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
+    return captured
+
+
+def test_shell_execution_never_uses_preexec_fn(monkeypatch):
+    """
+    preexec_fn forks a multi-threaded process and then runs Python in
+    the child, which can deadlock on a lock another thread held at fork
+    time. Pearl always has threads running, so no shell path may use it
+    — limits go through `ulimit` in the shell instead.
+    """
+
+    captured = _capture_run(monkeypatch)
 
     execute_shell("echo hi", cpu_seconds=5, memory_mb=256)
 
-    assert captured["preexec_fn"] is not None
+    assert captured["kwargs"].get("preexec_fn") is None
 
 
-def test_execute_shell_omits_preexec_fn_when_no_limits_requested(monkeypatch):
-    captured = {}
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX resource limits only")
+def test_execute_shell_applies_ulimits_when_limits_requested(monkeypatch):
+    captured = _capture_run(monkeypatch)
 
-    def _fake_run(*args, **kwargs):
-        captured.update(kwargs)
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+    execute_shell("echo hi", cpu_seconds=5, memory_mb=256)
 
-    monkeypatch.setattr(subprocess, "run", _fake_run)
+    command = captured["args"][0]
+    assert "ulimit -t 5" in command
+    assert f"ulimit -v {256 * 1024}" in command
+    # exec replaces the limit-setting shell, so the ceiling is in force
+    # before the command's own shell starts.
+    assert "exec /bin/sh -c" in command
+
+
+def test_execute_shell_leaves_command_untouched_when_no_limits(monkeypatch):
+    monkeypatch.setattr(Settings, "SHELL_DEFAULT_CPU_SECONDS", None)
+    monkeypatch.setattr(Settings, "SHELL_DEFAULT_MEMORY_MB", None)
+
+    captured = _capture_run(monkeypatch)
 
     execute_shell("echo hi")
 
-    assert captured["preexec_fn"] is None
+    assert captured["args"][0] == "echo hi"
+    assert captured["kwargs"].get("preexec_fn") is None
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX resource limits only")
@@ -363,17 +391,13 @@ def test_execute_shell_uses_settings_default_resource_limits(monkeypatch):
     monkeypatch.setattr(Settings, "SHELL_DEFAULT_CPU_SECONDS", 5)
     monkeypatch.setattr(Settings, "SHELL_DEFAULT_MEMORY_MB", 256)
 
-    captured = {}
-
-    def _fake_run(*args, **kwargs):
-        captured.update(kwargs)
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", _fake_run)
+    captured = _capture_run(monkeypatch)
 
     execute_shell("echo hi")
 
-    assert captured["preexec_fn"] is not None
+    command = captured["args"][0]
+    assert "ulimit -t 5" in command
+    assert f"ulimit -v {256 * 1024}" in command
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX resource limits only")
@@ -395,21 +419,20 @@ def test_execute_shell_cpu_limit_is_actually_enforced():
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX resource limits only")
-def test_run_python_passes_preexec_fn_when_limits_requested(tmp_path, monkeypatch):
+def test_run_python_applies_ulimits_when_limits_requested(tmp_path, monkeypatch):
     script = tmp_path / "ok.py"
     script.write_text("print('hi')\n")
 
-    captured = {}
-
-    def _fake_run(*args, **kwargs):
-        captured.update(kwargs)
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", _fake_run)
+    captured = _capture_run(monkeypatch)
 
     run_python(str(script), cpu_seconds=5)
 
-    assert captured["preexec_fn"] is not None
+    argv = captured["args"][0]
+    assert argv[:2] == ["/bin/sh", "-c"]
+    assert "ulimit -t 5" in argv[2]
+    assert 'exec "$@"' in argv[2]
+    assert str(script) in argv
+    assert captured["kwargs"].get("preexec_fn") is None
 
 
 # ---------------------------------------------------------------------

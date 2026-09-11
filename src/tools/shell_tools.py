@@ -19,9 +19,12 @@ Layered defenses for `execute_shell`, in the order they're applied:
    unambiguous disasters within otherwise-allowed commands.
 3. **Workspace confinement** (`_workspace_cwd`) — the command's
    starting directory is pinned to the workspace root.
-4. **Resource limits** — CPU-time and memory ceilings, applied via
-   POSIX `resource.setrlimit` in a `preexec_fn` (a no-op where the
-   `resource` module isn't available, e.g. Windows).
+4. **Resource limits** — CPU-time and memory ceilings, applied with
+   POSIX `ulimit` in the shell that execs the command (a no-op where
+   the `resource` module isn't available, e.g. Windows). Deliberately
+   not a `preexec_fn`: that runs Python in a fork of a multi-threaded
+   process, which can deadlock on a lock another thread held at fork
+   time, and Pearl always has threads running.
 5. **Approval** (`command_approval.CommandApprovalManager`) — when an
    approver is active (an `AutonomousExecutor` run in progress), the
    command is staged instead of run immediately, exactly like the
@@ -46,11 +49,12 @@ import getpass
 import logging
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from src.config.settings import Settings
 from src.config.workspace import get_workspace_root
@@ -359,31 +363,81 @@ def _workspace_cwd() -> str:
     return str(get_workspace_root())
 
 
-def _resource_limiter(
+def _ulimit_prefix(cpu_seconds: int | None, memory_mb: int | None) -> str:
+    """
+    Return POSIX `sh` commands that apply the requested resource limits,
+    or "" when nothing can (or needs to) be limited.
+
+    This replaces the `preexec_fn` that used to carry these limits.
+    `preexec_fn` runs Python code in a forked child of a multi-threaded
+    process, which CPython documents as unsafe — a lock held by another
+    thread at fork time is held forever in the child, and Pearl forks
+    from a process that always has threads running (the session runner,
+    the background indexer, the SSE bridge). `ulimit` in the shell that
+    is about to exec the command reaches the same rlimits through the
+    shell rather than through a fork-time callback.
+
+    Each `ulimit` is allowed to fail quietly: resource limiting is
+    applied where supported and never required, so a shell that refuses
+    one degrades to running unlimited rather than failing the call.
+    """
+
+    if resource is None:
+        return ""
+
+    parts: list[str] = []
+
+    if cpu_seconds is not None:
+        parts.append(f"ulimit -t {int(cpu_seconds)} 2>/dev/null")
+
+    if memory_mb is not None:
+        parts.append(f"ulimit -v {int(memory_mb) * 1024} 2>/dev/null")
+
+    if not parts:
+        return ""
+
+    return "; ".join(parts) + "; "
+
+
+def _limited_command(
+    command: str, cpu_seconds: int | None, memory_mb: int | None
+) -> str:
+    """
+    Wrap a `shell=True` command string so the limits are in force
+    *before* the shell that runs it starts.
+
+    The `exec` matters: it replaces the limit-setting shell with a fresh
+    one, so an address-space ceiling too small for a shell to start
+    fails the command rather than being quietly survived by builtins
+    that never allocate.
+    """
+
+    prefix = _ulimit_prefix(cpu_seconds, memory_mb)
+
+    if not prefix:
+        return command
+
+    return f"{prefix}exec /bin/sh -c {shlex.quote(command)}"
+
+
+def _limited_argv(
+    argv: list[str],
     cpu_seconds: int | None,
     memory_mb: int | None,
-) -> Callable[[], None] | None:
+) -> list[str]:
     """
-    Return a `preexec_fn` for `subprocess.run` that caps the child
-    process's CPU time and/or address space (an approximation of
-    memory usage) before it execs, or `None` if no limits were
-    requested or the current platform has no `resource` module (e.g.
-    Windows) — resource limiting is applied "where supported", never
-    required, so it degrades to a no-op rather than failing the call.
+    Wrap an argv list so the limits are in force before it execs.
+
+    Returns `argv` unchanged where limits cannot be applied (Windows),
+    so the caller's `shell=False` invocation is untouched there.
     """
 
-    if resource is None or (cpu_seconds is None and memory_mb is None):
-        return None
+    prefix = _ulimit_prefix(cpu_seconds, memory_mb)
 
-    def _apply_limits() -> None:
-        if cpu_seconds is not None:
-            resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
+    if not prefix:
+        return argv
 
-        if memory_mb is not None:
-            limit_bytes = memory_mb * 1024 * 1024
-            resource.setrlimit(resource.RLIMIT_AS, (limit_bytes, limit_bytes))
-
-    return _apply_limits
+    return ["/bin/sh", "-c", f'{prefix}exec "$@"', "sh", *argv]
 
 
 def _resolved_limits(
@@ -446,14 +500,13 @@ def _run_shell_command(request: ShellCommandRequest) -> subprocess.CompletedProc
     logger.info("Executing command: %s", request.command)
 
     return subprocess.run(
-        request.command,
+        _limited_command(request.command, request.cpu_seconds, request.memory_mb),
         shell=True,
         text=True,
         capture_output=True,
         timeout=request.timeout,
         check=True,
         cwd=request.cwd,
-        preexec_fn=_resource_limiter(request.cpu_seconds, request.memory_mb),
     )
 
 
@@ -487,6 +540,7 @@ def _run_fixed_command(command: str) -> str:
         "memory_mb": "int",
     },
     returns="subprocess.CompletedProcess | str",
+    risk_level="dangerous",
 )
 def execute_shell(
     command: str,
@@ -551,14 +605,13 @@ def _run_python_script(
     logger.info("Executing python script: %s", script)
 
     return subprocess.run(
-        [sys.executable, script],
+        _limited_argv([sys.executable, script], cpu_seconds, memory_mb),
         shell=False,
         text=True,
         capture_output=True,
         timeout=timeout,
         check=True,
         cwd=cwd,
-        preexec_fn=_resource_limiter(cpu_seconds, memory_mb),
     )
 
 
@@ -571,6 +624,7 @@ def _run_python_script(
         "memory_mb": "int",
     },
     returns="subprocess.CompletedProcess",
+    risk_level="dangerous",
 )
 def run_python(
     script: str,
@@ -618,6 +672,7 @@ def run_python(
 @tool(
     description="Return the current working directory.",
     returns="str",
+    risk_level="safe",
 )
 def pwd() -> str:
     """
@@ -634,6 +689,7 @@ def pwd() -> str:
         "show_hidden": "bool",
     },
     returns="list[str]",
+    risk_level="safe",
 )
 def ls(
     path: str = ".",
@@ -668,6 +724,7 @@ def ls(
         "command": "str",
     },
     returns="str | None",
+    risk_level="safe",
 )
 def which(command: str) -> str | None:
     """
@@ -683,6 +740,7 @@ def which(command: str) -> str | None:
         "command": "str",
     },
     returns="bool",
+    risk_level="safe",
 )
 def is_command_available(command: str) -> bool:
     """
@@ -695,6 +753,7 @@ def is_command_available(command: str) -> bool:
 @tool(
     description="Return the operating system name.",
     returns="str",
+    risk_level="safe",
 )
 def operating_system() -> str:
     """
@@ -717,6 +776,7 @@ def operating_system() -> str:
         "path": "str",
     },
     returns="dict",
+    risk_level="safe",
 )
 def lint_file(path: str) -> dict[str, Any]:
     """
@@ -755,13 +815,16 @@ def lint_file(path: str) -> dict[str, Any]:
     logger.info("Linting file: %s", file_path)
 
     proc = subprocess.run(
-        [ruff_bin, "check", "--output-format", "json", str(file_path)],
+        _limited_argv(
+            [ruff_bin, "check", "--output-format", "json", str(file_path)],
+            cpu_seconds,
+            memory_mb,
+        ),
         shell=False,
         text=True,
         capture_output=True,
         timeout=DEFAULT_TIMEOUT,
         cwd=workspace,
-        preexec_fn=_resource_limiter(cpu_seconds, memory_mb),
     )
 
     issues: list[dict[str, Any]] = []
@@ -799,6 +862,7 @@ def lint_file(path: str) -> dict[str, Any]:
 @tool(
     description="Return the current username.",
     returns="str",
+    risk_level="safe",
 )
 def current_user() -> str:
     """
@@ -857,6 +921,7 @@ def _parse_pytest_summary(output: str) -> tuple[int, int, int]:
         "timeout": "int",
     },
     returns="dict",
+    risk_level="staged",
 )
 def run_tests(
     path: str = ".",
@@ -892,13 +957,16 @@ def run_tests(
     logger.info("Running tests in: %s", path)
 
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", path, "--tb=short", "-q", "--no-header"],
+        _limited_argv(
+            [sys.executable, "-m", "pytest", path, "--tb=short", "-q", "--no-header"],
+            cpu_seconds,
+            memory_mb,
+        ),
         shell=False,
         text=True,
         capture_output=True,
         timeout=timeout,
         cwd=workspace,
-        preexec_fn=_resource_limiter(cpu_seconds, memory_mb),
     )
 
     raw = (proc.stdout + proc.stderr).strip()

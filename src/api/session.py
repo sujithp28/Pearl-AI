@@ -40,6 +40,7 @@ from src.prompts.system import build_chat_system_prompt
 from src.repository.context import SemanticContextBuilder
 from src.repository.service import RepositoryService
 from src.tools.checkpoints import CheckpointManager
+from src.tools.patch_manager import StaleFileError
 from src.tools.repo_tools import build_startup_index
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,7 @@ class PearlSession:
             memory=self.memory,
             condenser=self._condenser,
             context_service=self._context_service,
+            context_builder=self._context_builder,
         )
 
         # Verification engine — runs tests after approve() so the executor can
@@ -532,6 +534,11 @@ class PearlSession:
 
         try:
             report = executor.approve()
+        except StaleFileError as exc:
+            # The run is still paused and still resumable — the approval
+            # was refused before anything was written. Name the files so
+            # the UI can tell the user what moved under them.
+            return {"error": str(exc), "conflicts": exc.paths, "stale": True}
         except Exception as exc:
             return {"error": str(exc)}
 

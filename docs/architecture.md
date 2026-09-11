@@ -19,7 +19,7 @@ for installation and usage; this is the "how it fits together" reference.
           │
           ▼
        Planner  ───uses───▶  ContextBuilder ───uses───▶ RepositoryIndex
-    (src/agent/planner.py)  (src/tools/context_manager.py)  (src/tools/repo_tools.py)
+    (src/agent/planner.py)  (src/repository/context.py)  (src/tools/repo_tools.py)
           │                                                       ▲
           │ plan (list[ToolCall])                                 │ reads/records
           ▼                                                       │
@@ -107,7 +107,7 @@ for installation and usage; this is the "how it fits together" reference.
 | `src/tools/patch_manager.py` | Staging unified diffs, applying or discarding them — the only path to a disk write. |
 | `src/tools/symbol_editor.py` | AST-based lookup of a function/class/method's exact source range, for surgical edits. |
 | `src/tools/repo_tools.py` | `RepositoryIndex` — the cached file/symbol/import index; symbol search, reference search, project summary. |
-| `src/tools/context_manager.py` | `ContextManager`/`ContextBuilder` — ranking files by relevance and assembling a token-budgeted context string. |
+| `src/repository/context.py` | `SemanticContextBuilder` — the single retrieval implementation: ranks files by relevance and renders them. `src/agent/context_engine.py` budgets and assembles what it returns. |
 | `src/tools/git_tools.py` | Thin, validated wrappers over the `git` CLI (status, diff, log, branch, commit, restore). |
 | `src/memory/workspace_memory.py` | Session-scoped record of files touched, symbols created, and freeform notes. |
 | `src/llm/client.py` | Provider-agnostic LLM client (Ollama/OpenAI/OpenRouter/custom/Claude/Gemini) over the OpenAI-compatible chat API. |

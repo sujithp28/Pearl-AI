@@ -16,6 +16,7 @@ from src.tools.file_tools import (
     rename_file,
     write_file,
 )
+from tests.conftest import write_lf
 
 
 @pytest.fixture(autouse=True)
@@ -470,7 +471,7 @@ def test_write_file_stages_new_file(tmp_path, _staging):
 
 def test_write_file_stages_overwrite_with_original(tmp_path, _staging):
     file = tmp_path / "existing.txt"
-    file.write_text("before\n", encoding="utf-8")
+    write_lf(file, "before\n")
 
     write_file(str(file), "after\n")
 
@@ -481,7 +482,7 @@ def test_write_file_stages_overwrite_with_original(tmp_path, _staging):
 
 def test_append_file_stages_onto_existing_content(tmp_path, _staging):
     file = tmp_path / "log.txt"
-    file.write_text("first\n", encoding="utf-8")
+    write_lf(file, "first\n")
 
     write_result = append_file(str(file), "second\n")
 
@@ -511,7 +512,7 @@ def test_write_file_writes_directly_without_manager(tmp_path):
 
 def test_delete_file_stages_instead_of_removing(tmp_path, _staging):
     victim = tmp_path / "victim.txt"
-    victim.write_text("precious\n", encoding="utf-8")
+    write_lf(victim, "precious\n")
 
     result = delete_file(str(victim))
 
@@ -523,7 +524,7 @@ def test_delete_file_stages_instead_of_removing(tmp_path, _staging):
 
 def test_delete_file_staged_diff_shows_the_removed_content(tmp_path, _staging):
     victim = tmp_path / "victim.txt"
-    victim.write_text("precious\n", encoding="utf-8")
+    write_lf(victim, "precious\n")
 
     delete_file(str(victim))
 

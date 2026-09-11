@@ -311,8 +311,25 @@ def _run_worker(
     loop: asyncio.AbstractEventLoop,
     initial_plan: list | None = None,
 ) -> None:
-    session.run_autonomous_stream(prompt, queue, initial_plan=initial_plan)
-    asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+    """
+    Run one autonomous turn on a worker thread, feeding the SSE queue.
+
+    The sentinel is posted in a `finally`. The stream generator blocks on
+    `queue.get()` with no timeout, so a worker that dies before posting
+    it leaves the client waiting forever on a response that will never
+    arrive — a hung browser tab rather than a visible error. Any failure
+    is reported as an error event first, so the user sees why.
+    """
+
+    try:
+        session.run_autonomous_stream(prompt, queue, initial_plan=initial_plan)
+    except Exception as exc:
+        logger.exception("Autonomous run failed")
+        asyncio.run_coroutine_threadsafe(
+            queue.put({"type": "error", "error": str(exc)}), loop
+        )
+    finally:
+        asyncio.run_coroutine_threadsafe(queue.put(None), loop)
 
 
 # ------------------------------------------------------------------ plan
@@ -362,14 +379,18 @@ async def plan_only(req: PlanRequest, request: Request) -> JSONResponse:
 @app.post("/api/approve")
 async def approve(request: Request) -> JSONResponse:
     session = get_session(request)
-    result = session.approve()
+    # Blocking work: writes to disk, runs the verification suite in a
+    # subprocess, then calls the model to synthesize. Run on a worker
+    # thread so it does not stall the event loop — the SSE stream for
+    # this very run is being served by that loop.
+    result = await asyncio.to_thread(session.approve)
     return JSONResponse(result)
 
 
 @app.post("/api/reject")
 async def reject(request: Request) -> JSONResponse:
     session = get_session(request)
-    result = session.reject()
+    result = await asyncio.to_thread(session.reject)
     return JSONResponse(result)
 
 
@@ -395,7 +416,7 @@ async def checkpoints_list(
     write, which the browser has never been able to see.
     """
     session = get_session(request)
-    checkpoints = session.checkpoints.list(limit=limit)
+    checkpoints = await asyncio.to_thread(session.checkpoints.list, limit)
     return JSONResponse({"checkpoints": [checkpoint_to_dict(c) for c in checkpoints]})
 
 
@@ -448,7 +469,7 @@ async def checkpoint_create(
     _refuse_on_shared_instance()
     session = get_session(request)
     try:
-        checkpoint = session.checkpoints.create(req.label)
+        checkpoint = await asyncio.to_thread(session.checkpoints.create, req.label)
     except CheckpointError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     # None means nothing changed since the last snapshot. Reported as
@@ -470,7 +491,9 @@ async def checkpoint_rename(
     _refuse_on_shared_instance()
     session = get_session(request)
     try:
-        checkpoint = session.checkpoints.rename(checkpoint_id, req.label)
+        checkpoint = await asyncio.to_thread(
+            session.checkpoints.rename, checkpoint_id, req.label
+        )
     except CheckpointError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return JSONResponse({"checkpoint": checkpoint_to_dict(checkpoint)})
@@ -486,7 +509,7 @@ async def checkpoint_delete(checkpoint_id: str, request: Request) -> JSONRespons
     _refuse_on_shared_instance()
     session = get_session(request)
     try:
-        session.checkpoints.delete(checkpoint_id)
+        await asyncio.to_thread(session.checkpoints.delete, checkpoint_id)
     except CheckpointError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return JSONResponse({"deleted": True})
@@ -504,7 +527,7 @@ async def checkpoint_restore(checkpoint_id: str, request: Request) -> JSONRespon
     _refuse_on_shared_instance()
     session = get_session(request)
     try:
-        report = session.checkpoints.restore(checkpoint_id)
+        report = await asyncio.to_thread(session.checkpoints.restore, checkpoint_id)
     except CheckpointError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return JSONResponse(restore_report_to_dict(report))
@@ -523,7 +546,9 @@ async def checkpoint_restore_preview(
     """
     session = get_session(request)
     try:
-        report = session.checkpoints.preview_restore(checkpoint_id)
+        report = await asyncio.to_thread(
+            session.checkpoints.preview_restore, checkpoint_id
+        )
     except CheckpointError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return JSONResponse(restore_report_to_dict(report))
@@ -818,8 +843,15 @@ async def complete(req: CompleteRequest) -> JSONResponse:
 @app.get("/api/tools")
 async def tools(request: Request) -> JSONResponse:
     session = get_session(request)
+    # risk_level rides along so the UI can label what a tool would do
+    # before it runs. Fail closed: a tool whose metadata somehow lacks a
+    # tier is reported as dangerous, matching how the registry treats it.
     tool_list = [
-        {"name": t["name"], "description": t.get("description", "")}
+        {
+            "name": t["name"],
+            "description": t.get("description", ""),
+            "risk_level": t.get("risk_level") or "dangerous",
+        }
         for t in session.registry.get_tools()
     ]
     return JSONResponse({"tools": tool_list, "count": len(tool_list)})

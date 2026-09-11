@@ -15,6 +15,7 @@ from src.tools.symbol_editor import (
     replace_function,
     replace_method,
 )
+from tests.conftest import write_lf
 
 SAMPLE = '''"""Sample module docstring."""
 
@@ -260,7 +261,7 @@ def test_symbol_editor_rejects_unparsable_python():
 def sample_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     file = tmp_path / "mod.py"
-    file.write_text(SAMPLE)
+    write_lf(file, SAMPLE)
     return file
 
 

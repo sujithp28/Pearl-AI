@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from src.config.workspace import get_workspace_root
+from src.tools.file_io import append_text, read_text, write_text
 from src.tools.metadata import tool
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ def _read_for_staging(file_path: Path) -> str | None:
         return None
 
     try:
-        return file_path.read_text(encoding="utf-8")
+        return read_text(file_path)
     except (OSError, UnicodeDecodeError):
         logger.warning(
             "Could not read %s for a staged diff; staging as new content.",
@@ -127,6 +128,7 @@ def read_file(path: str) -> str:
         "content": "str",
     },
     returns="None | str",
+    risk_level="staged",
 )
 def write_file(path: str, content: str) -> None | str:
     """
@@ -156,10 +158,7 @@ def write_file(path: str, content: str) -> None | str:
 
     logger.info("Writing file: %s", file_path)
 
-    file_path.write_text(
-        content,
-        encoding="utf-8",
-    )
+    write_text(file_path, content)
     _refresh_repo_index(file_path)
 
 
@@ -170,6 +169,7 @@ def write_file(path: str, content: str) -> None | str:
         "content": "str",
     },
     returns="None | str",
+    risk_level="staged",
 )
 def append_file(path: str, content: str) -> None | str:
     """
@@ -198,11 +198,7 @@ def append_file(path: str, content: str) -> None | str:
 
     logger.info("Appending file: %s", file_path)
 
-    with file_path.open(
-        "a",
-        encoding="utf-8",
-    ) as file:
-        file.write(content)
+    append_text(file_path, content)
 
     _refresh_repo_index(file_path)
 
@@ -260,6 +256,7 @@ def list_directory(path: str = ".") -> list[str]:
         "path": "str",
     },
     returns="None",
+    risk_level="staged",
 )
 def make_directory(path: str) -> None:
     """
@@ -326,6 +323,7 @@ def delete_file(path: str) -> None | str:
         "path": "str",
     },
     returns="int",
+    risk_level="safe",
 )
 def file_size(path: str) -> int:
     """
@@ -350,6 +348,7 @@ def file_size(path: str) -> int:
         "path_b": "str",
     },
     returns="str",
+    risk_level="safe",
 )
 def diff_files(path_a: str, path_b: str) -> str:
     file_a = _ensure_within_workspace(path_a)
@@ -382,6 +381,7 @@ def diff_files(path_a: str, path_b: str) -> str:
         "destination": "str",
     },
     returns="None",
+    risk_level="dangerous",
 )
 def rename_file(source: str, destination: str) -> None:
     src = _ensure_within_workspace(source)
@@ -408,6 +408,7 @@ def rename_file(source: str, destination: str) -> None:
         "destination": "str",
     },
     returns="None",
+    risk_level="dangerous",
 )
 def copy_file(source: str, destination: str) -> None:
     src = _ensure_within_workspace(source)

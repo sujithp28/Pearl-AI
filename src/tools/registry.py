@@ -40,7 +40,7 @@ class ToolRegistry:
             function=func,
             parameters=func._tool_parameters,
             returns=func._tool_returns,
-            risk_level=getattr(func, "_tool_risk_level", "staged"),
+            risk_level=getattr(func, "_tool_risk_level", "dangerous"),
         )
 
         if tool.name in self._tools:

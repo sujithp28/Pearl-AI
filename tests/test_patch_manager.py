@@ -1,9 +1,10 @@
 import unittest.mock as mock
-from pathlib import Path
 
 import pytest
 
+from src.tools import patch_manager
 from src.tools.patch_manager import ChangeManager, unified_diff
+from tests.conftest import write_lf
 
 # ---------------------------------------------------------------------
 # unified_diff
@@ -97,7 +98,7 @@ def test_apply_all_writes_every_pending_edit_and_clears_pending(tmp_path):
     manager = ChangeManager()
 
     file_a = tmp_path / "a.txt"
-    file_a.write_text("old\n")
+    write_lf(file_a, "old\n")
     file_b = tmp_path / "sub" / "b.txt"
 
     manager.propose(str(file_a), "old\n", "new\n")
@@ -174,21 +175,21 @@ def test_apply_all_rollback_restores_existing_file_on_failure(tmp_path, monkeypa
     manager = ChangeManager()
     a = tmp_path / "a.txt"
     b = tmp_path / "b.txt"
-    a.write_text("original\n")
+    write_lf(a, "original\n")
 
     manager.propose(str(a), "original\n", "modified\n")
     manager.propose(str(b), None, "new\n")
 
     call_count = {"n": 0}
-    real_write = Path.write_text
+    real_write = patch_manager.write_text
 
-    def _fail_second(self, text, **kw):
+    def _fail_second(path, text, **kw):
         call_count["n"] += 1
         if call_count["n"] == 2:
             raise OSError("simulated disk full")
-        return real_write(self, text, **kw)
+        return real_write(path, text, **kw)
 
-    monkeypatch.setattr(Path, "write_text", _fail_second)
+    monkeypatch.setattr(patch_manager, "write_text", _fail_second)
 
     with pytest.raises(OSError, match="simulated disk full"):
         manager.apply_all()
@@ -211,15 +212,15 @@ def test_apply_all_rollback_deletes_new_file_on_failure(tmp_path, monkeypatch):
     manager.propose(str(b), None, "bbb\n")
 
     call_count = {"n": 0}
-    real_write = Path.write_text
+    real_write = patch_manager.write_text
 
-    def _fail_second(self, text, **kw):
+    def _fail_second(path, text, **kw):
         call_count["n"] += 1
         if call_count["n"] == 2:
             raise OSError("disk error")
-        return real_write(self, text, **kw)
+        return real_write(path, text, **kw)
 
-    monkeypatch.setattr(Path, "write_text", _fail_second)
+    monkeypatch.setattr(patch_manager, "write_text", _fail_second)
 
     with pytest.raises(OSError):
         manager.apply_all()
@@ -234,7 +235,7 @@ def test_apply_all_pending_cleared_only_on_success(tmp_path):
     manager = ChangeManager()
     manager.propose(str(tmp_path / "x.txt"), None, "x\n")
 
-    with mock.patch.object(Path, "write_text", side_effect=OSError("fail")):
+    with mock.patch.object(patch_manager, "write_text", side_effect=OSError("fail")):
         with pytest.raises(OSError):
             manager.apply_all()
 
@@ -258,7 +259,7 @@ def test_apply_all_empty_returns_empty_list(tmp_path):
 
 def test_propose_deletion_stages_without_touching_disk(tmp_path):
     victim = tmp_path / "gone.txt"
-    victim.write_text("keep me\n", encoding="utf-8")
+    write_lf(victim, "keep me\n")
 
     manager = ChangeManager()
     edit = manager.propose_deletion(str(victim), "keep me\n")
@@ -280,7 +281,7 @@ def test_deletion_diff_removes_every_line(tmp_path):
 
 def test_apply_all_unlinks_a_staged_deletion(tmp_path):
     victim = tmp_path / "gone.txt"
-    victim.write_text("bye\n", encoding="utf-8")
+    write_lf(victim, "bye\n")
 
     manager = ChangeManager()
     manager.propose_deletion(str(victim), "bye\n")
@@ -291,7 +292,7 @@ def test_apply_all_unlinks_a_staged_deletion(tmp_path):
 
 def test_deletion_and_edit_apply_in_one_batch(tmp_path):
     victim = tmp_path / "gone.txt"
-    victim.write_text("bye\n", encoding="utf-8")
+    write_lf(victim, "bye\n")
     kept = tmp_path / "kept.txt"
 
     manager = ChangeManager()
@@ -310,7 +311,7 @@ def test_rollback_restores_a_deleted_file_when_a_later_write_fails(tmp_path):
     same batch fails. The deleted file must come back.
     """
     victim = tmp_path / "gone.txt"
-    victim.write_text("precious\n", encoding="utf-8")
+    write_lf(victim, "precious\n")
 
     manager = ChangeManager()
     manager.propose_deletion(str(victim), "precious\n")
@@ -318,16 +319,16 @@ def test_rollback_restores_a_deleted_file_when_a_later_write_fails(tmp_path):
 
     # Fail only the first write (next.txt), so the rollback's own
     # restoring write is still allowed to succeed.
-    real_write = Path.write_text
+    real_write = patch_manager.write_text
     calls = {"n": 0}
 
-    def _fail_first(self, text, **kw):
+    def _fail_first(path, text, **kw):
         calls["n"] += 1
         if calls["n"] == 1:
             raise OSError("disk full")
-        return real_write(self, text, **kw)
+        return real_write(path, text, **kw)
 
-    with mock.patch.object(Path, "write_text", _fail_first):
+    with mock.patch.object(patch_manager, "write_text", _fail_first):
         with pytest.raises(OSError):
             manager.apply_all()
 

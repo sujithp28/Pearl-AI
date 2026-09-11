@@ -39,6 +39,8 @@ from typing import Literal
 
 from src.config.workspace import get_workspace_root
 from src.tools.edit_tools import get_active_patch_manager
+from src.tools.file_io import read_text, write_text
+from src.tools.file_tools import _ensure_within_workspace
 from src.tools.patch_manager import ChangeManager
 
 logger = logging.getLogger(__name__)
@@ -111,26 +113,61 @@ def _find_fuzzy(
     Find the most similar region in `content` to `search`.
 
     Returns (start, end, similarity) if above threshold, else None.
-    This is O(n) in content length so keep search strings reasonably short.
+
+    Three passes, coarse to fine, so the scan stays linear in content
+    length while still being able to land on the true match:
+
+    1. **Coarse sweep** at 1/4-search-length steps, to find roughly
+       where the best region is.
+    2. **Offset refinement** at single-character steps within one
+       coarse step either side. A real match rarely begins exactly on a
+       multiple of the step size, and a window shifted even a few
+       characters off scores far below the same text aligned — which
+       used to sink otherwise-perfect matches below the threshold.
+    3. **Length refinement** over a range of window sizes. The matching
+       region is often not the same length as the search string: a
+       re-indented block, a wrapped signature, a line with a trailing
+       comment. A fixed window can only ever see part of it.
     """
     search_len = len(search)
-    if search_len == 0:
+    if search_len == 0 or not content:
         return None
 
-    window = search_len
     best_ratio = 0.0
     best_start = -1
     best_end = -1
 
-    # Slide at 1/4-length steps to avoid quadratic cost on very long content.
-    step = max(1, search_len // 4)
-    for start in range(0, len(content) - window // 2, step):
-        candidate = content[start : start + window]
-        ratio = _similarity(candidate, search)
+    def consider(start: int, end: int) -> None:
+        nonlocal best_ratio, best_start, best_end
+        if start < 0 or end > len(content) or end <= start:
+            return
+        ratio = _similarity(content[start:end], search)
         if ratio > best_ratio:
             best_ratio = ratio
             best_start = start
-            best_end = start + window
+            best_end = end
+
+    # 1. Coarse sweep.
+    step = max(1, search_len // 4)
+    for start in range(0, max(1, len(content) - search_len // 2), step):
+        consider(start, start + search_len)
+
+    if best_start < 0:
+        return None
+
+    # 2. Refine the offset one character at a time around the winner.
+    coarse_start = best_start
+    for start in range(coarse_start - step, coarse_start + step + 1):
+        consider(start, start + search_len)
+
+    # 3. Refine the window length around the winner, in both directions.
+    #    Capped at +/-50% so a runaway window cannot swallow unrelated
+    #    code and then be "replaced".
+    span = max(1, search_len // 2)
+    length_step = max(1, span // 8)
+    anchored_start = best_start
+    for delta in range(-span, span + 1, length_step):
+        consider(anchored_start, anchored_start + search_len + delta)
 
     if best_ratio >= threshold and best_start >= 0:
         return best_start, best_end, best_ratio
@@ -198,7 +235,7 @@ class SearchReplaceEditor:
             )
 
         try:
-            original = resolved.read_text(encoding="utf-8")
+            original = read_text(resolved)
         except OSError as exc:
             return EditResult(
                 succeeded=False,
@@ -261,7 +298,7 @@ class SearchReplaceEditor:
         if not resolved.exists():
             return False, 0.0
         try:
-            content = resolved.read_text(encoding="utf-8")
+            content = read_text(resolved)
         except OSError:
             return False, 0.0
 
@@ -281,21 +318,23 @@ class SearchReplaceEditor:
     # ── Internals ─────────────────────────────────────────────────────────────
 
     def _resolve(self, path: str) -> Path:
-        p = Path(path)
-        workspace = get_workspace_root()
-        try:
-            resolved = (
-                (workspace / path).resolve() if not p.is_absolute() else p.resolve()
-            )
-        except Exception as exc:
-            raise PermissionError(f"Cannot resolve path {path!r}: {exc}") from exc
-        # is_relative_to() uses path segments, blocking the prefix-collision
-        # attack that str.startswith() is vulnerable to (/ws_evil vs /ws).
-        if not resolved.is_relative_to(workspace):
-            raise PermissionError(
-                f"Path {resolved!r} is outside workspace {workspace!r}"
-            )
-        return resolved
+        """
+        Resolve `path` and confirm it stays inside the workspace.
+
+        The boundary check itself is `_ensure_within_workspace` — one
+        implementation, shared with every other file tool, so there is
+        no second version of the rule to keep in sync or to get subtly
+        wrong. All this adds is anchoring a relative path to the
+        workspace root rather than to the process's current directory,
+        which is what a tool argument written by the model means.
+        """
+
+        candidate = Path(path)
+
+        if not candidate.is_absolute():
+            path = str(get_workspace_root() / candidate)
+
+        return _ensure_within_workspace(path)
 
     def _apply_replacement(
         self,
@@ -361,4 +400,4 @@ class SearchReplaceEditor:
         if pm is not None:
             pm.propose(str(path), original, updated)
         else:
-            path.write_text(updated, encoding="utf-8")
+            write_text(path, updated)

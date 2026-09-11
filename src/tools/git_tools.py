@@ -34,11 +34,13 @@ Utilities (internal, used by other Pearl modules):
 from __future__ import annotations
 
 import logging
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Any
 
 from src.config.workspace import get_workspace_root
+from src.tools.command_approval import ShellCommandRequest
 from src.tools.metadata import tool
 
 logger = logging.getLogger(__name__)
@@ -70,6 +72,51 @@ def _run(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
     if check and result.returncode != 0:
         raise GitError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
     return result
+
+
+def _stage_or_run(args: list[str], summary: str) -> str | None:
+    """
+    Stage a *mutating* git command for approval, or run it directly.
+
+    Git writes are not diffable the way a file edit is — `git restore`
+    produces no content Pearl can show in a unified diff — so they ride
+    the same `CommandApprovalManager` gate that shell commands use,
+    rather than `ChangeManager`. Returns a preview string when staged,
+    or `None` when the caller should go ahead and run the command
+    itself (no approver active: a direct CLI/`tools/call` invocation,
+    where the human is already present).
+
+    Without this, an autonomous run could execute `git restore` and
+    destroy the user's uncommitted work before anyone saw a prompt.
+    Read-only git tools do not come through here.
+
+    Imported lazily: `shell_tools` has no dependency on this module and
+    a top-level import would only add one.
+    """
+
+    from src.tools.shell_tools import (
+        DEFAULT_TIMEOUT,
+        _resolved_limits,
+        get_active_command_approver,
+    )
+
+    approver = get_active_command_approver()
+
+    if approver is None:
+        return None
+
+    cpu_seconds, memory_mb = _resolved_limits(None, None)
+    approver.propose(
+        ShellCommandRequest(
+            command="git " + " ".join(shlex.quote(a) for a in args),
+            cwd=str(_cwd()),
+            timeout=DEFAULT_TIMEOUT,
+            cpu_seconds=cpu_seconds,
+            memory_mb=memory_mb,
+        )
+    )
+
+    return f"Approval required: {summary}"
 
 
 def _ensure_git_repo() -> None:
@@ -260,6 +307,10 @@ def git_commit(message: str) -> str:
     if not status["staged"]:
         raise GitError("No staged changes. Stage files first before committing.")
 
+    staged = _stage_or_run(["commit", "-m", message], f"commit {message!r}")
+    if staged is not None:
+        return staged
+
     result = _run(["commit", "-m", message])
     first_line = (
         result.stdout.strip().splitlines()[0] if result.stdout.strip() else "committed"
@@ -284,6 +335,10 @@ def git_create_branch(branch_name: str) -> str:
         raise ValueError("Branch name must not be empty.")
     if safe.startswith("-"):
         raise ValueError(f"Invalid branch name: {branch_name!r}")
+
+    staged = _stage_or_run(["checkout", "-b", safe], f"create branch {safe!r}")
+    if staged is not None:
+        return staged
 
     result = _run(["checkout", "-b", safe], check=False)
     if result.returncode != 0:
@@ -315,10 +370,22 @@ def git_restore(files: list[str] | None = None) -> str:
         targets = status["unstaged"]
         if not targets:
             return "Nothing to restore."
+        staged = _stage_or_run(
+            ["restore", "--", *targets],
+            f"discard working-tree changes in {len(targets)} file(s)",
+        )
+        if staged is not None:
+            return staged
         _run(["restore", "--", *targets])
         n = len(targets)
         return f"Restored {n} file{'s' if n != 1 else ''} to last committed state."
     else:
+        staged = _stage_or_run(
+            ["restore", "--", *files],
+            f"discard working-tree changes in {len(files)} file(s)",
+        )
+        if staged is not None:
+            return staged
         _run(["restore", "--", *files])
         n = len(files)
         return f"Restored {n} file{'s' if n != 1 else ''} to last committed state."
@@ -379,6 +446,11 @@ def git_stage(files: list[str] | None = None) -> str:
         cmd = ["add", "--", *files]
     else:
         cmd = ["add", "."]
+
+    staged = _stage_or_run(cmd, "stage files for commit")
+    if staged is not None:
+        return staged
+
     result = subprocess.run(
         ["git", *cmd],
         cwd=str(_cwd()),

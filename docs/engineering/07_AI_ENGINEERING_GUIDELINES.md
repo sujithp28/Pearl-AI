@@ -39,7 +39,7 @@ This document applies to:
 - `src/agent/dispatcher.py` — tool selection, argument construction, result handling
 - `src/llm/` — all LLM client wrappers, prompt assembly, streaming handlers
 - `src/memory/workspace_memory.py` — agent working memory across turns
-- `src/tools/context_manager.py` — retrieval strategy, relevance ranking
+- `src/repository/context.py` — retrieval strategy, relevance ranking
 - `src/prompts/` — all system prompt templates and context formatters
 - Any future reasoning component: verifier, reflector, sub-agent, summarizer
 
@@ -2478,7 +2478,7 @@ Use these terms in code, comments, commits, and reviews.
 | `src/agent/executor.py` | Execution loop, approval lifecycle, cancellation |
 | `src/agent/dispatcher.py` | Tool selection, argument construction, result capture |
 | `src/memory/workspace_memory.py` | Working memory, file cache, assumption tracking |
-| `src/tools/context_manager.py` | Retrieval pipeline, relevance ranking |
+| `src/repository/context.py` | Retrieval pipeline, relevance ranking |
 | `src/prompts/system_prompt.py` | System prompt template (version-controlled) |
 | `src/llm/base_provider.py` | LLM client abstraction, streaming, retry |
 
