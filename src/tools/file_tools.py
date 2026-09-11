@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from src.config.workspace import get_workspace_root
+from src.tools.file_io import append_text, read_text, write_text
 from src.tools.metadata import tool
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ def _read_for_staging(file_path: Path) -> str | None:
         return None
 
     try:
-        return file_path.read_text(encoding="utf-8")
+        return read_text(file_path)
     except (OSError, UnicodeDecodeError):
         logger.warning(
             "Could not read %s for a staged diff; staging as new content.",
@@ -157,10 +158,7 @@ def write_file(path: str, content: str) -> None | str:
 
     logger.info("Writing file: %s", file_path)
 
-    file_path.write_text(
-        content,
-        encoding="utf-8",
-    )
+    write_text(file_path, content)
     _refresh_repo_index(file_path)
 
 
@@ -200,11 +198,7 @@ def append_file(path: str, content: str) -> None | str:
 
     logger.info("Appending file: %s", file_path)
 
-    with file_path.open(
-        "a",
-        encoding="utf-8",
-    ) as file:
-        file.write(content)
+    append_text(file_path, content)
 
     _refresh_repo_index(file_path)
 

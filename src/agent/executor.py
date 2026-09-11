@@ -61,7 +61,7 @@ from src.tools.checkpoints import CheckpointManager
 from src.tools.command_approval import CommandApprovalManager
 from src.tools.edit_tools import set_active_patch_manager
 from src.tools.models import RiskLevel, max_risk
-from src.tools.patch_manager import ChangeManager
+from src.tools.patch_manager import ChangeManager, StaleFileError
 from src.tools.repo_tools import refresh_indexed_file
 from src.tools.shell_tools import _run_shell_command, set_active_command_approver
 
@@ -156,20 +156,34 @@ class ApprovalCoordinator:
         self.patch_manager = patch_manager
         self.command_approver = command_approver
         self._paused: _PausedState | None = None
+        # Approve and reject arrive from request threads, and the run
+        # itself is on another. Popping the paused state has to be one
+        # atomic step: without it two approvals racing can both read a
+        # non-None state, both clear it, and both go on to apply the
+        # same batch.
+        self._lock = threading.Lock()
 
     def is_awaiting_approval(self) -> bool:
         return self._paused is not None
 
     def pause(self, state: _PausedState) -> None:
-        self._paused = state
+        with self._lock:
+            self._paused = state
 
     def take_paused(self) -> _PausedState:
-        """Pop and return the paused state (raises if not paused)."""
-        if self._paused is None:
-            raise RuntimeError("No execution is currently awaiting approval.")
-        state = self._paused
-        self._paused = None
-        return state
+        """
+        Pop and return the paused state, atomically.
+
+        Raises when nothing is paused — which is also what the loser of
+        a race sees, so a duplicate approval is reported rather than
+        silently applied twice.
+        """
+        with self._lock:
+            if self._paused is None:
+                raise RuntimeError("No execution is currently awaiting approval.")
+            state = self._paused
+            self._paused = None
+            return state
 
     def discard_all(self) -> tuple[list[str], list[str]]:
         """Discard all staged patches and commands; return (files, cmds)."""
@@ -303,6 +317,19 @@ class AutonomousExecutor:
 
         self._cancel_event.set()
 
+    def _staged_count(self) -> int:
+        """
+        How many items are waiting for approval, across both gates.
+
+        Shell commands stage in `CommandApprovalManager`, not in
+        `ChangeManager`. Counting only file edits made a run whose sole
+        staged item was an arbitrary shell command look like it had
+        staged nothing at all — so it was scored "safe" and
+        auto-approved in headless mode, which is precisely the case the
+        dangerous tier exists to stop.
+        """
+        return len(self.patch_manager) + len(self.command_approver.pending)
+
     def _note_if_staged(self, tool_name: str, pending_before: int) -> None:
         """
         Record this tool's risk tier if the call added a staged change.
@@ -316,7 +343,7 @@ class AutonomousExecutor:
         rather than skipped. An unresolvable tool that just wrote to the
         pending set is exactly the case that must not be waved through.
         """
-        if len(self.patch_manager) <= pending_before:
+        if self._staged_count() <= pending_before:
             return
 
         try:
@@ -729,6 +756,17 @@ class AutonomousExecutor:
         cancelled (discarding the staged patches and commands)
         instead of resuming.
         """
+
+        # Time-of-check/time-of-use gate, before the paused state is
+        # consumed. The user approved a diff against specific file
+        # contents; if any of those files changed since, this approval
+        # no longer describes what would be written. Refuse while the
+        # run is still resumable, so they can reject or re-run rather
+        # than being left with a half-finished execution.
+        stale = self.patch_manager.stale_paths()
+        if stale:
+            logger.error("Approval aborted — files changed since staging: %s", stale)
+            raise StaleFileError(stale)
 
         state = self.approval_coordinator.take_paused()
 
@@ -1271,7 +1309,7 @@ class AutonomousExecutor:
                 current_action=self._personality.format(EventKind.EXECUTING),
             )
 
-            pending_before = len(self.patch_manager)
+            pending_before = self._staged_count()
 
             try:
                 result = self.dispatcher.execute(

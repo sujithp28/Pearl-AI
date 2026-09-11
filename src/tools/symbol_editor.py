@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from src.tools.edit_tools import get_active_patch_manager
+from src.tools.file_io import read_text, write_text
 from src.tools.file_tools import _ensure_within_workspace
 from src.tools.metadata import tool
 
@@ -97,9 +98,7 @@ class SymbolEditor:
 
     def __init__(self, path: str, source: str | None = None) -> None:
         self.path = path
-        self.source = (
-            source if source is not None else Path(path).read_text(encoding="utf-8")
-        )
+        self.source = source if source is not None else read_text(Path(path))
         self._lines = self.source.splitlines(keepends=True)
 
         try:
@@ -319,12 +318,12 @@ def _apply_or_stage(file_path: Path, updated_content: str, summary: str) -> str:
     manager = get_active_patch_manager()
 
     if manager is not None:
-        original = file_path.read_text(encoding="utf-8")
+        original = read_text(file_path)
         manager.propose(str(file_path), original, updated_content)
 
         return f"Preview staged: {summary}"
 
-    file_path.write_text(updated_content, encoding="utf-8")
+    write_text(file_path, updated_content)
 
     from src.tools.repo_tools import refresh_indexed_file
 

@@ -20,6 +20,7 @@ from src.tools.metadata import tool
 from src.tools.patch_manager import ChangeManager
 from src.tools.registry import ToolRegistry
 from src.tools.shell_tools import execute_shell, set_active_command_approver
+from tests.conftest import write_lf
 
 
 @pytest.fixture(autouse=True)
@@ -1450,7 +1451,7 @@ def test_cancel_while_awaiting_approval_via_reject_also_finalizes_cancelled(
 
 def test_diff_is_generated_for_a_previewed_edit(monkeypatch, workspace):
     existing = workspace / "existing.py"
-    existing.write_text("old = 1\n")
+    write_lf(existing, "old = 1\n")
 
     executor, planner = build_executor()
 

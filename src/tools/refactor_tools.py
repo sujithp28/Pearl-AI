@@ -18,6 +18,7 @@ from pathlib import Path
 
 from src.config.workspace import get_workspace_root
 from src.tools.edit_tools import get_active_patch_manager
+from src.tools.file_io import read_text, write_text
 from src.tools.file_tools import _ensure_within_workspace
 from src.tools.metadata import tool
 
@@ -87,9 +88,12 @@ def batch_write_files(files: dict[str, str]) -> str:
 
     if manager is not None:
         for file_path, content in resolved.items():
-            original = (
-                file_path.read_text(encoding="utf-8") if file_path.exists() else ""
-            )
+            # None, not "", for a file that does not exist yet. The
+            # approval gate compares this against the file's real state
+            # before writing, and "" would claim an empty file is there
+            # — making every newly created file look like it had been
+            # changed underneath, and refusing the apply.
+            original = read_text(file_path) if file_path.exists() else None
             manager.propose(str(file_path), original, content)
 
         logger.info("batch_write_files: staged %d file(s) for preview.", len(resolved))
@@ -99,7 +103,7 @@ def batch_write_files(files: dict[str, str]) -> str:
     written: list[str] = []
     for file_path, content in resolved.items():
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content, encoding="utf-8")
+        write_text(file_path, content)
         written.append(str(file_path))
 
     from src.tools.repo_tools import refresh_indexed_file
@@ -170,7 +174,7 @@ def rename_symbol(old_name: str, new_name: str) -> str:
 
     for fp in py_files:
         try:
-            original = fp.read_text(encoding="utf-8")
+            original = read_text(fp)
         except (OSError, UnicodeDecodeError):
             continue
 
@@ -187,7 +191,7 @@ def rename_symbol(old_name: str, new_name: str) -> str:
         if manager is not None:
             manager.propose(str(fp), original, updated)
         else:
-            fp.write_text(updated, encoding="utf-8")
+            write_text(fp, updated)
 
             from src.tools.repo_tools import refresh_indexed_file
 

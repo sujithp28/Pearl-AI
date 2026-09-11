@@ -307,7 +307,7 @@ touching the planner.
 ```python
 # VIOLATION
 # src/agent/planner.py
-from src.tools.context_manager import ContextBuilder  # FORBIDDEN
+from src.repository.context import SemanticContextBuilder  # FORBIDDEN
 from src.memory.workspace_memory import WorkspaceMemory  # FORBIDDEN
 
 # CORRECT — Planner receives context as an already-formatted string
@@ -710,7 +710,7 @@ BASE_URL = Settings.OLLAMA_BASE_URL
 ```python
 # FORBIDDEN — Planner building context itself
 # src/agent/planner.py
-from src.tools.context_manager import ContextBuilder
+from src.repository.context import SemanticContextBuilder
 context = ContextBuilder().build(user_prompt)
 
 # CORRECT — context is assembled by the caller and passed in

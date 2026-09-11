@@ -266,10 +266,32 @@ class ModelRouter:
 
     def __init__(self) -> None:
         self._clients: dict[TaskKind, LLMClient] = {}
+        # Roles that resolve to the same provider, model and local GGUF
+        # are the same client. Keying only by role would build a second
+        # one per role — and for local inference that means loading the
+        # same multi-gigabyte model into memory twice.
+        self._by_identity: dict[tuple[str, str | None, str | None], LLMClient] = {}
+
+    @staticmethod
+    def _identity(
+        task: TaskKind, provider_name: str
+    ) -> tuple[str, str | None, str | None]:
+        """
+        Return what actually distinguishes one client from another:
+        the provider, the model override, and the local GGUF file.
+        """
+
+        return (
+            provider_name,
+            _override_model(provider_name, task),
+            _local_model_file(provider_name, task),
+        )
 
     def client_for(self, task: TaskKind) -> LLMClient:
         """
         Return the ``LLMClient`` for `task`.
+
+        Roles resolving to an identical provider/model share one client.
 
         Parameters
         ----------
@@ -280,8 +302,20 @@ class ModelRouter:
 
         if task not in self._clients:
             provider_name = _effective_provider(task)
+
+            identity = self._identity(task, provider_name)
+            shared = self._by_identity.get(identity)
+            if shared is not None:
+                logger.debug(
+                    "ModelRouter: task=%r reuses the client for %r", task, identity
+                )
+                self._clients[task] = shared
+                return shared
+
             try:
-                self._clients[task] = self._build(task, provider_name)
+                client = self._build(task, provider_name)
+                self._clients[task] = client
+                self._by_identity[identity] = client
             except Exception as exc:
                 # A misconfigured or unreachable remote provider must not
                 # take Pearl down — zero-config local inference is the
@@ -300,7 +334,12 @@ class ModelRouter:
                     provider_name,
                     exc,
                 )
-                self._clients[task] = self._build(task, _LOCAL_PROVIDER)
+                fallback_identity = self._identity(task, _LOCAL_PROVIDER)
+                fallback = self._by_identity.get(fallback_identity)
+                if fallback is None:
+                    fallback = self._build(task, _LOCAL_PROVIDER)
+                    self._by_identity[fallback_identity] = fallback
+                self._clients[task] = fallback
 
         return self._clients[task]
 

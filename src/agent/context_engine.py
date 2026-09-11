@@ -83,6 +83,11 @@ class ContextEngine:
         Reserved tokens for model response.
     context_service:
         RepositoryService for semantic context (optional).
+    context_builder:
+        SemanticContextBuilder doing the ranking/retrieval. Defaults to a
+        fresh one; injectable for tests.
+    workspace_memory:
+        Optional session signals passed through to the builder's ranking.
     """
 
     def __init__(
@@ -92,12 +97,22 @@ class ContextEngine:
         n_ctx: int | None = None,
         response_tokens: int = Settings.MAX_NEW_TOKENS,
         context_service: Any = None,  # RepositoryService — optional
+        context_builder: Any = None,  # SemanticContextBuilder — optional
+        workspace_memory: Any = None,  # WorkspaceMemory — optional
     ) -> None:
         self._memory = memory
         self._condenser = condenser
         self._n_ctx = n_ctx or Settings.LOCAL_MODEL_CTX
         self._response_tokens = response_tokens
         self._context_service = context_service
+        self._workspace_memory = workspace_memory
+
+        if context_builder is None:
+            from src.repository.context import SemanticContextBuilder
+
+            context_builder = SemanticContextBuilder()
+
+        self._context_builder = context_builder
 
         self._budget = ContextBudget(
             n_ctx=self._n_ctx,
@@ -158,12 +173,22 @@ class ContextEngine:
         history_budget = int(remaining * _HISTORY_BUDGET_FRACTION)
         repo_budget = int(remaining * _REPO_BUDGET_FRACTION)
 
-        # 3. Conversation history (token-capped)
+        # 3. Conversation history (token-capped, current request always kept)
         limit = history_limit or Settings.CHAT_HISTORY_TURNS
         raw_history = self._memory.recent_messages(limit=limit)
         history = self._cap_history(raw_history, history_budget)
 
         # 4. Repository context (token-bounded)
+        #
+        # History is allowed to overrun its share when the newest message
+        # alone exceeds it — that message is the user's current request and
+        # is never dropped. Repository context is Pearl's own retrieval, so
+        # it is what gives way: charge the overrun against the repo budget
+        # rather than letting the two shares together blow past n_ctx.
+        history_tokens = sum(estimate_tokens(m["content"]) for m in history)
+        overrun = max(0, history_tokens - history_budget)
+        repo_budget = max(0, repo_budget - overrun)
+
         repo_context = self._build_repo_context(task, repo_budget)
 
         # 5. Execution results block
@@ -182,7 +207,7 @@ class ContextEngine:
             + tool_tokens
             + task_tokens
             + estimate_tokens(context_block)
-            + sum(estimate_tokens(m["content"]) for m in history)
+            + history_tokens
         )
 
         logger.debug(
@@ -193,7 +218,7 @@ class ContextEngine:
             tool_tokens,
             task_tokens,
             estimate_tokens(repo_context),
-            sum(estimate_tokens(m["content"]) for m in history),
+            history_tokens,
         )
 
         return EngineContext(
@@ -214,27 +239,53 @@ class ContextEngine:
         budget: int,
     ) -> list[dict[str, str]]:
         """
-        Trim history from the oldest end until it fits within `budget` tokens.
+        Trim history from the oldest end until it fits within `budget`
+        tokens, always keeping the newest message.
+
+        The newest message is what the user just asked. Dropping it
+        because it happens to be larger than the history slice of the
+        budget would leave Pearl planning against an empty prompt — the
+        one input the whole turn is about. When it does not fit, it is
+        kept whole and every older message is dropped; the caller
+        reclaims the space from the repository budget instead (see
+        `build`), which is context Pearl chose, not something the user
+        typed.
         """
-        total = 0
-        result: list[dict[str, str]] = []
-        for msg in reversed(messages):
-            t = estimate_tokens(msg["content"])
-            if total + t > budget:
+        if not messages:
+            return []
+
+        newest = messages[-1]
+        result: list[dict[str, str]] = [newest]
+        total = estimate_tokens(newest["content"])
+
+        for msg in reversed(messages[:-1]):
+            tokens = estimate_tokens(msg["content"])
+            if total + tokens > budget:
                 break
             result.insert(0, msg)
-            total += t
+            total += tokens
+
         return result
 
     def _build_repo_context(self, task: str, budget: int) -> str:
         """
         Fetch semantically relevant repository context up to `budget` tokens.
+
+        Retrieval itself belongs to `SemanticContextBuilder` — the one
+        ranking implementation in the codebase. This method only budgets
+        what comes back, so there is a single place that decides which
+        files are relevant and a single place that decides how much of
+        them fits.
         """
         if self._context_service is None or budget <= 0:
             return ""
 
         try:
-            raw = self._context_service.get_context_for_task(task)
+            raw = self._context_builder.build(
+                task,
+                self._context_service,
+                self._workspace_memory,
+            )
         except Exception as exc:
             logger.debug("ContextEngine: repo context fetch failed: %s", exc)
             return ""

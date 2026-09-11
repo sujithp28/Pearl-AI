@@ -191,4 +191,8 @@ def tool_to_mcp_schema(tool: "Tool") -> dict[str, Any]:
             "properties": properties,
             "required": sorted(properties.keys()),
         },
+        # Pearl extension to the MCP descriptor: what this tool would do
+        # to the workspace, so a client can label or gate it before
+        # calling. Fail closed when the tier is somehow absent.
+        "riskLevel": getattr(tool, "risk_level", None) or "dangerous",
     }
