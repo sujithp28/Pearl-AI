@@ -274,11 +274,27 @@ class ReflectionEngine:
         if status not in ("complete", "retry", "replan", "blocked"):
             status = "blocked"
 
+        try:
+            confidence = float(data.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        # The model is untrusted input.  Clamp rather than allowing NaN,
+        # infinity, or an out-of-range value to influence the completion gate.
+        if not (0.0 <= confidence <= 1.0):
+            confidence = 0.0
+
+        raw_missing = data.get("missing_requirements", [])
+        if isinstance(raw_missing, str):
+            raw_missing = [raw_missing]
+        if not isinstance(raw_missing, list):
+            raw_missing = []
+        missing_requirements = [str(item) for item in raw_missing[:20]]
+
         return ReflectionResult(
             status=status,
-            confidence=float(data.get("confidence", 0.0)),
-            reason=str(data.get("reason", "")),
-            missing_requirements=list(data.get("missing_requirements", [])),
-            recommended_action=str(data.get("recommended_action", "")),
+            confidence=confidence,
+            reason=str(data.get("reason", ""))[:1000],
+            missing_requirements=missing_requirements,
+            recommended_action=str(data.get("recommended_action", ""))[:1000],
             raw=data,
         )

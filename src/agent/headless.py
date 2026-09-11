@@ -27,7 +27,7 @@ Usage::
 from __future__ import annotations
 
 import logging
-from typing import Literal
+from typing import Any, Literal
 
 from src.config.settings import Settings
 from src.tools.models import RiskLevel
@@ -99,6 +99,39 @@ class ExecutionPolicy:
         return f"Headless mode, staged policy={self.staged_policy!r}: " + (
             "auto-approved." if self.staged_policy == "approve" else "blocked."
         )
+
+
+def staged_batch_risk_level(
+    patch_manager: Any,
+    command_approver: Any = None,
+) -> RiskLevel:
+    """
+    Return the highest risk level present in a staged batch.
+
+    A batch is approved as a whole, so the decision has to be made
+    against its most dangerous member. Asking
+    ``can_auto_approve("staged")`` for every batch -- which is what the
+    CLI's ``--yes`` used to do -- auto-approved a staged `delete_file`
+    in headless mode, because the *constant* said "staged" while the
+    batch actually contained the one operation this module documents as
+    always requiring a human.
+
+    A pending deletion is the irreversible case: `delete_file` is
+    declared ``risk_level="dangerous"``, and it is the only tool that
+    puts a deletion in a `ChangeManager`. Content edits and staged
+    commands are ``"staged"``. An empty batch is ``"safe"`` -- there is
+    nothing to approve.
+    """
+    edits = list(getattr(patch_manager, "pending", []) or [])
+    commands = list(getattr(command_approver, "pending", []) or [])
+
+    if any(getattr(edit, "is_deletion", False) for edit in edits):
+        return "dangerous"
+
+    if edits or commands:
+        return "staged"
+
+    return "safe"
 
 
 def get_execution_policy() -> ExecutionPolicy:

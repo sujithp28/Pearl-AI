@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -94,8 +95,16 @@ class SessionRecord:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SessionRecord":
-        messages = [SessionMessage(**m) for m in data.pop("messages", [])]
-        rec = cls(**data)
+        # Never mutate the decoded input.  Callers may retain the dictionary
+        # for validation, metadata inspection, or a second read; using pop()
+        # here made deserialization have surprising side effects.
+        payload = dict(data)
+        raw_messages = payload.pop("messages", [])
+        messages = [
+            m if isinstance(m, SessionMessage) else SessionMessage(**m)
+            for m in raw_messages
+        ]
+        rec = cls(**payload)
         rec.messages = messages
         return rec
 
@@ -242,19 +251,56 @@ class SessionManager:
         return self._dir / f"{safe}.json"
 
     def _save(self, record: SessionRecord) -> None:
+        """
+        Write `record` to disk atomically.
+
+        Serialize first, then write to a temporary file in the same
+        directory and ``os.replace`` it into place. A bare
+        ``write_text`` truncates the existing file before writing, so an
+        interruption mid-write (crash, full disk, a failure inside
+        ``json.dumps``) left a half-written file that ``list_sessions``
+        could only log as corrupt and skip -- losing the session, while
+        this module promises sessions survive restart. ``os.replace`` is
+        atomic on POSIX and on Windows, so a reader sees either the old
+        file or the new one, never a partial one.
+
+        ``CheckpointManager._write_metadata`` already persists this way;
+        this is the same guarantee for session state.
+        """
         path = self._path(record.id)
         content = json.dumps(record.to_dict(), indent=2, default=str)
         with self._lock:
-            path.write_text(content, encoding="utf-8")
+            tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+            try:
+                tmp.write_text(content, encoding="utf-8")
+                os.replace(tmp, path)
+            except BaseException:
+                tmp.unlink(missing_ok=True)
+                raise
 
 
 # ── Module-level default instance ────────────────────────────────────────────
 
 _default_manager: SessionManager | None = None
+_default_manager_lock = Lock()
 
 
 def get_session_manager() -> SessionManager:
+    """
+    Return the process-wide default SessionManager, building it once.
+
+    Guarded by a lock: the API server calls this from FastAPI's request
+    threadpool, so the unsynchronised check-then-assign handed a
+    *different* manager to each concurrent caller. Each one carried its
+    own RLock, which is the lock every read-modify-write in this class
+    relies on -- so the documented thread-safety did not hold for the
+    one code path that actually needs it.
+    """
     global _default_manager
     if _default_manager is None:
-        _default_manager = SessionManager()
+        with _default_manager_lock:
+            # Re-check inside the lock: another thread may have built it
+            # while this one waited.
+            if _default_manager is None:
+                _default_manager = SessionManager()
     return _default_manager

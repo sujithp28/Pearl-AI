@@ -116,14 +116,51 @@ class TestApprovalGate:
             assert _decide(executor, auto_yes=False) is False
 
     def test_yes_flag_defers_to_execution_policy(self, monkeypatch):
-        """--yes routes through ExecutionPolicy rather than assuming consent."""
+        """
+        --yes routes through ExecutionPolicy rather than assuming consent,
+        and asks about the risk level the staged batch actually carries.
+
+        This used to assert the literal "staged", which is what the code
+        passed for every batch — including one containing a staged
+        `delete_file`, declared "dangerous". The policy then auto-approved
+        the deletion while printing that dangerous operations are refused.
+        Asserting the derived level is what makes that regression visible.
+        """
+        from src.tools.patch_manager import ChangeManager
+
+        patch_manager = ChangeManager()
+        patch_manager.propose("/ws/app.py", "old", "new")
+
         executor = MagicMock()
+        executor.patch_manager = patch_manager
+        executor.command_approver = None
+
         policy = MagicMock()
         policy.can_auto_approve.return_value = True
         policy.approval_reason.return_value = "headless"
         with patch("src.agent.headless.get_execution_policy", return_value=policy):
             assert _decide(executor, auto_yes=True) is True
         policy.can_auto_approve.assert_called_once_with("staged")
+
+    def test_yes_flag_reports_a_deletion_batch_as_dangerous(self):
+        """
+        A batch that deletes a file is asked about as "dangerous", so the
+        policy's always-refuse rule for dangerous operations applies and
+        --yes cannot delete a user's file unattended.
+        """
+        from src.agent.headless import ExecutionPolicy
+        from src.tools.patch_manager import ChangeManager
+
+        patch_manager = ChangeManager()
+        patch_manager.propose_deletion("/ws/precious.txt", "IMPORTANT")
+
+        executor = MagicMock()
+        executor.patch_manager = patch_manager
+        executor.command_approver = None
+
+        real_policy = ExecutionPolicy(mode="headless", staged_policy="approve")
+        with patch("src.agent.headless.get_execution_policy", return_value=real_policy):
+            assert _decide(executor, auto_yes=True) is False
 
     def test_yes_flag_respects_a_blocking_policy(self):
         """

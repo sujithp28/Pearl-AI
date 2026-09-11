@@ -180,15 +180,15 @@ def test_apply_all_rollback_restores_existing_file_on_failure(tmp_path, monkeypa
     manager.propose(str(b), None, "new\n")
 
     call_count = {"n": 0}
-    real_write = Path.write_text
+    real_write = Path.write_bytes
 
-    def _fail_second(self, text, **kw):
+    def _fail_second(self, data, **kw):
         call_count["n"] += 1
         if call_count["n"] == 2:
             raise OSError("simulated disk full")
-        return real_write(self, text, **kw)
+        return real_write(self, data, **kw)
 
-    monkeypatch.setattr(Path, "write_text", _fail_second)
+    monkeypatch.setattr(Path, "write_bytes", _fail_second)
 
     with pytest.raises(OSError, match="simulated disk full"):
         manager.apply_all()
@@ -211,15 +211,15 @@ def test_apply_all_rollback_deletes_new_file_on_failure(tmp_path, monkeypatch):
     manager.propose(str(b), None, "bbb\n")
 
     call_count = {"n": 0}
-    real_write = Path.write_text
+    real_write = Path.write_bytes
 
-    def _fail_second(self, text, **kw):
+    def _fail_second(self, data, **kw):
         call_count["n"] += 1
         if call_count["n"] == 2:
             raise OSError("disk error")
-        return real_write(self, text, **kw)
+        return real_write(self, data, **kw)
 
-    monkeypatch.setattr(Path, "write_text", _fail_second)
+    monkeypatch.setattr(Path, "write_bytes", _fail_second)
 
     with pytest.raises(OSError):
         manager.apply_all()
@@ -234,7 +234,7 @@ def test_apply_all_pending_cleared_only_on_success(tmp_path):
     manager = ChangeManager()
     manager.propose(str(tmp_path / "x.txt"), None, "x\n")
 
-    with mock.patch.object(Path, "write_text", side_effect=OSError("fail")):
+    with mock.patch.object(Path, "write_bytes", side_effect=OSError("fail")):
         with pytest.raises(OSError):
             manager.apply_all()
 
@@ -318,16 +318,16 @@ def test_rollback_restores_a_deleted_file_when_a_later_write_fails(tmp_path):
 
     # Fail only the first write (next.txt), so the rollback's own
     # restoring write is still allowed to succeed.
-    real_write = Path.write_text
+    real_write = Path.write_bytes
     calls = {"n": 0}
 
-    def _fail_first(self, text, **kw):
+    def _fail_first(self, data, **kw):
         calls["n"] += 1
         if calls["n"] == 1:
             raise OSError("disk full")
-        return real_write(self, text, **kw)
+        return real_write(self, data, **kw)
 
-    with mock.patch.object(Path, "write_text", _fail_first):
+    with mock.patch.object(Path, "write_bytes", _fail_first):
         with pytest.raises(OSError):
             manager.apply_all()
 

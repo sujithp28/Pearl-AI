@@ -347,178 +347,212 @@ class PearlSession:
         def _emit(event) -> None:
             bus.emit(event)
 
+        closed = False
+
         def _close_bus() -> None:
+            # Idempotent: every existing terminal path already calls this,
+            # and the finally below calls it again for the paths that raise.
+            nonlocal closed
+            if closed:
+                return
+            closed = True
             bus.close()
             bridge_thread.join(timeout=5)
 
-        # Proactive condensation before adding the new user turn so the
-        # token estimate reflects the existing history accurately.
-        condense_result = self._condenser.maybe_condense(
-            self.memory, n_ctx=Settings.LOCAL_MODEL_CTX
-        )
-        if condense_result.condensed:
-            logger.info(
-                "Pre-run condensation: %d→%d turns, ~%d→~%d tokens",
-                condense_result.turns_before,
-                condense_result.turns_after,
-                condense_result.tokens_before,
-                condense_result.tokens_after,
+        try:
+            # Proactive condensation before adding the new user turn so the
+            # token estimate reflects the existing history accurately.
+            condense_result = self._condenser.maybe_condense(
+                self.memory, n_ctx=Settings.LOCAL_MODEL_CTX
             )
+            if condense_result.condensed:
+                logger.info(
+                    "Pre-run condensation: %d→%d turns, ~%d→~%d tokens",
+                    condense_result.turns_before,
+                    condense_result.turns_after,
+                    condense_result.tokens_before,
+                    condense_result.tokens_after,
+                )
+                _emit(
+                    ContextCondensedEvent(
+                        turns_before=condense_result.turns_before,
+                        turns_after=condense_result.turns_after,
+                        tokens_before=condense_result.tokens_before,
+                        tokens_after=condense_result.tokens_after,
+                        reason=condense_result.reason,
+                    )
+                )
+
+            self.memory.record_turn("user", prompt)
+
+            def on_progress(event: ProgressEvent) -> None:
+                asyncio.run_coroutine_threadsafe(
+                    event_queue.put(
+                        {
+                            "type": "progress",
+                            "status": event.status,
+                            "currentStep": event.current_step,
+                            "totalSteps": event.total_steps,
+                            "currentAction": event.current_action,
+                        }
+                    ),
+                    loop,
+                )
+
+            executor = AutonomousExecutor(
+                self.planner,
+                self.dispatcher,
+                on_progress=on_progress,
+                checkpoints=self.checkpoints,
+                context_builder=self._context_builder,
+                context_service=self._context_service,
+                reflection_engine=self._reflection_engine,
+                context_engine=self._context_engine,
+                verifier=self._verifier,
+            )
+
+            with self._executor_lock:
+                self._executor = executor
+                self._current_prompt = prompt
+
+            # Run with bounded ContextLengthError recovery.
+            retries_left = Settings.CONDENSER_MAX_RETRIES
+            report = None
+            while report is None:
+                try:
+                    report = executor.run(prompt, initial_plan=initial_plan)
+                except ContextLengthError as exc:
+                    if retries_left <= 0:
+                        error_msg = (
+                            "Context window exhausted and condensation "
+                            f"retry limit reached: {exc}"
+                        )
+                        _emit(
+                            RunFailedEvent(
+                                error=error_msg, stop_reason="context_exhausted"
+                            )
+                        )
+                        _close_bus()
+                        asyncio.run_coroutine_threadsafe(
+                            event_queue.put({"type": "error", "message": error_msg}),
+                            loop,
+                        )
+                        return
+                    logger.warning(
+                        "ContextLengthError during autonomous run; condensing and retrying "
+                        "(%d retries left). Error: %s",
+                        retries_left,
+                        exc,
+                    )
+                    try:
+                        self._condenser.condense(
+                            self.memory, reason="ContextLengthError in autonomous run"
+                        )
+                    except CannotCondenseError as cannot:
+                        error_msg = (
+                            "Context window exhausted and history cannot be "
+                            f"compressed further: {cannot}"
+                        )
+                        _emit(
+                            RunFailedEvent(
+                                error=error_msg, stop_reason="cannot_condense"
+                            )
+                        )
+                        _close_bus()
+                        asyncio.run_coroutine_threadsafe(
+                            event_queue.put({"type": "error", "message": error_msg}),
+                            loop,
+                        )
+                        return
+                    retries_left -= 1
+                    # Re-create executor with fresh state — the plan itself may
+                    # have been partially completed and the executor's internal
+                    # step tracking is invalid after the error.
+                    executor = AutonomousExecutor(
+                        self.planner,
+                        self.dispatcher,
+                        on_progress=on_progress,
+                        checkpoints=self.checkpoints,
+                        context_builder=self._context_builder,
+                        context_service=self._context_service,
+                        reflection_engine=self._reflection_engine,
+                        context_engine=self._context_engine,
+                        verifier=self._verifier,
+                    )
+                    with self._executor_lock:
+                        self._executor = executor
+                except Exception as exc:
+                    msg = str(exc)
+                    if any(
+                        k in msg.lower()
+                        for k in (
+                            "credentials",
+                            "api_key",
+                            "not configured",
+                            "authentication",
+                        )
+                    ):
+                        msg = (
+                            "Pearl is not connected to a model. "
+                            "Open Settings to choose a provider, or add the "
+                            "appropriate key to your .env file and restart."
+                        )
+                    _emit(RunFailedEvent(error=msg, stop_reason="exception"))
+                    _close_bus()
+                    asyncio.run_coroutine_threadsafe(
+                        event_queue.put({"type": "error", "message": msg}),
+                        loop,
+                    )
+                    return
+
+            result = _report_to_dict(report)
+            if report.stop_reason != "awaiting_approval":
+                result["final_answer"] = self._synthesizer.synthesize(prompt, report)
+
             _emit(
-                ContextCondensedEvent(
-                    turns_before=condense_result.turns_before,
-                    turns_after=condense_result.turns_after,
-                    tokens_before=condense_result.tokens_before,
-                    tokens_after=condense_result.tokens_after,
-                    reason=condense_result.reason,
+                RunCompleteEvent(
+                    stop_reason=report.stop_reason,
+                    steps=len(report.steps),
+                    replans=report.replans_used,
                 )
             )
+            _close_bus()
 
-        self.memory.record_turn("user", prompt)
-
-        def on_progress(event: ProgressEvent) -> None:
             asyncio.run_coroutine_threadsafe(
-                event_queue.put(
-                    {
-                        "type": "progress",
-                        "status": event.status,
-                        "currentStep": event.current_step,
-                        "totalSteps": event.total_steps,
-                        "currentAction": event.current_action,
-                    }
-                ),
+                event_queue.put({"type": "result", "report": result}),
                 loop,
             )
 
-        executor = AutonomousExecutor(
-            self.planner,
-            self.dispatcher,
-            on_progress=on_progress,
-            checkpoints=self.checkpoints,
-            context_builder=self._context_builder,
-            context_service=self._context_service,
-            reflection_engine=self._reflection_engine,
-            context_engine=self._context_engine,
-            verifier=self._verifier,
-        )
-
-        with self._executor_lock:
-            self._executor = executor
-            self._current_prompt = prompt
-
-        # Run with bounded ContextLengthError recovery.
-        retries_left = Settings.CONDENSER_MAX_RETRIES
-        report = None
-        while report is None:
-            try:
-                report = executor.run(prompt, initial_plan=initial_plan)
-            except ContextLengthError as exc:
-                if retries_left <= 0:
-                    error_msg = (
-                        "Context window exhausted and condensation "
-                        f"retry limit reached: {exc}"
-                    )
-                    _emit(
-                        RunFailedEvent(error=error_msg, stop_reason="context_exhausted")
-                    )
-                    _close_bus()
-                    asyncio.run_coroutine_threadsafe(
-                        event_queue.put({"type": "error", "message": error_msg}),
-                        loop,
-                    )
-                    return
-                logger.warning(
-                    "ContextLengthError during autonomous run; condensing and retrying "
-                    "(%d retries left). Error: %s",
-                    retries_left,
-                    exc,
-                )
-                try:
-                    self._condenser.condense(
-                        self.memory, reason="ContextLengthError in autonomous run"
-                    )
-                except CannotCondenseError as cannot:
-                    error_msg = (
-                        "Context window exhausted and history cannot be "
-                        f"compressed further: {cannot}"
-                    )
-                    _emit(
-                        RunFailedEvent(error=error_msg, stop_reason="cannot_condense")
-                    )
-                    _close_bus()
-                    asyncio.run_coroutine_threadsafe(
-                        event_queue.put({"type": "error", "message": error_msg}),
-                        loop,
-                    )
-                    return
-                retries_left -= 1
-                # Re-create executor with fresh state — the plan itself may
-                # have been partially completed and the executor's internal
-                # step tracking is invalid after the error.
-                executor = AutonomousExecutor(
-                    self.planner,
-                    self.dispatcher,
-                    on_progress=on_progress,
-                    checkpoints=self.checkpoints,
-                    context_builder=self._context_builder,
-                    context_service=self._context_service,
-                    reflection_engine=self._reflection_engine,
-                    context_engine=self._context_engine,
-                    verifier=self._verifier,
+            if report.stop_reason != "awaiting_approval":
+                final_ans = result.get("final_answer", "")
+                self.memory.record_turn(
+                    "agent",
+                    final_ans
+                    or f"Completed ({report.stop_reason}): {len(report.steps)} step(s).",
                 )
                 with self._executor_lock:
-                    self._executor = executor
-            except Exception as exc:
-                msg = str(exc)
-                if any(
-                    k in msg.lower()
-                    for k in (
-                        "credentials",
-                        "api_key",
-                        "not configured",
-                        "authentication",
-                    )
-                ):
-                    msg = (
-                        "Pearl is not connected to a model. "
-                        "Open Settings to choose a provider, or add the "
-                        "appropriate key to your .env file and restart."
-                    )
+                    self._executor = None
+        except BaseException:
+            # A failure anywhere above used to leave the stream open: the
+            # bus was never closed, so the bridge thread blocked on
+            # queue.get() forever and the browser's SSE connection sat
+            # waiting for a terminal event that could not arrive. Report
+            # it as a run failure, then let the finally close the bus.
+            logger.exception("Autonomous run raised; closing the event stream.")
+            msg = "The run failed unexpectedly. See the server log for details."
+            try:
                 _emit(RunFailedEvent(error=msg, stop_reason="exception"))
-                _close_bus()
-                asyncio.run_coroutine_threadsafe(
-                    event_queue.put({"type": "error", "message": msg}),
-                    loop,
-                )
-                return
-
-        result = _report_to_dict(report)
-        if report.stop_reason != "awaiting_approval":
-            result["final_answer"] = self._synthesizer.synthesize(prompt, report)
-
-        _emit(
-            RunCompleteEvent(
-                stop_reason=report.stop_reason,
-                steps=len(report.steps),
-                replans=report.replans_used,
+            except Exception:  # pragma: no cover - bus is best-effort here
+                pass
+            asyncio.run_coroutine_threadsafe(
+                event_queue.put({"type": "error", "message": msg}),
+                loop,
             )
-        )
-        _close_bus()
-
-        asyncio.run_coroutine_threadsafe(
-            event_queue.put({"type": "result", "report": result}),
-            loop,
-        )
-
-        if report.stop_reason != "awaiting_approval":
-            final_ans = result.get("final_answer", "")
-            self.memory.record_turn(
-                "agent",
-                final_ans
-                or f"Completed ({report.stop_reason}): {len(report.steps)} step(s).",
-            )
-            with self._executor_lock:
-                self._executor = None
+            raise
+        finally:
+            # The SSE consumer is blocked until the bus closes, so this
+            # must happen on every path out of this method.
+            _close_bus()
 
     def approve(self) -> dict[str, Any]:
         with self._executor_lock:

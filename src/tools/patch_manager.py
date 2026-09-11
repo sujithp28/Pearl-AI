@@ -44,6 +44,52 @@ def unified_diff(path: str, original: str | None, updated: str | None) -> str:
     return "\n".join(diff_lines)
 
 
+def _dominant_newline(text: str | None) -> str:
+    """
+    Return the line ending `text` predominantly uses: "\r\n", "\r", or "\n".
+
+    Pearl reads files with universal newlines, so a CRLF file arrives as
+    "\n" text and every tool edits it as "\n" text. Writing that back with
+    `Path.write_text` then rewrote the whole file's line endings: a CRLF
+    file became LF, while the diff the user approved showed only the one
+    line that actually changed. On Windows the mirror case applies, because
+    text-mode writes translate "\n" to os.linesep there -- so a one-line
+    edit to an LF file rewrote every line.
+
+    Either way the bytes on disk did not match the approved diff, which is
+    the one thing the approval gate exists to guarantee. Detecting the
+    file's own convention and restoring it keeps the change limited to what
+    the diff showed.
+    """
+    if not text:
+        return "\n"
+
+    crlf = text.count("\r\n")
+    lf = text.count("\n") - crlf
+    cr = text.count("\r") - crlf
+
+    if crlf >= lf and crlf >= cr and crlf > 0:
+        return "\r\n"
+    if cr > lf and cr > 0:
+        return "\r"
+    return "\n"
+
+
+def _encode_for_disk(text: str, newline: str) -> bytes:
+    """
+    Encode `text` for disk using `newline`, with no further translation.
+
+    Normalises to "\n" first so content assembled from mixed sources
+    cannot leave stray "\r" behind, then applies the target ending once.
+    """
+    normalised = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    if newline != "\n":
+        normalised = normalised.replace("\n", newline)
+
+    return normalised.encode("utf-8")
+
+
 @dataclass(slots=True)
 class PendingEdit:
     """
@@ -193,12 +239,14 @@ class ChangeManager:
         if not self._pending:
             return []
 
-        # Snapshot existing content before touching anything.
+        # Snapshot the existing *bytes* before touching anything, so a
+        # rollback restores the file exactly — including its line endings,
+        # which a text-mode round trip would not preserve.
         # None means the file does not yet exist (new file).
-        snapshots: dict[str, str | None] = {}
+        snapshots: dict[str, bytes | None] = {}
         for edit in self._pending:
             p = Path(edit.path)
-            snapshots[edit.path] = p.read_text(encoding="utf-8") if p.exists() else None
+            snapshots[edit.path] = p.read_bytes() if p.exists() else None
 
         applied: list[str] = []
         try:
@@ -208,20 +256,29 @@ class ChangeManager:
                     file_path.unlink(missing_ok=True)
                     applied.append(edit.path)
                     continue
-                if file_path.parent:
-                    file_path.parent.mkdir(parents=True, exist_ok=True)
-                file_path.write_text(edit.updated_content, encoding="utf-8")
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                # Write bytes, not text: text mode translates "\n" to
+                # os.linesep, so on Windows every write reflowed the whole
+                # file. The newline comes from what was on disk (or, for a
+                # new file, from the content itself).
+                prior = snapshots[edit.path]
+                newline = _dominant_newline(
+                    prior.decode("utf-8", errors="replace")
+                    if prior is not None
+                    else edit.updated_content
+                )
+                file_path.write_bytes(_encode_for_disk(edit.updated_content, newline))
                 applied.append(edit.path)
         except Exception:
             # Rollback every file already written in this batch.
             for path_str in applied:
-                prior = snapshots.get(path_str)
+                prior_bytes = snapshots.get(path_str)
                 try:
                     p = Path(path_str)
-                    if prior is None:
+                    if prior_bytes is None:
                         p.unlink(missing_ok=True)
                     else:
-                        p.write_text(prior, encoding="utf-8")
+                        p.write_bytes(prior_bytes)
                 except Exception as roll_exc:
                     logger.error("Rollback failed for %s: %s", path_str, roll_exc)
             raise

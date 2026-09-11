@@ -593,6 +593,26 @@ class AutonomousExecutor:
         logger.info("Starting autonomous execution for: %s", prompt)
         self._log_structured("run_start", prompt=prompt[:200])
 
+        # The reflection budget bounds the REFLECT -> REPLAN cycles of ONE
+        # task, which is what `run()` starts. Callers share a single
+        # ReflectionEngine across a whole session (PearlSession builds one
+        # in __init__), so without this the counter only ever went up:
+        # after REFLECTION_MAX_ITERATIONS reflections anywhere in the
+        # session, `exhausted` stayed True forever and the repair loop
+        # silently stopped running for every later task.
+        #
+        # Deliberately not reset in approve(): that resumes the same task,
+        # and its cycles belong to the same budget.
+        if self._reflection_engine is not None:
+            try:
+                self._reflection_engine.reset()
+            except Exception:  # pragma: no cover - defensive
+                logger.warning(
+                    "Could not reset the reflection budget; this run may "
+                    "reflect fewer times than configured.",
+                    exc_info=True,
+                )
+
         steps: list[ExecutionStep] = []
         events: list[ProgressEvent] = []
         completed_for_replan: list[dict[str, Any]] = []
@@ -701,7 +721,24 @@ class AutonomousExecutor:
                 current_action=self._personality.format(EventKind.CHECKPOINT),
             )
 
-        applied = self.patch_manager.apply_all()
+        try:
+            applied = self.patch_manager.apply_all()
+        except Exception:
+            # apply_all() is atomic: on failure it rolls the workspace back
+            # and leaves the batch staged. The pause has to come back with
+            # it, or the run is stranded -- take_paused() already cleared
+            # it, so is_awaiting_approval() would say False while the edits
+            # were still pending, and neither approve() nor reject() could
+            # reach them again. Restoring it means the caller can surface
+            # the error and the user can retry or reject.
+            self.approval_coordinator.pause(state)
+            logger.error(
+                "Applying the approved changes failed; %d file(s) remain "
+                "staged and awaiting approval.",
+                len(self.patch_manager),
+                exc_info=True,
+            )
+            raise
 
         logger.info("Approved %d file(s): %s", len(applied), applied)
 

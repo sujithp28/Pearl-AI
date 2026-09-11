@@ -311,8 +311,15 @@ def _run_worker(
     loop: asyncio.AbstractEventLoop,
     initial_plan: list | None = None,
 ) -> None:
-    session.run_autonomous_stream(prompt, queue, initial_plan=initial_plan)
-    asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+    try:
+        session.run_autonomous_stream(prompt, queue, initial_plan=initial_plan)
+    finally:
+        # The sentinel is what ends the SSE generator, so it has to be queued
+        # even when the run raises. Without the finally, an exception here left
+        # /api/run's `await event_queue.get()` blocked forever: no `done`
+        # event, no error, and a browser spinner that never stopped.
+        # /api/chat's worker already does this; this one did not.
+        asyncio.run_coroutine_threadsafe(queue.put(None), loop)
 
 
 # ------------------------------------------------------------------ plan

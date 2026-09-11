@@ -114,23 +114,41 @@ def _decide(executor: Any, auto_yes: bool) -> bool:
     With ``--yes`` the decision goes through ExecutionPolicy rather than
     being assumed — dangerous operations are still refused, so the flag
     cannot be used to sidestep the approval guarantee.
+
+    The risk level is read off the batch that is actually staged, not
+    assumed to be ``"staged"``. Passing that constant meant a run whose
+    batch contained a `delete_file` — declared ``"dangerous"`` — was
+    auto-approved anyway, deleting the file while printing that
+    dangerous operations are still refused.
     """
     if auto_yes:
-        from src.agent.headless import get_execution_policy
+        from src.agent.headless import get_execution_policy, staged_batch_risk_level
 
         policy = get_execution_policy()
-        allowed = policy.can_auto_approve("staged")
+        risk = staged_batch_risk_level(
+            executor.patch_manager,
+            getattr(executor, "command_approver", None),
+        )
+        allowed = policy.can_auto_approve(risk)
         print()
         if allowed:
-            print(render.dim(f"  auto-approved — {policy.approval_reason('staged')}"))
+            print(render.dim(f"  auto-approved — {policy.approval_reason(risk)}"))
         else:
-            print(render.yellow(f"  blocked — {policy.approval_reason('staged')}"))
-            print(
-                render.dim(
-                    "  set PEARL_EXECUTION_MODE=headless and "
-                    "PEARL_HEADLESS_STAGED_POLICY=approve to allow this"
+            print(render.yellow(f"  blocked — {policy.approval_reason(risk)}"))
+            if risk == "dangerous":
+                print(
+                    render.dim(
+                        "  this batch deletes files; approve it interactively "
+                        "(without --yes) if that is intended"
+                    )
                 )
-            )
+            else:
+                print(
+                    render.dim(
+                        "  set PEARL_EXECUTION_MODE=headless and "
+                        "PEARL_HEADLESS_STAGED_POLICY=approve to allow this"
+                    )
+                )
         return allowed
 
     try:
