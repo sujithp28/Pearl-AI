@@ -116,7 +116,16 @@ class TestApprovalGate:
             assert _decide(executor, auto_yes=False) is False
 
     def test_yes_flag_defers_to_execution_policy(self, monkeypatch):
-        """--yes routes through ExecutionPolicy rather than assuming consent."""
+        """
+        --yes routes through ExecutionPolicy rather than assuming consent,
+        and asks about the risk level the staged batch actually carries.
+
+        This used to assert the literal "staged", which is what the code
+        passed for every batch — including one containing a staged
+        `delete_file`, declared "dangerous". The policy then auto-approved
+        the deletion while printing that dangerous operations are refused.
+        Asserting the derived level is what makes that regression visible.
+        """
         executor = MagicMock()
         executor.staged_risk_level.return_value = "staged"
         policy = MagicMock()
