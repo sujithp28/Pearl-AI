@@ -20,9 +20,22 @@ def _ensure_within_workspace(path: str) -> Path:
     """
     Resolve `path` and ensure it stays inside the active workspace root.
 
-    Prevents path traversal ("..") and symlink escapes outside the
-    workspace.  Uses the thread-local workspace root set by the session,
-    falling back to ``Path.cwd()`` in non-session contexts.
+    Relative paths resolve against the **workspace root**, not the
+    process working directory. The model emits workspace-relative paths
+    ("src/app.py"), and the process cwd is not the workspace whenever
+    Pearl runs against an external tree -- via ``--workspace``, or the
+    web UI's workspace selector. Resolving against cwd there produced a
+    path outside the workspace for every relative path the planner
+    wrote, so the boundary check rejected all of them and every file
+    tool failed with "Path escapes workspace". It fails closed, so it
+    was never an escape -- but it made out-of-tree workspaces unusable.
+
+    ``get_workspace_root()`` still falls back to the cwd when no
+    workspace has been set, so direct/CLI use in the project directory
+    resolves exactly as before.
+
+    Absolute paths are used as given, then checked. Prevents path
+    traversal ("..") and symlink escapes outside the workspace.
 
     Fails closed: any exception during resolution (e.g. embedded null bytes)
     is re-raised as ``PermissionError`` so callers never accidentally proceed
@@ -30,7 +43,10 @@ def _ensure_within_workspace(path: str) -> Path:
     """
     workspace_root = get_workspace_root()
     try:
-        resolved = Path(path).resolve()
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = workspace_root / candidate
+        resolved = candidate.resolve()
     except Exception as exc:
         raise PermissionError(f"Cannot resolve path {path!r}: {exc}") from exc
 
@@ -380,10 +396,25 @@ def diff_files(path_a: str, path_b: str) -> str:
         "source": "str",
         "destination": "str",
     },
-    returns="None",
+    returns="None | str",
+    # A move deletes the source: irreversible, so it is never auto-approved.
     risk_level="dangerous",
 )
-def rename_file(source: str, destination: str) -> None:
+def rename_file(source: str, destination: str) -> None | str:
+    """
+    Rename or move a file within the workspace.
+
+    In preview mode (an active ChangeManager) the move is staged for
+    approval as a deletion of `source` plus a write of `destination`,
+    and nothing touches disk.
+
+    The approval gate is not optional here. A move deletes the source
+    file, so running it unstaged during an autonomous run would put an
+    irreversible change on disk with no diff, no approval, and no
+    checkpoint — the P0 the gate exists to prevent. It was ungated
+    while being `@tool`-decorated, so the only thing standing between it
+    and that outcome was its absence from `build_registry()`.
+    """
     src = _ensure_within_workspace(source)
     dst = _ensure_within_workspace(destination)
 
@@ -391,6 +422,17 @@ def rename_file(source: str, destination: str) -> None:
         raise FileNotFoundError(source)
     if dst.exists():
         raise FileExistsError(destination)
+
+    manager = _active_patch_manager()
+
+    if manager is not None:
+        logger.info("Previewing rename_file: %s → %s", src, dst)
+
+        content = _read_for_staging(src)
+        manager.propose(str(dst), None, content or "")
+        manager.propose_deletion(str(src), content)
+
+        return f"Preview staged: move '{source}' → '{destination}'."
 
     dst.parent.mkdir(parents=True, exist_ok=True)
     src.rename(dst)
@@ -399,6 +441,7 @@ def rename_file(source: str, destination: str) -> None:
     _refresh_repo_index(dst)
 
     logger.info("Renamed %s → %s", src, dst)
+    return None
 
 
 @tool(
@@ -407,10 +450,17 @@ def rename_file(source: str, destination: str) -> None:
         "source": "str",
         "destination": "str",
     },
-    returns="None",
+    returns="None | str",
     risk_level="dangerous",
 )
-def copy_file(source: str, destination: str) -> None:
+def copy_file(source: str, destination: str) -> None | str:
+    """
+    Copy a file to a new path within the workspace.
+
+    In preview mode (an active ChangeManager) the new file is staged for
+    approval and nothing touches disk — same gate as every other tool in
+    this module that creates a file.
+    """
     src = _ensure_within_workspace(source)
     dst = _ensure_within_workspace(destination)
 
@@ -419,9 +469,19 @@ def copy_file(source: str, destination: str) -> None:
     if dst.exists():
         raise FileExistsError(destination)
 
+    manager = _active_patch_manager()
+
+    if manager is not None:
+        logger.info("Previewing copy_file: %s → %s", src, dst)
+
+        manager.propose(str(dst), None, _read_for_staging(src) or "")
+
+        return f"Preview staged: copy '{source}' → '{destination}'."
+
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_bytes(src.read_bytes())
 
     _refresh_repo_index(dst)
 
     logger.info("Copied %s → %s", src, dst)
+    return None

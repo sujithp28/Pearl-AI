@@ -12,6 +12,7 @@ import ast
 import logging
 import os
 import re
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -152,6 +153,14 @@ class RepositoryIndex:
 # `build_startup_index()`, and otherwise built lazily on first use.
 _INDEX_CACHE: dict[Path, RepositoryIndex] = {}
 
+# Guards the *shape* of _INDEX_CACHE, not the indexes inside it. Pearl
+# builds indexes from per-session worker threads, so one thread inserting
+# a new root while another iterates the cache raised "dictionary changed
+# size during iteration" -- out of refresh_indexed_file(), which promises
+# never to raise and is called from approve() after the writes have
+# already landed on disk.
+_INDEX_CACHE_LOCK = threading.Lock()
+
 
 def _build_index(root: Path) -> RepositoryIndex:
     """
@@ -194,11 +203,18 @@ def _get_index(root: Path) -> RepositoryIndex:
     first access.
     """
 
-    index = _INDEX_CACHE.get(root)
+    with _INDEX_CACHE_LOCK:
+        index = _INDEX_CACHE.get(root)
 
     if index is None:
+        # Built outside the lock: indexing walks the tree and can take
+        # seconds, and holding the lock across it would serialise every
+        # session's lookups behind one cold build.
         index = _build_index(root)
-        _INDEX_CACHE[root] = index
+        with _INDEX_CACHE_LOCK:
+            # Another thread may have finished the same root first; keep
+            # its index so every caller shares one object per root.
+            index = _INDEX_CACHE.setdefault(root, index)
 
     return index
 
@@ -250,7 +266,13 @@ def refresh_indexed_file(path: str) -> None:
     except OSError:
         return
 
-    for root, index in _INDEX_CACHE.items():
+    # Snapshot under the lock, then work on the snapshot: iterating the
+    # live dict raised RuntimeError whenever another session's thread
+    # inserted a root mid-iteration.
+    with _INDEX_CACHE_LOCK:
+        cached = list(_INDEX_CACHE.items())
+
+    for root, index in cached:
         try:
             rel = file_path.relative_to(root).as_posix()
         except ValueError:
