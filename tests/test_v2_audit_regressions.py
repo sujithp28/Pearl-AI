@@ -640,7 +640,14 @@ class TestRunStreamAlwaysTerminates:
             thread.join(timeout=10)
             await asyncio.sleep(0.2)
 
-            # None is what ends /api/run's generator.
+            # The failure is reported before the stream is closed, so the
+            # user sees why the run stopped rather than a silent halt.
+            first = await asyncio.wait_for(queue.get(), timeout=2)
+            assert first == {"type": "error", "error": "boom"}
+
+            # None is what ends /api/run's generator. It must follow the
+            # error even though the run raised: without it the generator
+            # blocks on queue.get() forever and the UI spinner never stops.
             assert await asyncio.wait_for(queue.get(), timeout=2) is None
 
         asyncio.run(scenario())
